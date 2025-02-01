@@ -17,6 +17,7 @@
 #include "debug.h"
 #include "bmp280.h"
 #include "mpu6050.h"
+#include "i2c.h"
 
 #define log_tag "main"
 
@@ -43,8 +44,13 @@ static void IRAM_ATTR dmp_data_handler(void *args){
 
 
 void dmp_task(void* args){
- constexpr TickType_t xDelay = 100 / portTICK_PERIOD_MS;
-    Mpu6050 mpu(ADDR_68, I2C_MASTER_SDA_IO, I2C_MASTER_SCL_IO, I2C_MASTER_FREQ_HZ);
+
+    constexpr TickType_t xDelay = 100 / portTICK_PERIOD_MS;
+    I2cHandler* i2c = new I2cHandler(I2C_MASTER_SDA_IO, I2C_MASTER_SCL_IO, I2C_MASTER_FREQ_HZ);
+    i2c->init();
+
+    Mpu6050 mpu(ADDR_68, i2c);
+
     esp_err_t status = 0;
     int nrSamples = 100;
     uint8_t dmpData[mpu.dmpPacketSize] = {};
@@ -109,12 +115,11 @@ void dmp_task(void* args){
     ESP_ERROR_CHECK_WITHOUT_ABORT(status);
 
 
-    //uint32_t files = DEBUG_MPU6050 | DEBUG_MAIN; // | DEBUG_BMP ;
-    //uint32_t prio  = DEBUG_DATA | DEBUG_ARGS;// |  DEBUG_LOWLEVEL | DEBUG_ARGS;// | DEBUG_LOGIC | DEBUG_ARGS;
+    uint32_t files = DEBUG_MPU6050 | DEBUG_MAIN | DEBUG_I2C; // | DEBUG_BMP ;
+    uint32_t prio  = DEBUG_DATA | DEBUG_ARGS |  DEBUG_LOWLEVEL | DEBUG_LOGIC;// | DEBUG_LOGIC | DEBUG_ARGS;
 
-    //set_loglevel(files, prio);
+    set_loglevel(files, prio);
 
-    mpu.reset_fifo();
     int count_ = 0;
     while (true)
     {
@@ -142,13 +147,17 @@ void dmp_task(void* args){
 
     }
 
-
 }
+
 void gyro_task(void* args){
+
     constexpr TickType_t xDelay = 10 / portTICK_PERIOD_MS;
-    Mpu6050 mpu(ADDR_68, I2C_MASTER_SDA_IO, I2C_MASTER_SCL_IO, I2C_MASTER_FREQ_HZ);
     esp_err_t status = 0;
     int nrSamples = 100;
+
+    I2cHandler* i2c = new I2cHandler(I2C_MASTER_SDA_IO, I2C_MASTER_SCL_IO, I2C_MASTER_FREQ_HZ);
+    Mpu6050 mpu(ADDR_68, i2c);
+
 
     status = mpu.mpu6050_init();
     ESP_ERROR_CHECK_WITHOUT_ABORT(status);
@@ -272,8 +281,8 @@ void altitude_task(void* args){
 
 void app_main(void)
 {
-    uint32_t files = DEBUG_MPU6050 | DEBUG_MAIN; // | DEBUG_BMP ;
-    uint32_t prio  = DEBUG_DATA;// |  DEBUG_LOWLEVEL | DEBUG_ARGS;// | DEBUG_LOGIC | DEBUG_ARGS;
+    uint32_t files = DEBUG_MPU6050 | DEBUG_MAIN | DEBUG_I2C; // | DEBUG_BMP ;
+    uint32_t prio  = DEBUG_DATA |  DEBUG_LOWLEVEL | DEBUG_ARGS;// | DEBUG_LOGIC;
 
     set_loglevel(files, prio);
 

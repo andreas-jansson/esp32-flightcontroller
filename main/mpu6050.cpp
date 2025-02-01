@@ -1,10 +1,3 @@
-#include "mpu6050.h"
-
-#include "driver/i2c.h"
-
-#include "esp_check.h"
-#include "debug.h"
-
 #include <pgmspace.h>
 #include <cstring>
 #include <stdlib.h>
@@ -14,33 +7,20 @@
 #include <algorithm> 
 
 
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+
+#include "mpu6050.h"
+#include "debug.h"
+#include "i2c.h"
+
+
 #define log_tag "mpu6050"
 
 
 
-#define I2C_MASTER_SCL_IO 22      // GPIO number for I2C SCL
-#define I2C_MASTER_SDA_IO 21      // GPIO number for I2C SDA
-#define I2C_MASTER_NUM I2C_NUM_0  // I2C port number (I2C_NUM_0 or I2C_NUM_1)
-#define I2C_MASTER_FREQ_HZ 100000 // Frequency of the I2C bus
-#define I2C_MASTER_TX_BUF_DISABLE 0
-#define I2C_MASTER_RX_BUF_DISABLE 0
-
 using namespace mpu6050Value;
 
-static void i2c_scanner() {
-    printf("Scanning I2C bus...\n");
-    for (uint8_t addr = 1; addr < 127; addr++) {
-        esp_err_t status = i2c_master_write_to_device(I2C_MASTER_NUM, addr, &addr, 1, 1000);
-        if (status == ESP_OK) {
-            printf("I2C device found at address 0x%02X\n", addr);
-        }
-    }
-}
-
-static void swap_endian(uint8_t* data, size_t len) {
-    if (data == nullptr || len < 2) return; // No need to swap for single byte or null data
-    std::reverse(data, data + len);
-}
 
 static esp_err_t set_bits_8(uint8_t& data, uint8_t value, uint8_t lsb){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s: data 0x%x lsb %u\n", __func__, data, lsb);
@@ -50,23 +30,18 @@ static esp_err_t set_bits_8(uint8_t& data, uint8_t value, uint8_t lsb){
     return ESP_OK;
 }
 
-
-Mpu6050::Mpu6050(enum Mpu6050Addr address, uint8_t sda_pin, uint8_t scl_pin, uint32_t frequency){
+Mpu6050::Mpu6050(enum Mpu6050Addr address, I2cHandler* i2c){
+    print_debug(DEBUG_MPU6050, DEBUG_ARGS, "addr 0x%x\n", this->address);
+    if(!i2c->is_initiated()){
+        printf("ERROR i2c dependency not initiated before passing to Mpu6050");
+    }
     this->address = address;
-    this->sda_pin = sda_pin;
-    this->scl_pin = scl_pin;
-    this->frequency = frequency;
-    print_debug(DEBUG_MPU6050, DEBUG_ARGS, "addr 0x%x sca %u scl %u freq %u\n", this->address, this->sda_pin, this->scl_pin, this->frequency);
 
 }
-
 
 esp_err_t Mpu6050::mpu6050_init(){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s:\n", __func__);
     esp_err_t status = 0;
-
-    status = i2c_init();
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to initialize i2c");
 
     status = set_clk_source(0x1);
     ESP_RETURN_ON_ERROR(status, log_tag, "Failed to set clock source: 0x%x", 0);
@@ -82,32 +57,6 @@ esp_err_t Mpu6050::mpu6050_init(){
 
     status = set_sleep_mode(false);
     ESP_RETURN_ON_ERROR(status, log_tag, "Failed to set sleep mode: %u", false);
-
-    return status;
-}
-
-esp_err_t Mpu6050::i2c_init(){
-    esp_err_t status = 0;
-    i2c_config_t conf = {};
-
-    conf.mode = I2C_MODE_MASTER;
-    conf.sda_io_num = this->sda_pin;
-    conf.scl_io_num = this->scl_pin;
-    conf.sda_pullup_en = GPIO_PULLUP_ENABLE;
-    conf.scl_pullup_en = GPIO_PULLUP_ENABLE;
-    conf.master.clk_speed = this->frequency;
-
-    // Apply the configuration
-    status = i2c_param_config(I2C_MASTER_NUM, &conf);
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to configure I2C");
-
-    // Install the I2C driver
-    status = i2c_driver_install(I2C_MASTER_NUM, I2C_MODE_MASTER,
-                             I2C_MASTER_RX_BUF_DISABLE,
-                             I2C_MASTER_TX_BUF_DISABLE, 0);
-    ESP_RETURN_ON_ERROR(status, log_tag, "FFailed to install I2C driver");
-
-    i2c_scanner();
 
     return status;
 }
@@ -196,19 +145,19 @@ esp_err_t Mpu6050::dmp_init(){
     ESP_RETURN_ON_ERROR(status, log_tag, "Failed to set full scale gyro 0x%x", 0x3);
 
     // load DMP code into memory banks
-	//if (!writeProgMemoryBlock(dmpMemory, MPU6050_DMP_CODE_SIZE)) return 1; // Failed
+	//if (!i2c->writeProgMemoryBlock(dmpMemory, MPU6050_DMP_CODE_SIZE)) return 1; // Failed
     status = writeProgMemoryBlock(dmpMemory, dmp_code_size);
     ESP_RETURN_ON_ERROR(status, log_tag, "Failed load DMP fw");
 
 	// Set the FIFO Rate Divisor int the DMP Firmware Memory
 	//unsigned char dmpUpdate[] = {0x00, MPU6050_DMP_FIFO_RATE_DIVISOR};
-	//writeMemoryBlock(dmpUpdate, 0x02, 0x02, 0x16); // Lets write the dmpUpdate data to the Firmware image, we have 2 bytes to write in bank 0x02 with the Offset 0x16
+	//i2c->writeMemoryBlock(dmpUpdate, 0x02, 0x02, 0x16); // Lets i2c->write the dmpUpdate data to the Firmware image, we have 2 bytes to i2c->write in bank 0x02 with the Offset 0x16
    	unsigned char dmpUpdate[] = {0x00, MPU6050_DMP_FIFO_RATE_DIVISOR};
-    writeMemoryBlock(dmpUpdate, 0x02, 0x02, 0x16);
+    status = writeMemoryBlock(dmpUpdate, 0x02, 0x02, 0x16);
 
-	//write start address MSB into register
+	//i2c->write start address MSB into register
 	//setDMPConfig1(0x03);
-	//write start address LSB into register
+	//i2c->write start address LSB into register
 	//setDMPConfig2(0x00);
     status = set_dmp_config1(0x3);
     ESP_RETURN_ON_ERROR(status, log_tag, "Failed set DMP config 1");
@@ -272,8 +221,8 @@ esp_err_t Mpu6050::set_sleep_mode(bool sleep){
     esp_err_t status = 0;
     uint8_t data = 0;
     status = set_bits_8(data, sleep, PWR_MGMT_1_SLEEP_LSB);
-    status = mpu6050_write(PWR_MGMT_1_REG, &data, 1);
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to write to addr 0x%x reg 0x%x data 0x%x", address, PWR_MGMT_1_REG, data);
+    status = i2c->write(address, PWR_MGMT_1_REG, &data, 1);
+    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to i2c->write to addr 0x%x reg 0x%x data 0x%x", address, PWR_MGMT_1_REG, data);
     return status;
 }
 
@@ -282,8 +231,8 @@ esp_err_t Mpu6050::reset(){
     esp_err_t status = 0;
     uint8_t data = 0;
     status = set_bits_8(data, 1u, PWR_MGMT_1_DEVICE_RESET_LSB);
-    status = mpu6050_write(PWR_MGMT_1_REG, &data, 1);
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to write to addr 0x%x reg 0x%x data 0x%x", address, PWR_MGMT_1_REG, data);
+    status = i2c->write(address, PWR_MGMT_1_REG, &data, 1);
+    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to i2c->write to addr 0x%x reg 0x%x data 0x%x", address, PWR_MGMT_1_REG, data);
 
     delay(30);
 
@@ -299,8 +248,8 @@ esp_err_t Mpu6050::set_mem_bank(uint8_t bank, bool prefetchEnabled, bool userBan
     if (userBank) bank |= 0x20; //why?
     if (prefetchEnabled) bank |= 0x40;  // que?
 
-    status = mpu6050_write(BANK_SEL_REG, &bank, 1);
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to write to addr 0x%x reg 0x%x data 0x%x", address, BANK_SEL_REG, data);
+    status = i2c->write(address, BANK_SEL_REG, &bank, 1);
+    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to i2c->write to addr 0x%x reg 0x%x data 0x%x", address, BANK_SEL_REG, data);
     return status;
 }
 
@@ -308,8 +257,8 @@ esp_err_t Mpu6050::set_mem_start_addr(uint8_t addr){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s: addr 0x%x\n", __func__, addr);
     esp_err_t status = 0;
 
-    status = mpu6050_write(MEM_START_ADDR_REG, &addr, 1);
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to write to addr 0x%x reg 0x%x data 0x%x", address, MEM_START_ADDR_REG, addr);
+    status = i2c->write(address, MEM_START_ADDR_REG, &addr, 1);
+    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to i2c->write to addr 0x%x reg 0x%x data 0x%x", address, MEM_START_ADDR_REG, addr);
     return status;
 }
 
@@ -317,7 +266,7 @@ esp_err_t Mpu6050::read_mem_byte(uint8_t& data){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s: data 0x%x\n", __func__, data);
     esp_err_t status = 0;
 
-    status = mpu6050_read(MEM_R_W_REG, &data, 1);
+    status = i2c->read(address, MEM_R_W_REG, &data, 1);
     ESP_RETURN_ON_ERROR(status, log_tag, "Failed to read address 0x%x reg 0x%x", address, MEM_R_W_REG);
 
     return status;
@@ -327,7 +276,7 @@ esp_err_t Mpu6050::get_opt_bank_valid(uint8_t& data){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s: data 0x%x\n", __func__, data);
     esp_err_t status = 0;
 
-    status = mpu6050_read(XG_OFFS_TC_REG, &data, 1);
+    status = i2c->read(address, XG_OFFS_TC_REG, &data, 1);
     ESP_RETURN_ON_ERROR(status, log_tag, "Failed to read address 0x%x reg 0x%x", address, XG_OFFS_TC_REG);
 
     data &= 1u;
@@ -339,8 +288,8 @@ esp_err_t Mpu6050::set_opt_bank_valid(uint8_t data){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s: data 0x%x\n", __func__, data);
     esp_err_t status = 0;
 
-    status = mpu6050_write_bit(XG_OFFS_TC_REG, data, 1);
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to write to address 0x%x reg 0x%x data 0x%x", address, XG_OFFS_TC_REG, data);
+    status = i2c->write_bit(address, XG_OFFS_TC_REG, data, 1);
+    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to i2c->write to address 0x%x reg 0x%x data 0x%x", address, XG_OFFS_TC_REG, data);
 
     return status;
 }
@@ -350,8 +299,8 @@ esp_err_t Mpu6050::set_slave_addr(uint8_t num, uint8_t addr){
     esp_err_t status = 0;
     ESP_RETURN_ON_ERROR((num > 3), log_tag, "Bad num: %u", num);
 
-    status = mpu6050_write(I2C_SLV0_ADDR_REG + num *3, &addr, 1); // ??
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to write to addr 0x%x reg 0x%x data 0x%x", address, I2C_SLV0_ADDR_REG , addr);
+    status = i2c->write(address, I2C_SLV0_ADDR_REG + num *3, &addr, 1); // ??
+    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to i2c->write to addr 0x%x reg 0x%x data 0x%x", address, I2C_SLV0_ADDR_REG , addr);
 
     return status; 
 }
@@ -361,8 +310,8 @@ esp_err_t Mpu6050::setI2CMasterModeEnabled(bool enable){
     esp_err_t status = 0;
     uint8_t data = enable? 1u : 0u;
 
-    status = mpu6050_write_bit(USER_CTRL_REG, data, USER_CTRL_I2C_MST_EN_LSB); 
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to write to addr 0x%x reg 0x%x data 0x%x", address, USER_CTRL_REG , data);
+    status = i2c->write_bit(address, USER_CTRL_REG, data, USER_CTRL_I2C_MST_EN_LSB); 
+    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to i2c->write to addr 0x%x reg 0x%x data 0x%x", address, USER_CTRL_REG , data);
 
     return status; 
 }
@@ -371,8 +320,8 @@ esp_err_t Mpu6050::resetI2CMaster(){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s:\n", __func__);
     esp_err_t status = 0;
 
-    status = mpu6050_write_bit(USER_CTRL_REG, 1u, USER_CTRL_I2C_MST_RESET_LSB); 
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to write to addr 0x%x reg 0x%x data 0x%x", address, USER_CTRL_REG , 1u);
+    status = i2c->write_bit(address, USER_CTRL_REG, 1u, USER_CTRL_I2C_MST_RESET_LSB); 
+    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to i2c->write to addr 0x%x reg 0x%x data 0x%x", address, USER_CTRL_REG , 1u);
 
     delay(20);
 
@@ -385,8 +334,8 @@ esp_err_t Mpu6050::set_clk_source(uint8_t src){
     esp_err_t status = 0;
     uint8_t mask = 0x7;
 
-    status = mpu6050_write_bit(PWR_MGMT_1_REG, src, mask); 
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to write to addr 0x%x reg 0x%x data 0x%x", address, PWR_MGMT_1_REG , src);
+    status = i2c->write_bit(address, PWR_MGMT_1_REG, src, mask); 
+    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to i2c->write to addr 0x%x reg 0x%x data 0x%x", address, PWR_MGMT_1_REG , src);
 
     return status; 
 }
@@ -394,8 +343,8 @@ esp_err_t Mpu6050::set_clk_source(uint8_t src){
 esp_err_t Mpu6050::set_int_enabled(uint8_t data){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s: data 0x%x\n", __func__, data);
     esp_err_t status = 0;
-    status = mpu6050_write(INT_ENABLE_REG, &data, 1); 
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to write to addr 0x%x reg 0x%x data 0x%x", address, INT_ENABLE_REG , data);
+    status = i2c->write(address, INT_ENABLE_REG, &data, 1); 
+    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to i2c->write to addr 0x%x reg 0x%x data 0x%x", address, INT_ENABLE_REG , data);
 
     return status; 
 }
@@ -403,8 +352,8 @@ esp_err_t Mpu6050::set_int_enabled(uint8_t data){
 esp_err_t Mpu6050::set_sample_rate(uint8_t data){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s: data 0x%x\n", __func__, data);
     esp_err_t status = 0;
-    status = mpu6050_write(SMPLRT_DIV_REG, &data, 1); 
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to write to addr 0x%x reg 0x%x data 0x%x", address, SMPLRT_DIV_REG, data);
+    status = i2c->write(address, SMPLRT_DIV_REG, &data, 1); 
+    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to i2c->write to addr 0x%x reg 0x%x data 0x%x", address, SMPLRT_DIV_REG, data);
 
     return status; 
 }
@@ -414,8 +363,8 @@ esp_err_t Mpu6050::set_external_frame_sync(uint8_t data){
     esp_err_t status = 0;
     uint8_t mask = 0b0001'1000;
 
-    status = mpu6050_write_bit(CONFIG_REG, data, mask); 
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to write to addr 0x%x reg 0x%x data 0x%x", address, CONFIG_REG , data);
+    status = i2c->write_bit(address, CONFIG_REG, data, mask); 
+    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to i2c->write to addr 0x%x reg 0x%x data 0x%x", address, CONFIG_REG , data);
 
     return status; 
 }
@@ -425,8 +374,8 @@ esp_err_t Mpu6050::set_dlpf_mode(uint8_t data){
     esp_err_t status = 0;
     uint8_t mask = 0x7;
 
-    status = mpu6050_write_bit(CONFIG_REG, data, mask); 
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to write to addr 0x%x reg 0x%x data 0x%x", address, CONFIG_REG , data);
+    status = i2c->write_bit(address, CONFIG_REG, data, mask); 
+    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to i2c->write to addr 0x%x reg 0x%x data 0x%x", address, CONFIG_REG , data);
 
     return status; 
 
@@ -437,8 +386,8 @@ esp_err_t Mpu6050::set_full_scale_gyro_range(uint8_t data){
     esp_err_t status = 0;
     uint8_t mask = 0b0001'1000;
 
-    status = mpu6050_write_bit(GYRO_CONFIG_REG, data, mask); 
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to write to addr 0x%x reg 0x%x data 0x%x", address, GYRO_CONFIG_REG , data);
+    status = i2c->write_bit(address, GYRO_CONFIG_REG, data, mask); 
+    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to i2c->write to addr 0x%x reg 0x%x data 0x%x", address, GYRO_CONFIG_REG , data);
 
     return status; 
 }
@@ -448,8 +397,8 @@ esp_err_t Mpu6050::set_full_scale_accel_range(uint8_t data){
     esp_err_t status = 0;
     uint8_t mask = 0b0001'1000;
 
-    status = mpu6050_write_bit(ACCEL_CONFIG_REG, data, mask); 
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to write to addr 0x%x reg 0x%x data 0x%x", address, ACCEL_CONFIG_REG , data);
+    status = i2c->write_bit(address, ACCEL_CONFIG_REG, data, mask); 
+    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to i2c->write to addr 0x%x reg 0x%x data 0x%x", address, ACCEL_CONFIG_REG , data);
 
     return status; 
 }
@@ -459,8 +408,8 @@ esp_err_t Mpu6050:: set_dmp_config1(uint8_t data){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s: data 0x%x\n", __func__, data);
     esp_err_t status = 0;
 
-    status = mpu6050_write(DMP_CFG_1_REG, &data, 1); 
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to write to addr 0x%x reg 0x%x data 0x%x", address, DMP_CFG_1_REG, data);
+    status = i2c->write(address, DMP_CFG_1_REG, &data, 1); 
+    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to i2c->write to addr 0x%x reg 0x%x data 0x%x", address, DMP_CFG_1_REG, data);
 
     return status; 
 }
@@ -469,8 +418,8 @@ esp_err_t Mpu6050::set_dmp_config2(uint8_t data){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s: data 0x%x\n", __func__, data);
     esp_err_t status = 0;
 
-    status = mpu6050_write(DMP_CFG_2_REG, &data, 1); 
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to write to addr 0x%x reg 0x%x data 0x%x", address, DMP_CFG_2_REG, data);
+    status = i2c->write(address, DMP_CFG_2_REG, &data, 1); 
+    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to i2c->write to addr 0x%x reg 0x%x data 0x%x", address, DMP_CFG_2_REG, data);
 
     return status; 
 }
@@ -479,8 +428,8 @@ esp_err_t Mpu6050::set_motion_detection_thld(uint8_t data){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s: data 0x%x\n", __func__, data);
     esp_err_t status = 0;
 
-    status = mpu6050_write(MOT_THR_REG, &data, 1); 
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to write to addr 0x%x reg 0x%x data 0x%x", address, MOT_THR_REG, data);
+    status = i2c->write(address, MOT_THR_REG, &data, 1); 
+    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to i2c->write to addr 0x%x reg 0x%x data 0x%x", address, MOT_THR_REG, data);
 
     return status; 
 }
@@ -489,8 +438,8 @@ esp_err_t Mpu6050::set_zero_motion_detection_thld(uint8_t data){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s: data 0x%x\n", __func__, data);
     esp_err_t status = 0;
 
-    status = mpu6050_write(ZRMOT_THR_REG, &data, 1); 
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to write to addr 0x%x reg 0x%x data 0x%x", address, ZRMOT_THR_REG, data);
+    status = i2c->write(address, ZRMOT_THR_REG, &data, 1); 
+    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to i2c->write to addr 0x%x reg 0x%x data 0x%x", address, ZRMOT_THR_REG, data);
 
     return status; 
 }
@@ -499,8 +448,8 @@ esp_err_t Mpu6050::set_moion_dection_duration(uint8_t data){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s: data 0x%x\n", __func__, data);
     esp_err_t status = 0;
 
-    status = mpu6050_write(MOT_DUR_REG, &data, 1); 
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to write to addr 0x%x reg 0x%x data 0x%x", address, MOT_DUR_REG, data);
+    status = i2c->write(address, MOT_DUR_REG, &data, 1); 
+    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to i2c->write to addr 0x%x reg 0x%x data 0x%x", address, MOT_DUR_REG, data);
 
     return status; 
 }
@@ -509,8 +458,8 @@ esp_err_t Mpu6050::set_zero_moion_dection_duration(uint8_t data){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s: data 0x%x\n", __func__, data);
     esp_err_t status = 0;
 
-    status = mpu6050_write(ZRMOT_DUR_REG, &data, 1); 
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to write to addr 0x%x reg 0x%x data 0x%x", address, ZRMOT_DUR_REG, data);
+    status = i2c->write(address, ZRMOT_DUR_REG, &data, 1); 
+    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to i2c->write to addr 0x%x reg 0x%x data 0x%x", address, ZRMOT_DUR_REG, data);
 
     return status; 
 
@@ -522,8 +471,8 @@ esp_err_t Mpu6050::set_fifo_enable(bool enable){
     uint8_t mask = 1<<USER_CTRL_FIFO_EN_LSB;
     uint8_t data = enable? 1u : 0u;
 
-    status = mpu6050_write_bit(USER_CTRL_REG, data, mask); 
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to write to addr 0x%x reg 0x%x data 0x%x", address, USER_CTRL_REG , data);
+    status = i2c->write_bit(address, USER_CTRL_REG, data, mask); 
+    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to i2c->write to addr 0x%x reg 0x%x data 0x%x", address, USER_CTRL_REG , data);
 
     return status; 
 }
@@ -534,8 +483,8 @@ esp_err_t Mpu6050::set_dmp_enabled(bool enable){
     uint8_t mask = 1<<USER_CTRL_DMP_EN_LSB;
     uint8_t data = enable? 1u : 0u;
 
-    status = mpu6050_write_bit(USER_CTRL_REG, data, mask); 
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to write to addr 0x%x reg 0x%x data 0x%x", address, USER_CTRL_REG , data);
+    status = i2c->write_bit(address, USER_CTRL_REG, data, mask); 
+    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to i2c->write to addr 0x%x reg 0x%x data 0x%x", address, USER_CTRL_REG , data);
 
     return status; 
 }
@@ -546,8 +495,8 @@ esp_err_t Mpu6050::reset_dmp(){
     uint8_t mask = 1<< USER_CTRL_DMP_RESET_LSB;
     uint8_t data = 1;
 
-    status = mpu6050_write_bit(USER_CTRL_REG, data, mask); 
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to write to addr 0x%x reg 0x%x data 0x%x", address, USER_CTRL_REG , data);
+    status = i2c->write_bit(address, USER_CTRL_REG, data, mask); 
+    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to i2c->write to addr 0x%x reg 0x%x data 0x%x", address, USER_CTRL_REG , data);
 
     return status; 
 }
@@ -558,8 +507,8 @@ esp_err_t Mpu6050::reset_fifo(){
     uint8_t mask = 1<< USER_CTRL_FIFO_RESET_LSB;
     uint8_t data = 1;
 
-    status = mpu6050_write_bit(USER_CTRL_REG, data, mask); 
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to write to addr 0x%x reg 0x%x data 0x%x", address, USER_CTRL_REG , data);
+    status = i2c->write_bit(address, USER_CTRL_REG, data, mask); 
+    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to i2c->write to addr 0x%x reg 0x%x data 0x%x", address, USER_CTRL_REG , data);
 
     return status; 
 }
@@ -568,7 +517,7 @@ esp_err_t Mpu6050::get_int_satus(uint8_t& data){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s:\n", __func__);
     esp_err_t status = 0;
 
-    status = mpu6050_read(INT_STATUS_REG, &data, 1);
+    status = i2c->read(address, INT_STATUS_REG, &data, 1);
     ESP_RETURN_ON_ERROR(status, log_tag, "Failed to read address 0x%x reg 0x%x", address, INT_STATUS_REG);
 
     return status; 
@@ -589,7 +538,7 @@ esp_err_t Mpu6050::get_6axis_motion(int16_t& ax, int16_t& ay, int16_t& az, int16
     esp_err_t status = 0;
     uint8_t data[14] = {};
 
-    status = mpu6050_read(ACCEL_XOUT_H_REG, data, 14);
+    status = i2c->read(address, ACCEL_XOUT_H_REG, data, 14);
     ESP_RETURN_ON_ERROR(status, log_tag, "Failed to read address 0x%x reg 0x%x", address, ACCEL_XOUT_H_REG);
 
     print_debug(DEBUG_MPU6050, DEBUG_DATA, "%s: acc  X H 0x%x L 0x%x\n", __func__, data[0], data[1]);
@@ -660,7 +609,7 @@ esp_err_t Mpu6050::get_curr_fifo_packet(){
 
                         while(removeSize){ // read until only length bytes left in fifo
                             uint8_t bytesToRemove = fifoCount < 64 ? fifoCount : 64; 
-                            status = mpu6050_read(FIFO_R_W_REG, trashBuf, bytesToRemove);
+                            status = i2c->read(address, FIFO_R_W_REG, trashBuf, bytesToRemove);
                             ESP_RETURN_ON_ERROR(status, log_tag, "Failed to read fifo register");
                             removeSize -= bytesToRemove;
                             print_debug(DEBUG_MPU6050, DEBUG_LOGIC, "%-33s %u: clearing out fifo, bytes to clear: %u / %u\n", __func__, __LINE__, bytesToRemove, removeSize);
@@ -681,7 +630,7 @@ esp_err_t Mpu6050::get_curr_fifo_packet(){
         completePacket = fifoCount == dmpPacketSize;
     } 
     print_debug(DEBUG_MPU6050, DEBUG_LOGIC, "%-33s %u: reading DMP packet of len %u\n", __func__, __LINE__, dmpPacketSize);
-    status = mpu6050_read(FIFO_R_W_REG, dmpBuffer.get(), length);
+    status = i2c->read(address, FIFO_R_W_REG, dmpBuffer.get(), length);
     ESP_RETURN_ON_ERROR(status, log_tag, "Failed to read fifo register");
 
     return ESP_OK;
@@ -734,7 +683,7 @@ esp_err_t Mpu6050::get_fifo_count(uint16_t& count){
     esp_err_t status = 0;
     uint8_t data[2] = {};
 
-    status = mpu6050_read(FIFO_COUNTH_REG, data, 2);
+    status = i2c->read(address, FIFO_COUNTH_REG, data, 2);
     ESP_RETURN_ON_ERROR(status, log_tag, "Failed to read address 0x%x reg 0x%x", address, FIFO_COUNTH_REG);
 
     count = (uint16_t)data[0] << 8 | data[1];
@@ -742,111 +691,6 @@ esp_err_t Mpu6050::get_fifo_count(uint16_t& count){
     return status;
 }
 
-
-bool writeBytes(uint8_t devAddr, uint8_t regAddr, uint8_t length, uint8_t *data, void *wireObj){
-	i2c_cmd_handle_t cmd;
-
-	cmd = i2c_cmd_link_create();
-	ESP_ERROR_CHECK(i2c_master_start(cmd));
-	ESP_ERROR_CHECK(i2c_master_write_byte(cmd, (devAddr << 1) | I2C_MASTER_WRITE, 1));
-	ESP_ERROR_CHECK(i2c_master_write_byte(cmd, regAddr, 1));
-	ESP_ERROR_CHECK(i2c_master_write(cmd, data, length-1, 0));
-	ESP_ERROR_CHECK(i2c_master_write_byte(cmd, data[length-1], 1));
-	ESP_ERROR_CHECK(i2c_master_stop(cmd));
-	ESP_ERROR_CHECK(i2c_master_cmd_begin(I2C_MASTER_NUM, cmd, 1000/portTICK_PERIOD_MS));
-	i2c_cmd_link_delete(cmd);
-	return true;
-}
-
-bool writeByte(uint8_t devAddr, uint8_t regAddr, uint8_t data, void *wireObj) {
-	i2c_cmd_handle_t cmd;
-
-	cmd = i2c_cmd_link_create();
-	ESP_ERROR_CHECK(i2c_master_start(cmd));
-	ESP_ERROR_CHECK(i2c_master_write_byte(cmd, (devAddr << 1) | I2C_MASTER_WRITE, 1));
-	ESP_ERROR_CHECK(i2c_master_write_byte(cmd, regAddr, 1));
-	ESP_ERROR_CHECK(i2c_master_write_byte(cmd, data, 1));
-	ESP_ERROR_CHECK(i2c_master_stop(cmd));
-	ESP_ERROR_CHECK(i2c_master_cmd_begin(I2C_MASTER_NUM, cmd, 1000/portTICK_PERIOD_MS));
-	i2c_cmd_link_delete(cmd);
-
-	return true;
-}
-
-
-esp_err_t Mpu6050::mpu6050_write(uint8_t startRegisterAddress, uint8_t* data, uint8_t dataLength){
-
-    //if(dataLength >1)
-    //    writeBytes(address, startRegisterAddress, dataLength, data, nullptr);
-    //else
-    //    writeByte(address, startRegisterAddress, *data, nullptr);
-    //return ESP_OK;
-
-    ESP_RETURN_ON_ERROR((dataLength>20), log_tag, "Failed i2c write data: addr 0x%x reg 0x%x len %u", this->address, startRegisterAddress, dataLength);
-    esp_err_t status = 0;
-    uint8_t buffer[20] = {};
-
-    buffer[0] = startRegisterAddress;
-    std::memcpy(&buffer[1], data, (size_t)dataLength);
-
-    if(dataLength == 0)
-        print_debug(DEBUG_MPU6050, DEBUG_LOWLEVEL, "%-33s: addr 0x%.2x starAddr 0x%.2x %-25s dataLength %-2u\n", __func__, address, startRegisterAddress, regMapX[(enum MpuReg)startRegisterAddress].c_str(), dataLength);
-    else
-        print_debug(DEBUG_MPU6050, DEBUG_LOWLEVEL, "%-33s: addr 0x%.2x starAddr 0x%.2x %-25s dataLength %-2u data:", __func__, address, startRegisterAddress, regMapX[(enum MpuReg)startRegisterAddress].c_str(), dataLength);
-    
-    for(int i=0;i<dataLength;i++){
-        print_debug(DEBUG_MPU6050, DEBUG_LOWLEVEL, " 0x%x", data[i]);
-    }
-    print_debug(DEBUG_MPU6050, DEBUG_LOWLEVEL, "\n");
-
-    //swap_endian(data, dataLength);
-
-    status = i2c_master_write_to_device(I2C_MASTER_NUM, this->address, buffer, dataLength + 1, 1000);
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed i2c write data: addr 0x%x reg 0x%x len %u", this->address, startRegisterAddress, dataLength);
-    return status;
-
-}
-
-
-
-
-esp_err_t Mpu6050::mpu6050_read(uint8_t startRegisterAddress, uint8_t* data, uint8_t dataLength){
-    print_debug(DEBUG_MPU6050, DEBUG_LOWLEVEL, "%-33s: addr 0x%x starAddr 0x%x %-25s dataLength %-2u data:", __func__, address, startRegisterAddress, regMapX[(enum MpuReg)startRegisterAddress].c_str(), dataLength);
-
-    esp_err_t status = i2c_master_write_to_device(I2C_MASTER_NUM, address, &startRegisterAddress, 1, 1000);
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed i2c write addr 0x%.2x reg 0x%.2x len %-2u", this->address, startRegisterAddress, dataLength);
-
-    status = i2c_master_read_from_device(I2C_MASTER_NUM, address, data, dataLength, 1000);
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed i2c read data: addr 0x%.2x reg 0x%.2x len %-2u", address, startRegisterAddress, dataLength);
-
-    for(int i=0;i<dataLength;i++){
-        print_debug(DEBUG_MPU6050, DEBUG_LOWLEVEL, " 0x%x", data[i]);
-    }
-    print_debug(DEBUG_MPU6050, DEBUG_LOWLEVEL, "\n");
-
-    return status;
-}
-
-esp_err_t Mpu6050::mpu6050_write_bit(uint8_t startRegisterAddress, uint8_t data, uint8_t mask){
-    print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s: reg  0x%x data 0x%x mask 0x%x\n", __func__, startRegisterAddress, data, mask);
-    esp_err_t status = 0;
-    uint8_t buffer = 0;
-
-    status = mpu6050_read(startRegisterAddress, &buffer, 1);
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to read address 0x%x reg 0x%x", address, MEM_R_W_REG);
-
-    //shift data by index of lowest 1 value in mask 
-    uint8_t shiftAmount = __builtin_ctz(mask);
-    data = (data << shiftAmount) & mask;
-
-    buffer &= ~mask; 
-    data &= mask; 
-    data |= buffer; 
-    status = mpu6050_write(startRegisterAddress, &data, 1); 
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to write to addr 0x%x reg 0x%x data 0x%x", address, startRegisterAddress , data);
-
-    return status;
-}
 
 
 /////// borrowed functions ////////////
@@ -884,16 +728,16 @@ esp_err_t Mpu6050::writeMemoryBlock(const uint8_t *data, uint16_t dataSize, uint
         if (chunkSize > 256 - address) chunkSize = 256 - address;
         
         if (useProgMem) {
-            // write the chunk of data as specified
+            // i2c->write the chunk of data as specified
             for (j = 0; j < chunkSize; j++) progBuffer[j] = pgm_read_byte(data + i + j);
         } else {
-            // write the chunk of data as specified
+            // i2c->write the chunk of data as specified
             progBuffer = (uint8_t *)data + i;
         }
 
-        //I2Cdev::writeBytes(devAddr, MPU6050_RA_MEM_R_W, chunkSize, progBuffer, wireObj);
-        status = mpu6050_write(MEM_R_W_REG, progBuffer, chunkSize);
-        ESP_RETURN_ON_ERROR(status, log_tag, "Failed to write reg 0x%x size %u\n", MEM_R_W_REG, chunkSize);
+        //I2Cdev::i2c->writeBytes(devAddr, MPU6050_RA_MEM_R_W, chunkSize, progBuffer, wireObj);
+        status = i2c->write(this->address, MEM_R_W_REG, progBuffer, chunkSize);
+        ESP_RETURN_ON_ERROR(status, log_tag, "Failed to i2c->write reg 0x%x size %u\n", MEM_R_W_REG, chunkSize);
 
         // verify data if needed
         if (verify && verifyBuffer) {
@@ -903,7 +747,7 @@ esp_err_t Mpu6050::writeMemoryBlock(const uint8_t *data, uint16_t dataSize, uint
             ESP_RETURN_ON_ERROR(status, log_tag, "Failed to set mem start addr 0x%x\n", address);
 
             //I2Cdev::readBytes(devAddr, MPU6050_RA_MEM_R_W, chunkSize, verifyBuffer, I2Cdev::readTimeout, wireObj);
-            status = mpu6050_read(MEM_R_W_REG, verifyBuffer, chunkSize);
+            status = i2c->read(address, MEM_R_W_REG, verifyBuffer, chunkSize);
             ESP_RETURN_ON_ERROR(status, log_tag, "Failed to read reg 0x%x size %u\n", MEM_R_W_REG, chunkSize);
 
             //printf("prog:");
@@ -918,7 +762,7 @@ esp_err_t Mpu6050::writeMemoryBlock(const uint8_t *data, uint16_t dataSize, uint
             //printf("\n");
 
             if (memcmp(progBuffer, verifyBuffer, chunkSize) != 0) {
-                /*Serial.print("Block write verification error, bank ");
+                /*Serial.print("Block i2c->write verification error, bank ");
                 Serial.print(bank, DEC);
                 Serial.print(", address ");
                 Serial.print(address, DEC);
@@ -974,7 +818,7 @@ esp_err_t Mpu6050::dump_registers(){
     for (const auto& v: regMapX)
     {
         uint8_t buffer = 0;
-        status = mpu6050_read(v.first, &buffer, 1);
+        status = i2c->read(address, v.first, &buffer, 1);
         ESP_RETURN_ON_ERROR(status, log_tag, "Failed to read reg 0x%x %-30s\n", v.first, v.second.c_str());
         std::bitset<8> bits{buffer};
         print_debug(DEBUG_MPU6050, DEBUG_DATA, "0x%.2x %-30s: 0x%.2x", v.first, v.second.c_str(), buffer);
@@ -994,8 +838,8 @@ esp_err_t Mpu6050::set_x_accel_offset(int16_t offset){
     esp_err_t status = 0;
     uint8_t data[2] = { (uint8_t)(offset >> 8), (uint8_t)(offset & 0xff)};
 
-    status = mpu6050_write(XA_OFFS_H_REG, data, 2);
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to write x accel offset reg 0x%x data 0x%x 0x%x\n", XA_OFFS_H_REG, data[0], data[1]);
+    status = i2c->write(address, XA_OFFS_H_REG, data, 2);
+    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to i2c->write x accel offset reg 0x%x data 0x%x 0x%x\n", XA_OFFS_H_REG, data[0], data[1]);
 
     return status;
 }
@@ -1004,8 +848,8 @@ esp_err_t Mpu6050::set_y_accel_offset(int16_t offset){
     esp_err_t status = 0;
     uint8_t data[2] = { (uint8_t)(offset >> 8), (uint8_t)(offset & 0xff)};
 
-    status = mpu6050_write(YA_OFFS_H_REG, data, 1);
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to write y accel offset reg 0x%x data 0x%x 0x%x\n", YA_OFFS_H_REG, data[0], data[1]);
+    status = i2c->write(address, YA_OFFS_H_REG, data, 1);
+    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to i2c->write y accel offset reg 0x%x data 0x%x 0x%x\n", YA_OFFS_H_REG, data[0], data[1]);
 
     return status;
 }
@@ -1014,8 +858,8 @@ esp_err_t Mpu6050::set_z_accel_offset(int16_t offset){
     esp_err_t status = 0;
     uint8_t data[2] = { (uint8_t)(offset >> 8), (uint8_t)(offset & 0xff)};
 
-    status = mpu6050_write(ZA_OFFS_H_REG, data, 1);
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to write z accel offset reg 0x%x data 0x%x 0x%x\n", ZA_OFFS_H_REG, data[0], data[1]);
+    status = i2c->write(address, ZA_OFFS_H_REG, data, 1);
+    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to i2c->write z accel offset reg 0x%x data 0x%x 0x%x\n", ZA_OFFS_H_REG, data[0], data[1]);
 
     return status;
 }
@@ -1024,8 +868,8 @@ esp_err_t Mpu6050::set_x_gyro_offset(int16_t offset){
     esp_err_t status = 0;
     uint8_t data[2] = { (uint8_t)(offset >> 8), (uint8_t)(offset & 0xff)};
 
-    status = mpu6050_write(GYRO_CONFIG_REG, data, 1);
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to write x gyro offset reg 0x%x data 0x%x 0x%x\n", MEM_R_W_REG, data[0], data[1]);
+    status = i2c->write(address, GYRO_CONFIG_REG, data, 1);
+    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to i2c->write x gyro offset reg 0x%x data 0x%x 0x%x\n", MEM_R_W_REG, data[0], data[1]);
 
     return status;
 }
@@ -1035,8 +879,8 @@ esp_err_t Mpu6050::set_y_gyro_offset(int16_t offset){
     esp_err_t status = 0;
     uint8_t data[2] = { (uint8_t)(offset >> 8), (uint8_t)(offset & 0xff)};
 
-    status = mpu6050_write(GYRO_CONFIG_REG, data, 1);
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to write y gyro offset reg 0x%x data 0x%x 0x%x\n", MEM_R_W_REG, data[0], data[1]);
+    status = i2c->write(address, GYRO_CONFIG_REG, data, 1);
+    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to i2c->write y gyro offset reg 0x%x data 0x%x 0x%x\n", MEM_R_W_REG, data[0], data[1]);
 
     return status;
 }
@@ -1046,8 +890,8 @@ esp_err_t Mpu6050::set_z_gyro_offset(int16_t offset){
     esp_err_t status = 0;
     uint8_t data[2] = { (uint8_t)(offset >> 8), (uint8_t)(offset & 0xff)};
 
-    status = mpu6050_write(GYRO_CONFIG_REG, data, 1);
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to write z gyro offset reg 0x%x data 0x%x 0x%x\n", MEM_R_W_REG, data[0], data[1]);
+    status = i2c->write(address, GYRO_CONFIG_REG, data, 1);
+    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to i2c->write z gyro offset reg 0x%x data 0x%x 0x%x\n", MEM_R_W_REG, data[0], data[1]);
 
     return status;
 }

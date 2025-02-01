@@ -16,7 +16,7 @@ enum DebugFileLevel{
     DEBUG_RADIO     = 0x4,
     DEBUG_DISPLAY   = 0x8,
     DEBUG_MPU6050   = 0x10,
-    DEBUG_TBD2      = 0x20,
+    DEBUG_I2C       = 0x20,
 };
 
 enum DebugPrio{

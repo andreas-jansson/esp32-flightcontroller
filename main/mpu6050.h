@@ -1,8 +1,15 @@
-#include "esp_check.h"
+#pragma once
 
 #include <map>
 #include <string>
 #include <memory>
+
+#include "esp_check.h"
+
+#include "common_data.h"
+#include "i2c.h"
+
+
 
 
 
@@ -12,337 +19,6 @@ enum Mpu6050Addr{
     ADDR_68 = 0x68,
     ADDR_69 = 0x69
 };
-
-enum MpuReg{
-    XG_OFFS_TC_REG         = 0x00, //[7] PWR_MODE, [6:1] XG_OFFS_TC, [0] OTP_BNK_VLD
-    YG_OFFS_TC_REG         = 0x01, //[7] PWR_MODE, [6:1] YG_OFFS_TC, [0] OTP_BNK_VLD
-    ZG_OFFS_TC_REG         = 0x02, //[7] PWR_MODE, [6:1] ZG_OFFS_TC, [0] OTP_BNK_VLD
-    XA_OFFS_H_REG          = 0x06, //[15:0] XA_OFFS
-    XA_OFFS_L_TC_REG       = 0x07,
-    YA_OFFS_H_REG          = 0x08, //[15:0] YA_OFFS
-    YA_OFFS_L_TC_REG       = 0x09, 
-    ZA_OFFS_H_REG          = 0x0A, //[15:0] ZA_OFFS
-    ZA_OFFS_L_TC_REG       = 0x0B, 
-    SELF_TEST_X_REG        = 0x0D,
-    SELF_TEST_Y_REG        = 0x0E,
-    SELF_TEST_Z_REG        = 0x0F,
-    SELF_TEST_A_REG        = 0x10,
-    XG_OFFS_USRH_REG       = 0x13, //[15:0] XG_OFFS_USR
-    XG_OFFS_USRL_REG       = 0x14,
-    YG_OFFS_USRH_REG       = 0x15, //[15:0] YG_OFFS_USR
-    YG_OFFS_USRL_REG       = 0x16,
-    ZG_OFFS_USRH_REG       = 0x17, //[15:0] ZG_OFFS_USR
-    ZG_OFFS_USRL_REG       = 0x18,
-    SMPLRT_DIV_REG         = 0x19,
-    CONFIG_REG             = 0x1A,
-    GYRO_CONFIG_REG        = 0x1B,
-    ACCEL_CONFIG_REG       = 0x1C,
-    MOT_THR_REG            = 0x1F,
-    MOT_DUR_REG            = 0x20, //unknown
-    ZRMOT_THR_REG          = 0x21, //unknown
-    ZRMOT_DUR_REG          = 0x22,
-    FIFO_EN_REG            = 0x23,
-    I2C_MST_CTRL_REG       = 0X24,
-    I2C_SLV0_ADDR_REG      = 0x25,
-    I2C_SLV0_REG_REG       = 0x26,
-    I2C_SLV0_CTRL_REG      = 0x27,
-    I2C_SLV1_ADDR_REG      = 0x28,
-    I2C_SLV1_REG_REG       = 0x29,
-    I2C_SLV1_CTRL_REG      = 0x2A,
-    I2C_SLV2_ADDR_REG      = 0x2B,
-    I2C_SLV2_REG_REG       = 0x2C,
-    I2C_SLV2_CTRL_REG      = 0x2D,
-    I2C_SLV3_ADD_REG       = 0x2E,
-    I2C_SLV3_REG_REG       = 0x2F,
-    I2C_SLV3_CTRL_REG      = 0x30,
-    I2C_SLV4_ADDR_REG      = 0x31,
-    I2C_SLV4_REG_REG       = 0x32,
-    I2C_SLV4_DO_REG        = 0x33,
-    I2C_SLV4_CTRL_REG      = 0x34,
-    I2C_SLV4_DI_REG        = 0x35,
-    I2C_MST_STATUS_REG     = 0x36,
-    INT_PIN_CFG_REG        = 0x37,
-    INT_ENABLE_REG         = 0x38,
-    INT_STATUS_REG         = 0x3A,
-    ACCEL_XOUT_H_REG       = 0x3B,
-    ACCEL_XOUT_L_REG       = 0x3C,
-    ACCEL_YOUT_H_REG       = 0x3D,
-    ACCEL_YOUT_L_REG       = 0x3E,
-    ACCEL_ZOUT_H_REG       = 0x3F,
-    ACCEL_ZOUT_L_REG       = 0x40,
-    TEMP_OUT_H_REG         = 0x41,
-    TEMP_OUT_L_REG         = 0x42,
-    GYRO_XOUT_H_REG        = 0x43,
-    GYRO_XOUT_L_REG        = 0x44,
-    GYRO_YOUT_H_REG        = 0x45,
-    GYRO_YOUT_L_REG        = 0x46,
-    GYRO_ZOUT_H_REG        = 0x47,
-    GYRO_ZOUT_L_REG        = 0x48,
-    EXT_SENS_DATA_00_REG   = 0x49,
-    EXT_SENS_DATA_01_REG   = 0x4A,
-    EXT_SENS_DATA_02_REG   = 0x4B,
-    EXT_SENS_DATA_03_REG   = 0x4C,
-    EXT_SENS_DATA_04_REG   = 0x4D,
-    EXT_SENS_DATA_05_REG   = 0x4E,
-    EXT_SENS_DATA_06_REG   = 0x4F,
-    EXT_SENS_DATA_07_REG   = 0x50,
-    EXT_SENS_DATA_08_REG   = 0x51,
-    EXT_SENS_DATA_09_REG   = 0x52,
-    EXT_SENS_DATA_10_REG   = 0x53,
-    EXT_SENS_DATA_11_REG   = 0x54,
-    EXT_SENS_DATA_12_REG   = 0x55,
-    EXT_SENS_DATA_13_REG   = 0x56,
-    EXT_SENS_DATA_14_REG   = 0x57,
-    EXT_SENS_DATA_15_REG   = 0x58,
-    EXT_SENS_DATA_16_REG   = 0x59,
-    EXT_SENS_DATA_17_REG   = 0x5A,
-    EXT_SENS_DATA_18_REG   = 0x5B,
-    EXT_SENS_DATA_19_REG   = 0x5C,
-    EXT_SENS_DATA_20_REG   = 0x5D,
-    EXT_SENS_DATA_21_REG   = 0x5E,
-    EXT_SENS_DATA_22_REG   = 0x5F,
-    EXT_SENS_DATA_23_REG   = 0x60,
-    I2C_SLV0_DO_REG        = 0x63,
-    I2C_SLV1_DO_REG        = 0x64,
-    I2C_SLV2_DO_REG        = 0x65,
-    I2C_SLV3_DO_REG        = 0x66,
-    I2C_MST_DELAY_CTRL_REG = 0x67,
-    SIGNAL_PATH_RESET_REG  = 0x68,
-    MOT_DETECT_CTRL_REG    = 0x69,
-    USER_CTRL_REG          = 0x6A,
-    PWR_MGMT_1_REG         = 0x6B,
-    PWR_MGMT_2_REG         = 0x6C,
-    BANK_SEL_REG           = 0x6D, //unknown
-    MEM_START_ADDR_REG     = 0x6E, //unknown
-    MEM_R_W_REG            = 0x6F, //unknown
-    DMP_CFG_1_REG          = 0x70, //unknown
-    DMP_CFG_2_REG          = 0x71, //unknown
-    FIFO_COUNTH_REG        = 0x72,
-    FIFO_COUNTL_REG        = 0x73,
-    FIFO_R_W_REG           = 0x74,
-    WHO_AM_I_REG           = 0x75,
-};
-
-enum MpuRegLsb{
-    SELF_TEST_X_LSB        = 0x0D,
-    SELF_TEST_Y_LSB        = 0x0E,
-    SELF_TEST_Z_LSB        = 0x0F,
-    SELF_TEST_A_LSB        = 0x10,
-    SMPLRT_DIV_LSB         = 0x0D,
-    CONFIG_LSB             = 0x1A,
-    GYRO_CONFIG_FS_SEL_LSB = 3u,
-    GYRO_CONFIG_ZG_ST_LSB  = 5u,
-    GYRO_CONFIG_YG_ST_LSB  = 6u,
-    GYRO_CONFIG_XG_ST_LSB  = 7u,
-    ACCEL_CONFIG_AFS_SEL_LSB = 3u,
-    ACCEL_CONFIG_ZA_ST_LSB   = 5u,
-    ACCEL_CONFIG_YA_ST_LSB   = 6u,
-    ACCEL_CONFIG_XA_ST_LSB   = 7u,
-    MOT_THR_LSB            = 0x1F,
-    FIFO_EN_LSB            = 0x23,
-    I2C_MST_CTRL_LSB       = 0X24,
-    I2C_SLV0_ADDR_LSB      = 0x25,
-    I2C_SLV0_REG_LSB       = 0x26,
-    I2C_SLV0_CTRL_LSB      = 0x27,
-    I2C_SLV1_ADDR_LSB      = 0x28,
-    I2C_SLV1_REG_LSB       = 0x29,
-    I2C_SLV1_CTRL_LSB      = 0x2A,
-    I2C_SLV2_ADDR_LSB      = 0x2B,
-    I2C_SLV2_REG_LSB       = 0x2C,
-    I2C_SLV2_CTRL_LSB      = 0x2D,
-    I2C_SLV3_ADD_LSB       = 0x2E,
-    I2C_SLV3_REG_LSB       = 0x2F,
-    I2C_SLV3_CTRL_LSB      = 0x30,
-    I2C_SLV4_ADDR_LSB      = 0x31,
-    I2C_SLV4_REG_LSB       = 0x32,
-    I2C_SLV4_DO_LSB        = 0x33,
-    I2C_SLV4_CTRL_LSB      = 0x34,
-    I2C_SLV4_DI_LSB        = 0x35,
-    I2C_MST_STATUS_LSB     = 0x36,
-    INT_PIN_CFG_LSB        = 0x37,
-    INT_ENABLE_DATA_RDY_EN_LSB       = 0u,
-    INT_ENABLE_DMP_INT_EN_LSB        = 1u, //unknown
-    INT_ENABLE_I2C_MST_INT_EN_LSB    = 3u,
-    INT_ENABLE_FIFO_OFLOW_EN_LSB     = 4u,
-    INT_ENABLE_MOT_EN_LSB            = 6u,
-
-    INT_STATUS_LSB         = 0x3A,
-    ACCEL_XOUT_H_LSB       = 0x3B,
-    ACCEL_XOUT_L_LSB       = 0x3C,
-    ACCEL_YOUT_H_LSB       = 0x3D,
-    ACCEL_YOUT_L_LSB       = 0x3E,
-    ACCEL_ZOUT_H_LSB       = 0x3F,
-    ACCEL_ZOUT_L_LSB       = 0x40,
-    TEMP_OUT_H_LSB         = 0x41,
-    TEMP_OUT_L_LSB         = 0x42,
-    GYRO_XOUT_H_LSB        = 0x43,
-    GYRO_XOUT_L_LSB        = 0x44,
-    GYRO_YOUT_H_LSB        = 0x45,
-    GYRO_YOUT_L_LSB        = 0x46,
-    GYRO_ZOUT_H_LSB        = 0x47,
-    GYRO_ZOUT_L_LSB        = 0x48,
-    EXT_SENS_DATA_00_LSB   = 0x49,
-    EXT_SENS_DATA_01_LSB   = 0x4A,
-    EXT_SENS_DATA_02_LSB   = 0x4B,
-    EXT_SENS_DATA_03_LSB   = 0x4C,
-    EXT_SENS_DATA_04_LSB   = 0x4D,
-    EXT_SENS_DATA_05_LSB   = 0x4E,
-    EXT_SENS_DATA_06_LSB   = 0x4F,
-    EXT_SENS_DATA_07_LSB   = 0x50,
-    EXT_SENS_DATA_08_LSB   = 0x51,
-    EXT_SENS_DATA_09_LSB   = 0x52,
-    EXT_SENS_DATA_10_LSB   = 0x53,
-    EXT_SENS_DATA_11_LSB   = 0x54,
-    EXT_SENS_DATA_12_LSB   = 0x55,
-    EXT_SENS_DATA_13_LSB   = 0x56,
-    EXT_SENS_DATA_14_LSB   = 0x57,
-    EXT_SENS_DATA_15_LSB   = 0x58,
-    EXT_SENS_DATA_16_LSB   = 0x59,
-    EXT_SENS_DATA_17_LSB   = 0x5A,
-    EXT_SENS_DATA_18_LSB   = 0x5B,
-    EXT_SENS_DATA_19_LSB   = 0x5C,
-    EXT_SENS_DATA_20_LSB   = 0x5D,
-    EXT_SENS_DATA_21_LSB   = 0x5E,
-    EXT_SENS_DATA_22_LSB   = 0x5F,
-    EXT_SENS_DATA_23_LSB   = 0x60,
-    I2C_SLV0_DO_LSB        = 0x63,
-    I2C_SLV1_DO_LSB        = 0x64,
-    I2C_SLV2_DO_LSB        = 0x65,
-    I2C_SLV3_DO_LSB        = 0x66,
-    I2C_MST_DELAY_CTRL_LSB = 0x67,
-    SIGNAL_PATH_RESET_LSB  = 0x68,
-    MOT_DETECT_CTRL_LSB    = 0x69,
-    USER_CTRL_SIG_COND_RESET_LSB   = 0u,
-    USER_CTRL_I2C_MST_RESET_LSB    = 1u,
-    USER_CTRL_FIFO_RESET_LSB        = 2u,
-    USER_CTRL_DMP_RESET_LSB        = 3u,
-    USER_CTRL_I2C_IF_DIS_LSB       = 4u,
-    USER_CTRL_I2C_MST_EN_LSB       = 5u,
-    USER_CTRL_FIFO_EN_LSB          = 6u,
-    USER_CTRL_DMP_EN_LSB           = 7u,
-    PWR_MGMT_1_CLKSEL_LSB        = 0x0,
-    PWR_MGMT_1_TEMP_DIS_LSB      = 0x3,
-    PWR_MGMT_1_CYCLE_LSB         = 0x5,
-    PWR_MGMT_1_SLEEP_LSB         = 0x6,
-    PWR_MGMT_1_DEVICE_RESET_LSB  = 0x7,
-    PWR_MGMT_2_LSB         = 0x6C,
-    FIFO_COUNTH_LSB        = 0x72,
-    FIFO_COUNTL_LSB        = 0x73,
-    FIFO_R_W_LSB           = 0x74,
-    WHO_AM_I_LSB           = 0x75,
-};
-
-enum DmpFifoStatus{
-    DMP_FIFO_OK,
-    DMP_FIFO_NO_DATA,
-    DMP_FIFO_OVERFLOW,
-};
-
-inline std::map<enum MpuReg, std::string> regMapX = { 
-    {XG_OFFS_TC_REG,"XG_OFFS_TC_REG"}, 
-    {YG_OFFS_TC_REG,"YG_OFFS_TC_REG"}, 
-    {ZG_OFFS_TC_REG,"ZG_OFFS_TC_REG"}, 
-    {SELF_TEST_X_REG,"SELF_TEST_X_REG"}, 
-    {SELF_TEST_Y_REG,"SELF_TEST_Y_REG"}, 
-    {SELF_TEST_Z_REG,"SELF_TEST_Z_REG"}, 
-    {SELF_TEST_A_REG,"SELF_TEST_A_REG"}, 
-    {SMPLRT_DIV_REG,"SMPLRT_DIV_REG"}, 
-    {CONFIG_REG,"CONFIG_REG"}, 
-    {GYRO_CONFIG_REG,"GYRO_CONFIG_REG"}, 
-    {ACCEL_CONFIG_REG,"ACCEL_CONFIG_REG"}, 
-    {MOT_THR_REG,"MOT_THR_REG"}, 
-    {MOT_DUR_REG,"MOT_DUR_REG"}, 
-    {ZRMOT_THR_REG,"ZRMOT_THR_REG"}, 
-    {ZRMOT_DUR_REG,"ZRMOT_DUR_REG"}, 
-    {FIFO_EN_REG,"FIFO_EN_REG"}, 
-    {I2C_MST_CTRL_REG,"I2C_MST_CTRL_REG"}, 
-    {I2C_SLV0_ADDR_REG,"I2C_SLV0_ADDR_REG"}, 
-    {I2C_SLV0_REG_REG,"I2C_SLV0_REG_REG"}, 
-    {I2C_SLV0_CTRL_REG,"I2C_SLV0_CTRL_REG"}, 
-    {I2C_SLV1_ADDR_REG,"I2C_SLV1_ADDR_REG"}, 
-    {I2C_SLV1_REG_REG,"I2C_SLV1_REG_REG"}, 
-    {I2C_SLV1_CTRL_REG,"I2C_SLV1_CTRL_REG"}, 
-    {I2C_SLV2_ADDR_REG,"I2C_SLV2_ADDR_REG"}, 
-    {I2C_SLV2_REG_REG,"I2C_SLV2_REG_REG"}, 
-    {I2C_SLV2_CTRL_REG,"I2C_SLV2_CTRL_REG"}, 
-    {I2C_SLV3_ADD_REG,"I2C_SLV3_ADD_REG"}, 
-    {I2C_SLV3_REG_REG,"I2C_SLV3_REG_REG"}, 
-    {I2C_SLV3_CTRL_REG,"I2C_SLV3_CTRL_REG"}, 
-    {I2C_SLV4_ADDR_REG,"I2C_SLV4_ADDR_REG"}, 
-    {I2C_SLV4_REG_REG,"I2C_SLV4_REG_REG"}, 
-    {I2C_SLV4_DO_REG,"I2C_SLV4_DO_REG"}, 
-    {I2C_SLV4_CTRL_REG,"I2C_SLV4_CTRL_REG"}, 
-    {I2C_SLV4_DI_REG,"I2C_SLV4_DI_REG"}, 
-    {I2C_MST_STATUS_REG,"I2C_MST_STATUS_REG"}, 
-    {INT_PIN_CFG_REG,"INT_PIN_CFG_REG"}, 
-    {INT_ENABLE_REG,"INT_ENABLE_REG"}, 
-    {INT_STATUS_REG,"INT_STATUS_REG"}, 
-    {ACCEL_XOUT_H_REG,"ACCEL_XOUT_H_REG"}, 
-    {ACCEL_XOUT_L_REG,"ACCEL_XOUT_L_REG"}, 
-    {ACCEL_YOUT_H_REG,"ACCEL_YOUT_H_REG"}, 
-    {ACCEL_YOUT_L_REG,"ACCEL_YOUT_L_REG"}, 
-    {ACCEL_ZOUT_H_REG,"ACCEL_ZOUT_H_REG"}, 
-    {ACCEL_ZOUT_L_REG,"ACCEL_ZOUT_L_REG"}, 
-    {TEMP_OUT_H_REG,"TEMP_OUT_H_REG"}, 
-    {TEMP_OUT_L_REG,"TEMP_OUT_L_REG"}, 
-    {GYRO_XOUT_H_REG,"GYRO_XOUT_H_REG"}, 
-    {GYRO_XOUT_L_REG,"GYRO_XOUT_L_REG"}, 
-    {GYRO_YOUT_H_REG,"GYRO_YOUT_H_REG"}, 
-    {GYRO_YOUT_L_REG,"GYRO_YOUT_L_REG"}, 
-    {GYRO_ZOUT_H_REG,"GYRO_ZOUT_H_REG"}, 
-    {GYRO_ZOUT_L_REG,"GYRO_ZOUT_L_REG"}, 
-    {EXT_SENS_DATA_00_REG,"EXT_SENS_DATA_00_REG"}, 
-    {EXT_SENS_DATA_01_REG,"EXT_SENS_DATA_01_REG"}, 
-    {EXT_SENS_DATA_02_REG,"EXT_SENS_DATA_02_REG"}, 
-    {EXT_SENS_DATA_03_REG,"EXT_SENS_DATA_03_REG"}, 
-    {EXT_SENS_DATA_04_REG,"EXT_SENS_DATA_04_REG"}, 
-    {EXT_SENS_DATA_05_REG,"EXT_SENS_DATA_05_REG"}, 
-    {EXT_SENS_DATA_06_REG,"EXT_SENS_DATA_06_REG"}, 
-    {EXT_SENS_DATA_07_REG,"EXT_SENS_DATA_07_REG"}, 
-    {EXT_SENS_DATA_08_REG,"EXT_SENS_DATA_08_REG"}, 
-    {EXT_SENS_DATA_09_REG,"EXT_SENS_DATA_09_REG"}, 
-    {EXT_SENS_DATA_10_REG,"EXT_SENS_DATA_10_REG"}, 
-    {EXT_SENS_DATA_11_REG,"EXT_SENS_DATA_11_REG"}, 
-    {EXT_SENS_DATA_12_REG,"EXT_SENS_DATA_12_REG"}, 
-    {EXT_SENS_DATA_13_REG,"EXT_SENS_DATA_13_REG"}, 
-    {EXT_SENS_DATA_14_REG,"EXT_SENS_DATA_14_REG"}, 
-    {EXT_SENS_DATA_15_REG,"EXT_SENS_DATA_15_REG"}, 
-    {EXT_SENS_DATA_16_REG,"EXT_SENS_DATA_16_REG"}, 
-    {EXT_SENS_DATA_17_REG,"EXT_SENS_DATA_17_REG"}, 
-    {EXT_SENS_DATA_18_REG,"EXT_SENS_DATA_18_REG"}, 
-    {EXT_SENS_DATA_19_REG,"EXT_SENS_DATA_19_REG"}, 
-    {EXT_SENS_DATA_20_REG,"EXT_SENS_DATA_20_REG"}, 
-    {EXT_SENS_DATA_21_REG,"EXT_SENS_DATA_21_REG"}, 
-    {EXT_SENS_DATA_22_REG,"EXT_SENS_DATA_22_REG"}, 
-    {EXT_SENS_DATA_23_REG,"EXT_SENS_DATA_23_REG"}, 
-    {I2C_SLV0_DO_REG,"I2C_SLV0_DO_REG"}, 
-    {I2C_SLV1_DO_REG,"I2C_SLV1_DO_REG"}, 
-    {I2C_SLV2_DO_REG,"I2C_SLV2_DO_REG"}, 
-    {I2C_SLV3_DO_REG,"I2C_SLV3_DO_REG"}, 
-    {I2C_MST_DELAY_CTRL_REG,"I2C_MST_DELAY_CTRL_REG"}, 
-    {SIGNAL_PATH_RESET_REG,"SIGNAL_PATH_RESET_REG"}, 
-    {MOT_DETECT_CTRL_REG,"MOT_DETECT_CTRL_REG"}, 
-    {USER_CTRL_REG,"USER_CTRL_REG"}, 
-    {PWR_MGMT_1_REG,"PWR_MGMT_1_REG"}, 
-    {PWR_MGMT_2_REG,"PWR_MGMT_2_REG"}, 
-    {BANK_SEL_REG,"BANK_SEL_REG"}, 
-    {MEM_START_ADDR_REG,"MEM_START_ADDR_REG"}, 
-    {MEM_R_W_REG,"MEM_R_W_REG"}, 
-    {DMP_CFG_1_REG,"DMP_CFG_1_REG"}, 
-    {DMP_CFG_2_REG,"DMP_CFG_2_REG"}, 
-    {FIFO_COUNTH_REG,"FIFO_COUNTH_REG"}, 
-    {FIFO_COUNTL_REG,"FIFO_COUNTL_REG"}, 
-    {FIFO_R_W_REG,"FIFO_R_W_REG"}, 
-    {WHO_AM_I_REG,"WHO_AM_I_REG"}}; 
-
-
-    inline std::map<enum MpuReg, std::string> labMap = { 
-
-
-
-    };
-
-
 
 namespace mpu6050Value{
     //GYRO_CONFIG
@@ -375,20 +51,20 @@ class Mpu6050{
     uint8_t sda_pin;
     uint8_t scl_pin;
     uint32_t frequency;
+    I2cHandler* i2c;
+
+
+    esp_err_t i2c_write();
+
 
     public:
     std::unique_ptr<uint8_t[]> dmpBuffer{nullptr};
     uint8_t dmpPacketSize;
 
-    Mpu6050(enum Mpu6050Addr addr, uint8_t sda_pin, uint8_t scl_pin, uint32_t frequency);
+    Mpu6050(enum Mpu6050Addr addr, I2cHandler* i2c);
 
     esp_err_t mpu6050_init();
     esp_err_t dmp_init();
-    esp_err_t i2c_init();
-
-    esp_err_t mpu6050_write(uint8_t startRegisterAddress, uint8_t* data, uint8_t dataLen);
-    esp_err_t mpu6050_read(uint8_t startRegisterAddress, uint8_t* data, uint8_t dataLen);
-    esp_err_t mpu6050_write_bit(uint8_t startRegisterAddress, uint8_t data, uint8_t mask);
 
     esp_err_t get_6axis_motion(int16_t& ax, int16_t& ay, int16_t& az, int16_t& gx, int16_t& gy, int16_t& gz);
     esp_err_t calibrate_gyro();

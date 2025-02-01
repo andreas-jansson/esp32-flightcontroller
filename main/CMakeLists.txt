@@ -1,7 +1,8 @@
-idf_component_register(SRCS "main.cpp"
+idf_component_register(SRCS "i2c.cpp" "main.cpp"
                             "radioController.cpp"
                             "debug.cpp"
                             "mpu6050.cpp"
+                            "i2c.cpp"
                        INCLUDE_DIRS "."
                        REQUIRES
                        arduino
