@@ -995,15 +995,17 @@ esp_err_t Mpu6050::get_quaternion(Quaternion& quaternion){
     
     ESP_RETURN_ON_ERROR(!new_data_exists(), log_tag, "No new data exists\n");
 
-    quaternion.w = ((dmpBuffer[0] << 8) | dmpBuffer[1]);    //
-    quaternion.x = ((dmpBuffer[4] << 8) | dmpBuffer[5]);    //
-    quaternion.y = ((dmpBuffer[8] << 8) | dmpBuffer[9]);    //
-    quaternion.z = ((dmpBuffer[12] << 8) | dmpBuffer[13]);  //
+    int16_t w = ((dmpBuffer[0] << 8) | dmpBuffer[1]);    //
+    int16_t x = ((dmpBuffer[4] << 8) | dmpBuffer[5]);    //
+    int16_t y = ((dmpBuffer[8] << 8) | dmpBuffer[9]);    //
+    int16_t z = ((dmpBuffer[12] << 8) | dmpBuffer[13]);  //
 
-    quaternion.w /= 16384.0f;
-    quaternion.x /= 16384.0f;
-    quaternion.y /= 16384.0f;
-    quaternion.z /= 16384.0f;
+    //printf("raw: w %d x %d y %d z %d\n", w, x, y, z);
+    quaternion.w = (float)w / 16384.0f;
+    quaternion.x = (float)x / 16384.0f;
+    quaternion.y = (float)y / 16384.0f;
+    quaternion.z = (float)z / 16384.0f;
+    //printf("pro: w %-3f x %-3f y %-3f z %-3f\n", quaternion.w, quaternion.x, quaternion.y, quaternion.z);
 
     return ESP_OK;
 }

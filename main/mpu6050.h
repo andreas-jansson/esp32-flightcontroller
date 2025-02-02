@@ -1081,3 +1081,24 @@ veri: 0x00 0x01 0xfa 0x3f 0xf4 0xe6 0xfa 0x3f 0xff 0xa3 0xa3 0xf3 0x64 0xfc 0xfa
 0x74 FIFO_R_W_REG                  : 0xde 11011110
 0x75 WHO_AM_I_REG                  : 0x68 01101000
 */
+
+
+
+/* working raw quartination data */
+// qdata: w 16377 x -6  y 235 z -380
+
+/* working processed quartination data*/
+// qdata: w 0.999878 x -0.000549 y -0.010559 z -0.003784
+
+
+/* mine raw quartination data */
+//   raw: w 16381 x 65491 y 65268 z 65403
+
+/* minw processed quartination data*/
+//   pro: w 0.999817 x 3.997253 y 3.983643 z 3.991882
+
+/* minw processed quartination data*/
+// raw: w 16379 x -49 y -270 z -263
+
+/* mine raw quartination data */
+// pro: w 0.999695 x -0.002991 y -0.016418 z -0.015869
