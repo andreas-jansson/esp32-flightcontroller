@@ -18,6 +18,7 @@
 #include "bmp280.h"
 #include "mpu6050.h"
 #include "i2c.h"
+#include "quaternion.h"
 
 #define log_tag "main"
 
@@ -70,29 +71,29 @@ void dmp_task(void* args){
     //ESP_ERROR_CHECK_WITHOUT_ABORT(status);
 
 
-    status = mpu.set_x_accel_offset(-2889);
-    ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-	status = mpu.set_y_accel_offset(-444);
-    ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-	status = mpu.set_z_accel_offset(698);
-    ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-	status = mpu.set_x_gyro_offset(149);
-    ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-	status = mpu.set_y_gyro_offset(27);
-    ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-	status = mpu.set_z_gyro_offset(17);
-    ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-    status = mpu.calibrate_accel(6);
-    ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-	status = mpu.calibrate_gyro(6);
-    ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+    //status = mpu.set_x_accel_offset(-2889);
+    //ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+	//status = mpu.set_y_accel_offset(-444);
+    //ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+	//status = mpu.set_z_accel_offset(698);
+    //ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+	//status = mpu.set_x_gyro_offset(149);
+    //ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+	//status = mpu.set_y_gyro_offset(27);
+    //ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+	//status = mpu.set_z_gyro_offset(17);
+    //ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+    //status = mpu.calibrate_accel(6);
+    //ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+	//status = mpu.calibrate_gyro(6);
+    //ESP_ERROR_CHECK_WITHOUT_ABORT(status);
 
 
     status = mpu.set_dmp_enabled(true);
     ESP_ERROR_CHECK_WITHOUT_ABORT(status);
 
-    status = mpu.dump_registers();
-    ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+    //status = mpu.dump_registers();
+    //ESP_ERROR_CHECK_WITHOUT_ABORT(status);
 
 
     //setup interrupt
@@ -115,35 +116,33 @@ void dmp_task(void* args){
     ESP_ERROR_CHECK_WITHOUT_ABORT(status);
 
 
-    uint32_t files = DEBUG_MPU6050 | DEBUG_MAIN | DEBUG_I2C; // | DEBUG_BMP ;
-    uint32_t prio  = DEBUG_DATA | DEBUG_ARGS |  DEBUG_LOWLEVEL | DEBUG_LOGIC;// | DEBUG_LOGIC | DEBUG_ARGS;
-
-    set_loglevel(files, prio);
 
     int count_ = 0;
     while (true)
     {
         xSemaphoreTake(dmp_avail, portMAX_DELAY);
-        print_debug(DEBUG_MAIN, DEBUG_DATA, "take: lvl: %d\n", gpio_get_level(static_cast<gpio_num_t>(I2C_DMP_DATA_PIN)));
 
-        status = mpu.get_curr_fifo_packet();
-        ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-
-        print_debug(DEBUG_MAIN, DEBUG_DATA, "data:");
-        for(int i=0;i<mpu.dmpPacketSize;i++){
-            print_debug(DEBUG_MAIN, DEBUG_DATA, " 0x%x", mpu.dmpBuffer[i]);
+        status = mpu.get_curr_fifo_packet2();
+        if(status == ESP_ERR_INVALID_SIZE){
+            continue;
         }
-        print_debug(DEBUG_MAIN, DEBUG_DATA, "\n");
+        else
+            ESP_ERROR_CHECK_WITHOUT_ABORT(status);
 
-        uint16_t count = 0;
-        mpu.get_fifo_count(count);
-        print_debug(DEBUG_MAIN, DEBUG_DATA, "fifo count: %u\n", count);
-        if(count_ > 10){
-            vTaskDelay(10000);
-        }
-        count_++;
+        //print_debug(DEBUG_MAIN, DEBUG_DATA, "data:");
+        //for(int i=0;i<mpu.dmpPacketSize;i++){
+        //    print_debug(DEBUG_MAIN, DEBUG_DATA, " 0x%x", mpu.dmpBuffer[i]);
+        //}
+        //print_debug(DEBUG_MAIN, DEBUG_DATA, "\n");
+        Quaternion quaternion;
+        VectorFloat vec;
+        mpu.get_quaternion(quaternion);
+        mpu.get_gravity(vec, quaternion);
+        mpu.get_yaw_pitch_roll(quaternion,vec );
+        //print_debug(DEBUG_MAIN, DEBUG_DATA, "w: %.3f x: %.3f y: %.3f z: %.3f\n", quaternion.w, quaternion.x, quaternion.y, quaternion.z);
 
-        vTaskDelay(1);
+
+        vTaskDelay(100/portTICK_PERIOD_MS);
 
     }
 
@@ -203,7 +202,6 @@ void gyro_task(void* args){
 
         mpu.get_6axis_motion(x_acc, y_acc, z_acc, x_gyro, y_gyro, z_gyro);
         print_debug(DEBUG_MAIN, DEBUG_DATA, "\rx: %4f y: %4f z: %4f\n", x_accSum / 131.072, y_accSum / 131.072, z_accSum /131.072);
-        //print_debug(DEBUG_MAIN, DEBUG_DATA, "x: %4f y: %4f z: %4f\n", x_gyroSum / 131.072, y_gyroSum / 131.072, z_gyroSum /131.072);
 
         vTaskDelay(xDelay);
 	}
@@ -281,8 +279,8 @@ void altitude_task(void* args){
 
 void app_main(void)
 {
-    uint32_t files = DEBUG_MPU6050 | DEBUG_MAIN | DEBUG_I2C; // | DEBUG_BMP ;
-    uint32_t prio  = DEBUG_DATA |  DEBUG_LOWLEVEL | DEBUG_ARGS;// | DEBUG_LOGIC;
+    uint32_t files =  DEBUG_MAIN; // | DEBUG_MPU6050 | DEBUG_I2C; // | DEBUG_BMP ;
+    uint32_t prio  = DEBUG_DATA |  DEBUG_ARGS | DEBUG_LOGIC; // | DEBUG_ARGS;// | DEBUG_LOGIC;
 
     set_loglevel(files, prio);
 

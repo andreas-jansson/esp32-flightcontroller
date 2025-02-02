@@ -8,6 +8,7 @@
 
 #include "common_data.h"
 #include "i2c.h"
+#include "quaternion.h"
 
 
 
@@ -42,8 +43,13 @@ namespace mpu6050Value{
     constexpr inline uint8_t VALUE_PWR_MGMT_1_CLKSEL_EXT_PLL_19MHZ = 0x5;
     constexpr inline uint8_t VALUE_PWR_MGMT_1_CLKSEL_STOP = 0x7;
 
-
 }
+
+enum YawPichRoll{
+	YAW,
+	PITCH,
+	ROLL,
+};
 
 class Mpu6050{
 
@@ -51,7 +57,9 @@ class Mpu6050{
     uint8_t sda_pin;
     uint8_t scl_pin;
     uint32_t frequency;
+	bool newData{};
     I2cHandler* i2c;
+	float yawPitchRoll[3]{};
 
 
     esp_err_t i2c_write();
@@ -108,6 +116,8 @@ class Mpu6050{
     esp_err_t get_int_satus(uint8_t& data);
     //esp_err_t get_curr_fifo_packet(uint8_t* buffer, uint8_t length, enum DmpFifoStatus& status);
     esp_err_t get_curr_fifo_packet();
+	esp_err_t get_curr_fifo_packet2();
+
     esp_err_t get_fifo_count(uint16_t& count);
 
     esp_err_t dump_registers();
@@ -121,6 +131,21 @@ class Mpu6050{
     esp_err_t set_z_gyro_offset(int16_t offset);
     esp_err_t calibrate_accel(uint8_t loops);
 	esp_err_t calibrate_gyro(uint8_t loops);
+
+	esp_err_t get_quaternion(Quaternion& quaternion);
+	esp_err_t get_gravity(VectorFloat& vector, Quaternion quaternion);
+	esp_err_t get_yaw_pitch_roll(Quaternion& q, VectorFloat& gravity);
+
+	bool new_data_exists(){
+		if(newData){
+			newData = false;
+			return true;
+		}
+		return false;
+	}
+
+	void set_new_data_exists(){newData = true;};
+
     void delay(const uint8_t milli);
 
     // borrowed

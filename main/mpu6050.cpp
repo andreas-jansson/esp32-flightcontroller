@@ -5,6 +5,7 @@
 #include <bitset>
 #include <iostream>
 #include <algorithm> 
+#include <cmath> 
 
 
 #include "freertos/FreeRTOS.h"
@@ -129,7 +130,7 @@ esp_err_t Mpu6050::dmp_init(){
     ESP_RETURN_ON_ERROR(status, log_tag, "Failed to set int enable  0x%x", (1<<INT_ENABLE_FIFO_OFLOW_EN_LSB) | (1<< INT_ENABLE_DMP_INT_EN_LSB));
 
     // 	setRate(4); // 1khz / (1 + 4) = 200 Hz
-    status = set_sample_rate(4u);
+    status = set_sample_rate(3);
     ESP_RETURN_ON_ERROR(status, log_tag, "Failed to set sample rate  0x%x", 4u);
 
     //setExternalFrameSync(MPU6050_EXT_SYNC_TEMP_OUT_L);
@@ -585,18 +586,18 @@ esp_err_t Mpu6050::get_curr_fifo_packet(){
 
     // if until count > 200 then reset fifo
     while(!completePacket){
-        print_debug(DEBUG_MPU6050, DEBUG_LOGIC, "%-33s %u: witing for completePacket\n", __func__, __LINE__);
+        //print_debug(DEBUG_MPU6050, DEBUG_LOGIC, "%-33s %u: waiting for completePacket\n", __func__, __LINE__);
 
         if(fifoCount > dmpPacketSize){
-            print_debug(DEBUG_MPU6050, DEBUG_LOGIC, "%-33s %u: fifo %u > dmpPacketSize %u\n", __func__, __LINE__, fifoCount, dmpPacketSize);
+            //print_debug(DEBUG_MPU6050, DEBUG_LOGIC, "%-33s %u: fifo %u > dmpPacketSize %u\n", __func__, __LINE__, fifoCount, dmpPacketSize);
             if(fifoCount > 200){
-                print_debug(DEBUG_MPU6050, DEBUG_LOGIC, "%-33s %u: fifo %u over 200 thld\n", __func__, __LINE__, fifoCount);
+                //print_debug(DEBUG_MPU6050, DEBUG_LOGIC, "%-33s %u: fifo %u over 200 thld\n", __func__, __LINE__, fifoCount);
                 status = reset_fifo();
                 ESP_RETURN_ON_ERROR(status, log_tag, "Failed to reset fifo");
                 fifoCount = 0;
             }
             else{
-                print_debug(DEBUG_MPU6050, DEBUG_LOGIC, "%-33s %u: fifo %u below 200 thld\n", __func__, __LINE__, fifoCount);
+                //print_debug(DEBUG_MPU6050, DEBUG_LOGIC, "%-33s %u: fifo %u below 200 thld\n", __func__, __LINE__, fifoCount);
                 while(true){
 
                     status = get_fifo_count(fifoCount);
@@ -605,14 +606,14 @@ esp_err_t Mpu6050::get_curr_fifo_packet(){
                     while(fifoCount > length){
                         uint8_t trashBuf[300];
                         uint8_t removeSize = fifoCount - length;  // save the latest length bytes
-                        print_debug(DEBUG_MPU6050, DEBUG_LOGIC, "%-33s %u: clearing out fifo, bytes to clear: %u\n", __func__, __LINE__, removeSize);
+                        //print_debug(DEBUG_MPU6050, DEBUG_LOGIC, "%-33s %u: clearing out fifo, bytes to clear: %u\n", __func__, __LINE__, removeSize);
 
                         while(removeSize){ // read until only length bytes left in fifo
                             uint8_t bytesToRemove = fifoCount < 64 ? fifoCount : 64; 
                             status = i2c->read(address, FIFO_R_W_REG, trashBuf, bytesToRemove);
                             ESP_RETURN_ON_ERROR(status, log_tag, "Failed to read fifo register");
                             removeSize -= bytesToRemove;
-                            print_debug(DEBUG_MPU6050, DEBUG_LOGIC, "%-33s %u: clearing out fifo, bytes to clear: %u / %u\n", __func__, __LINE__, bytesToRemove, removeSize);
+                            //print_debug(DEBUG_MPU6050, DEBUG_LOGIC, "%-33s %u: clearing out fifo, bytes to clear: %u / %u\n", __func__, __LINE__, bytesToRemove, removeSize);
                         }
 
                         status = get_fifo_count(fifoCount);
@@ -622,19 +623,83 @@ esp_err_t Mpu6050::get_curr_fifo_packet(){
                 }
             }
         }
-        if(!fifoCount){
-            print_debug(DEBUG_MPU6050, DEBUG_LOGIC, "%-33s %u: no data: %u\n", __func__, __LINE__, fifoCount);
-            dmpStatus = DMP_FIFO_OK;
-            return ESP_OK;
+
+        while(!completePacket){
+            status = get_fifo_count(fifoCount);
+            ESP_RETURN_ON_ERROR(status, log_tag, "Failed to get fifo count");
+            completePacket = fifoCount == dmpPacketSize;
+            ESP_RETURN_ON_ERROR((fifoCount>dmpPacketSize), log_tag, "Error fifoCount: %u > %u", fifoCount, dmpPacketSize);
         }
-        completePacket = fifoCount == dmpPacketSize;
     } 
-    print_debug(DEBUG_MPU6050, DEBUG_LOGIC, "%-33s %u: reading DMP packet of len %u\n", __func__, __LINE__, dmpPacketSize);
+
+    //print_debug(DEBUG_MPU6050, DEBUG_LOGIC, "%-33s %u: reading DMP packet of len %u\n", __func__, __LINE__, dmpPacketSize);
     status = i2c->read(address, FIFO_R_W_REG, dmpBuffer.get(), length);
     ESP_RETURN_ON_ERROR(status, log_tag, "Failed to read fifo register");
 
     return ESP_OK;
 }
+
+esp_err_t Mpu6050::get_curr_fifo_packet2(){
+    esp_err_t status = 0;
+    uint16_t fifoCount = 0;
+    uint16_t fifoCountPrev = 0;
+    uint8_t length = dmpPacketSize;
+
+    status = get_fifo_count(fifoCount);
+    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to get fifo count");
+
+    if(!fifoCount){
+        return ESP_ERR_INVALID_SIZE;
+    }
+    else if(fifoCount > 200){
+        fifoCountPrev = fifoCount;
+        reset_fifo();
+    }
+    else{
+
+        status = get_fifo_count(fifoCount);
+        ESP_RETURN_ON_ERROR(status, log_tag, "Failed to get fifo count");
+
+        while(fifoCount > length){
+            uint8_t trashBuf[59];
+            uint8_t removeSize = fifoCount - length;  // save the latest length bytes
+            //print_debug(DEBUG_MPU6050, DEBUG_LOGIC, "%-33s %u: clearing out fifo, bytes to clear: %u\n", __func__, __LINE__, removeSize);
+
+            while(removeSize){ // read until only length bytes left in fifo
+                uint8_t bytesToRemove = fifoCount < 64 ? fifoCount : 64; 
+                status = i2c->read(address, FIFO_R_W_REG, trashBuf, bytesToRemove);
+                ESP_RETURN_ON_ERROR(status, log_tag, "Failed to read fifo register");
+                removeSize -= bytesToRemove;
+                //print_debug(DEBUG_MPU6050, DEBUG_LOGIC, "%-33s %u: clearing out fifo, bytes to clear: %u / %u\n", __func__, __LINE__, bytesToRemove, removeSize);
+            }
+
+            status = get_fifo_count(fifoCount);
+            ESP_RETURN_ON_ERROR(status, log_tag, "Failed to get fifo count");
+            //print_debug(DEBUG_MPU6050, DEBUG_LOGIC, "%-33s %u: fifo count post clearing: %u\n", __func__, __LINE__, fifoCount - length);
+        }
+    }
+
+    status = get_fifo_count(fifoCount);
+    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to get fifo count");
+    ESP_RETURN_ON_ERROR((fifoCount > dmpPacketSize), log_tag, "Error fifoCount: %u was larger than dmpPacketsize: %u", fifoCount, dmpPacketSize);
+
+    if(!fifoCount){
+        return ESP_ERR_INVALID_SIZE;
+    }
+
+    while(fifoCount != dmpPacketSize){
+            status = get_fifo_count(fifoCount);
+            ESP_RETURN_ON_ERROR(status, log_tag, "Failed to get fifo count");
+    }
+
+    status = i2c->read(address, FIFO_R_W_REG, dmpBuffer.get(), dmpPacketSize);
+    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to read fifo register");
+    set_new_data_exists();
+
+
+    return status;
+}
+
 
 /*
 int8_t GetCurrentFIFOPacket(uint8_t *data, uint8_t length) { // overflow proof
@@ -747,7 +812,7 @@ esp_err_t Mpu6050::writeMemoryBlock(const uint8_t *data, uint16_t dataSize, uint
             ESP_RETURN_ON_ERROR(status, log_tag, "Failed to set mem start addr 0x%x\n", address);
 
             //I2Cdev::readBytes(devAddr, MPU6050_RA_MEM_R_W, chunkSize, verifyBuffer, I2Cdev::readTimeout, wireObj);
-            status = i2c->read(address, MEM_R_W_REG, verifyBuffer, chunkSize);
+            status = i2c->read(this->address, MEM_R_W_REG, verifyBuffer, chunkSize);
             ESP_RETURN_ON_ERROR(status, log_tag, "Failed to read reg 0x%x size %u\n", MEM_R_W_REG, chunkSize);
 
             //printf("prog:");
@@ -924,6 +989,63 @@ esp_err_t Mpu6050::calibrate_gyro(uint8_t loops){
 
     return status;
 }
+
+esp_err_t Mpu6050::get_quaternion(Quaternion& quaternion){
+
+    
+    ESP_RETURN_ON_ERROR(!new_data_exists(), log_tag, "No new data exists\n");
+
+    quaternion.w = ((dmpBuffer[0] << 8) | dmpBuffer[1]);    //
+    quaternion.x = ((dmpBuffer[4] << 8) | dmpBuffer[5]);    //
+    quaternion.y = ((dmpBuffer[8] << 8) | dmpBuffer[9]);    //
+    quaternion.z = ((dmpBuffer[12] << 8) | dmpBuffer[13]);  //
+
+    quaternion.w /= 16384.0f;
+    quaternion.x /= 16384.0f;
+    quaternion.y /= 16384.0f;
+    quaternion.z /= 16384.0f;
+
+    return ESP_OK;
+}
+
+esp_err_t Mpu6050::get_gravity(VectorFloat& vector, Quaternion quaternion){
+
+    //v -> x = 2 * (q -> x*q -> z - q -> w*q -> y);
+    //v -> y = 2 * (q -> w*q -> x + q -> y*q -> z);
+    // v -> z = q -> w*q -> w - q -> x*q -> x - q -> y*q -> y + q -> z*q -> z;
+
+    vector.x = 2 * (quaternion.x * quaternion.z - quaternion.w * quaternion.y);
+    vector.y = 2 * (quaternion.w * quaternion.x + quaternion.y * quaternion.z);
+    vector.z = quaternion.w * quaternion.w - quaternion.x * quaternion.x - quaternion.y * quaternion.y + quaternion.z * quaternion.z;
+
+    return ESP_OK;
+}
+
+#define RAD_TO_DEG (180.0/M_PI)
+
+esp_err_t Mpu6050::get_yaw_pitch_roll(Quaternion& q, VectorFloat& gravity) {
+
+    // yaw: (about Z axis)
+    yawPitchRoll[YAW] = atan2(2*q.x*q.y - 2*q.w*q.z, 2*q.w*q.w + 2*q.x*q.x - 1);
+    // pitch: (nose up/down, about Y axis)
+    yawPitchRoll[PITCH] = atan2(gravity.x , sqrt(gravity.y*gravity.y + gravity.z*gravity.z));
+    // roll: (tilt left/right, about X axis)
+    yawPitchRoll[ROLL] = atan2(gravity.y , gravity.z);
+
+    if (gravity.z < 0) {
+        if(yawPitchRoll[PITCH] > 0) {
+            yawPitchRoll[PITCH] = M_PI - yawPitchRoll[PITCH]; 
+        } else { 
+            yawPitchRoll[PITCH] = -M_PI - yawPitchRoll[PITCH];
+        }
+    }
+    printf("[2A  roll      pitch      yaw\n");
+    printf("%-7.3f °C %-7.3f °C %-7.3f °C\n",yawPitchRoll[ROLL] * RAD_TO_DEG, yawPitchRoll[PITCH] * RAD_TO_DEG, yawPitchRoll[YAW] * RAD_TO_DEG);
+
+
+    return ESP_OK;
+}
+
 
 void Mpu6050::delay(const uint8_t milli){
 
