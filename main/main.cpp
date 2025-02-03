@@ -19,6 +19,7 @@
 #include "mpu6050.h"
 #include "i2c.h"
 #include "quaternion.h"
+#include "esp_crsf.h"
 
 #define log_tag "main"
 
@@ -279,11 +280,48 @@ void radio_task(void* args){
 
 }
 
+void crsf_task(void* args){
+    crsf_config_t config = {
+    .uart_num = UART_NUM_1,
+    .tx_pin = 32,
+    .rx_pin = 33
+    };
+    CRSF_init(&config);
+
+    crsf_channels_t channels = {0};
+    crsf_battery_t battery = {0};
+    crsf_gps_t gps = {0};
+    while (1)
+    {
+        
+        CRSF_receive_channels(&channels);
+        printf(">Channel 1: %d Channel 2: %d\n", channels.ch1, channels.ch2);
+
+        battery.voltage = 120; //voltage 10*V
+        battery.current = 100; //current 10*A
+        battery.capacity = 1000; //capacity
+        battery.remaining = 50; //remaining % of battery
+
+        CRSF_send_battery_data(CRSF_DEST_FC, &battery);
+
+        gps.latitude = 42.4242 * 10000000; //42.4242 deg
+        gps.longitude = 56.5656 * 10000000; //56.5656 deg
+        gps.altitude = 5 + 1000; //5m
+        gps.groundspeed = 420; //42km/h
+        gps.heading = 90 * 100; //90 deg NOT WORKING WELL NOW
+        gps.satellites = 8; //8 satellites
+
+        CRSF_send_gps_data(CRSF_DEST_FC, &gps);
+
+        vTaskDelay(100 / portTICK_PERIOD_MS);
+    }
+}
+
 
 void app_main(void)
 {
     uint32_t files =  DEBUG_MAIN | DEBUG_RADIO; // | DEBUG_MPU6050 | DEBUG_I2C; // | DEBUG_BMP ;
-    uint32_t prio  = DEBUG_DATA |  DEBUG_ARGS | DEBUG_LOGIC; // | DEBUG_ARGS;// | DEBUG_LOGIC;
+    uint32_t prio  = DEBUG_DATA | DEBUG_LOGIC; // | DEBUG_ARGS;// | DEBUG_LOGIC;
 
     set_loglevel(files, prio);
 
@@ -296,10 +334,11 @@ void app_main(void)
     printf("*****************************************************************\n");
 
 
-    TaskHandle_t altitude_handle, gyro_handle, dmp_handle, radio_handle;
+    TaskHandle_t altitude_handle, gyro_handle, dmp_handle, radio_handle, crsf_handle;
     //xTaskCreatePinnedToCore(altitude_task, "altitude_task", 4048, nullptr, configMAX_PRIORITIES - 3, &altitude_handle, 0);
     //xTaskCreatePinnedToCore(gyro_task, "gyro_task", 4048, nullptr, configMAX_PRIORITIES - 3, &altitude_handle, 0);
     //xTaskCreatePinnedToCore(dmp_task, "dmp_task", 4048, nullptr, configMAX_PRIORITIES - 3, &dmp_handle, 0);
     xTaskCreatePinnedToCore(radio_task, "radio_task", 16192, nullptr, configMAX_PRIORITIES - 3, &radio_handle, 0);
+    //xTaskCreatePinnedToCore(crsf_task, "crsf_task", 16192, nullptr, configMAX_PRIORITIES - 3, &crsf_handle, 0);
 
 }
