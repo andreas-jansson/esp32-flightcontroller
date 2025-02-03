@@ -81,40 +81,22 @@ void RadioController::test(){
             if(data[i] == 0xc8){
                 uint8_t frameLen = data[i+1];
                 uint8_t type = data[i+2];
-                //printf("[%d]sync: 0x%x  type: 0x%x frameLen: %u\n", i, data[i], type, frameLen);
 
                 if(type == 0x16){
-
-                    memcpy(&(this->channel), (void*)&data[i+3], 22);
-                    printf("ch1: %-4u ch2: %-4u ch3: %-4u ch4: %-4u ch5: %-4u ch6: %-4u\n", channel.ch1, channel.ch2, channel.ch3, channel.ch4, channel.ch5, channel.ch6);
+                    uint8_t tmp[22]{};
+                    memcpy(&this->channel, (void*)&data[i+3], 22);
+    
+                    printf("ch1: %-4d ch2: %-4d ch3: %-4d ch4: %-4d ch5: %-4d ch6: %-4d\n", 
+                    this->channel.ch1, this->channel.ch2, this->channel.ch3, this->channel.ch4, this->channel.ch5, this->channel.ch6);
                     
-                    
-                    int16_t ch1 = (data[i+4] << 8 | data[i+3]) & 0b0000'0111'1111'1111;
-                    int16_t ch2 = (data[i+6] << 8 | data[i+5]) & 0b0000'0111'1111'1111;
-                    int16_t ch3 = (data[i+8] << 8 | data[i+7]) & 0b0000'0111'1111'1111;
-                    int16_t ch4 = (data[i+10] << 8 | data[i+9]) & 0b0000'0111'1111'1111;
-                    int16_t ch5 = (data[i+12] << 8 | data[i+11]) & 0b0000'0111'1111'1111;
-                    int16_t ch6 = (data[i+14] << 8 | data[i+13]) & 0b0000'0111'1111'1111;
-
-                    
-                    printf("ch1: %-4u ch2: %-4u ch3: %-4u ch4: %-4u ch5: %-4u ch6: %-4u\n\n", ch1, ch2, ch3, ch4, ch5, ch6);
-
-                    //printf("uart data[%d] startIdx[%d] stopIdx[%d] ", i, i+3, (i+frameLen-4));
-                    //for(int j=(i+3); j<(i+frameLen-4); j++){
-                    //    printf("0x%x ", data[j]);
-                    //}   
-                    //printf("\n");
-                    //int16_t ch1 = (data[i+4] << 8 | data[i+3]) & 0b0000'0111'1111'1111;
-                    //printf("channel1: %d\n", ch1);
-
                 }
 
                 i+=frameLen;
             }
-            vTaskDelay(10/portTICK_PERIOD_MS);
+            vTaskDelay(2/portTICK_PERIOD_MS);
         }
 
-        vTaskDelay(100/portTICK_PERIOD_MS);
+        vTaskDelay(2/portTICK_PERIOD_MS);
 
         loops++;
     }

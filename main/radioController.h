@@ -5,7 +5,7 @@
 
 
 
-struct Channel{
+typedef struct __attribute__((packed)){
     unsigned ch1  : 11;
     unsigned ch2  : 11;
     unsigned ch3  : 11;
@@ -22,7 +22,7 @@ struct Channel{
     unsigned ch14 : 11;
     unsigned ch15 : 11;
     unsigned ch16 : 11;
-};
+} Channel;
 
 
 

@@ -295,7 +295,8 @@ void crsf_task(void* args){
     {
         
         CRSF_receive_channels(&channels);
-        printf(">Channel 1: %d Channel 2: %d\n", channels.ch1, channels.ch2);
+        printf("Channel 1: %d Channel 2: %d Channel 3: %d Channel 4: %d Channel 5: %d Channel 6: %d\n", 
+        channels.ch1, channels.ch2, channels.ch3, channels.ch4, channels.ch5, channels.ch6);
 
         battery.voltage = 120; //voltage 10*V
         battery.current = 100; //current 10*A
