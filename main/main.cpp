@@ -71,22 +71,22 @@ void dmp_task(void* args){
     //ESP_ERROR_CHECK_WITHOUT_ABORT(status);
 
 
-    //status = mpu.set_x_accel_offset(-2889);
-    //ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-	//status = mpu.set_y_accel_offset(-444);
-    //ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-	//status = mpu.set_z_accel_offset(698);
-    //ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-	//status = mpu.set_x_gyro_offset(149);
-    //ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-	//status = mpu.set_y_gyro_offset(27);
-    //ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-	//status = mpu.set_z_gyro_offset(17);
-    //ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-    //status = mpu.calibrate_accel(6);
-    //ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-	//status = mpu.calibrate_gyro(6);
-    //ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+    status = mpu.set_x_accel_offset(-2889);
+    ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+	status = mpu.set_y_accel_offset(-444);
+    ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+	status = mpu.set_z_accel_offset(698);
+    ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+	status = mpu.set_x_gyro_offset(149);
+    ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+	status = mpu.set_y_gyro_offset(27);
+    ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+	status = mpu.set_z_gyro_offset(17);
+    ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+    status = mpu.calibrate_accel(6);
+    ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+	status = mpu.calibrate_gyro(6);
+    ESP_ERROR_CHECK_WITHOUT_ABORT(status);
 
 
     status = mpu.set_dmp_enabled(true);
@@ -122,23 +122,19 @@ void dmp_task(void* args){
     {
         xSemaphoreTake(dmp_avail, portMAX_DELAY);
 
-        status = mpu.get_curr_fifo_packet2();
+        //status = mpu.get_curr_fifo_packet2();
+        status = mpu.GetCurrentFIFOPacket(0,0);
         if(status == ESP_ERR_INVALID_SIZE){
             continue;
         }
         else
             ESP_ERROR_CHECK_WITHOUT_ABORT(status);
 
-        //print_debug(DEBUG_MAIN, DEBUG_DATA, "data:");
-        //for(int i=0;i<mpu.dmpPacketSize;i++){
-        //    print_debug(DEBUG_MAIN, DEBUG_DATA, " 0x%x", mpu.dmpBuffer[i]);
-        //}
-        //print_debug(DEBUG_MAIN, DEBUG_DATA, "\n");
         Quaternion quaternion;
         VectorFloat vec;
         mpu.get_quaternion(quaternion);
         mpu.get_gravity(vec, quaternion);
-        mpu.get_yaw_pitch_roll(quaternion,vec );
+        mpu.get_yaw_pitch_roll(quaternion,vec);
         //print_debug(DEBUG_MAIN, DEBUG_DATA, "w: %.3f x: %.3f y: %.3f z: %.3f\n", quaternion.w, quaternion.x, quaternion.y, quaternion.z);
 
 
@@ -206,7 +202,6 @@ void gyro_task(void* args){
         vTaskDelay(xDelay);
 	}
 }
-
 
 void altitude_task(void* args){
     constexpr TickType_t xDelay = 1000 / portTICK_PERIOD_MS;
@@ -277,9 +272,17 @@ void altitude_task(void* args){
     }
 }
 
+void radio_task(void* args){
+    RadioController* radio = new RadioController();
+
+    radio->test();
+
+}
+
+
 void app_main(void)
 {
-    uint32_t files =  DEBUG_MAIN; // | DEBUG_MPU6050 | DEBUG_I2C; // | DEBUG_BMP ;
+    uint32_t files =  DEBUG_MAIN | DEBUG_RADIO; // | DEBUG_MPU6050 | DEBUG_I2C; // | DEBUG_BMP ;
     uint32_t prio  = DEBUG_DATA |  DEBUG_ARGS | DEBUG_LOGIC; // | DEBUG_ARGS;// | DEBUG_LOGIC;
 
     set_loglevel(files, prio);
@@ -293,9 +296,10 @@ void app_main(void)
     printf("*****************************************************************\n");
 
 
-    TaskHandle_t altitude_handle, gyro_handle, dmp_handle;
+    TaskHandle_t altitude_handle, gyro_handle, dmp_handle, radio_handle;
     //xTaskCreatePinnedToCore(altitude_task, "altitude_task", 4048, nullptr, configMAX_PRIORITIES - 3, &altitude_handle, 0);
     //xTaskCreatePinnedToCore(gyro_task, "gyro_task", 4048, nullptr, configMAX_PRIORITIES - 3, &altitude_handle, 0);
-    xTaskCreatePinnedToCore(dmp_task, "dmp_task", 4048, nullptr, configMAX_PRIORITIES - 3, &dmp_handle, 0);
+    //xTaskCreatePinnedToCore(dmp_task, "dmp_task", 4048, nullptr, configMAX_PRIORITIES - 3, &dmp_handle, 0);
+    xTaskCreatePinnedToCore(radio_task, "radio_task", 16192, nullptr, configMAX_PRIORITIES - 3, &radio_handle, 0);
 
 }

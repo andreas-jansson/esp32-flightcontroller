@@ -661,12 +661,12 @@ esp_err_t Mpu6050::get_curr_fifo_packet2(){
         ESP_RETURN_ON_ERROR(status, log_tag, "Failed to get fifo count");
 
         while(fifoCount > length){
-            uint8_t trashBuf[59];
+            uint8_t trashBuf[128];
             uint8_t removeSize = fifoCount - length;  // save the latest length bytes
             //print_debug(DEBUG_MPU6050, DEBUG_LOGIC, "%-33s %u: clearing out fifo, bytes to clear: %u\n", __func__, __LINE__, removeSize);
 
             while(removeSize){ // read until only length bytes left in fifo
-                uint8_t bytesToRemove = fifoCount < 64 ? fifoCount : 64; 
+                uint8_t bytesToRemove = fifoCount < 128 ? fifoCount : 128; 
                 status = i2c->read(address, FIFO_R_W_REG, trashBuf, bytesToRemove);
                 ESP_RETURN_ON_ERROR(status, log_tag, "Failed to read fifo register");
                 removeSize -= bytesToRemove;
@@ -700,48 +700,62 @@ esp_err_t Mpu6050::get_curr_fifo_packet2(){
     return status;
 }
 
-
-/*
-int8_t GetCurrentFIFOPacket(uint8_t *data, uint8_t length) { // overflow proof
-     int16_t fifoC;
+int8_t Mpu6050::GetCurrentFIFOPacket(uint8_t *data, uint8_t length) { // overflow proof
+     data = dmpBuffer.get();
+     length = dmpPacketSize;
+     uint16_t fifoC;
+    int countLoop = 0;
+    
      // This section of code is for when we allowed more than 1 packet to be acquired
-     uint32_t BreakTimer = micros();
+     //uint32_t BreakTimer = micros();
      bool packetReceived = false;
      do {
-         if ((fifoC = getFIFOCount())  > length) {
+         get_fifo_count(fifoC);
+         if (fifoC  > length) {
 
              if (fifoC > 200) { // if you waited to get the FIFO buffer to > 200 bytes it will take longer to get the last packet in the FIFO Buffer than it will take to  reset the buffer and wait for the next to arrive
-                 resetFIFO(); // Fixes any overflow corruption
+                 reset_fifo(); // Fixes any overflow corruption
                  fifoC = 0;
-                 while (!(fifoC = getFIFOCount()) && ((micros() - BreakTimer) <= (getFIFOTimeout()))); // Get Next New Packet
+                 for (int i=0;i<100;i++){
+                    vTaskDelay(1/portTICK_PERIOD_MS);
+                 } // Get Next New Packet
+                get_fifo_count(fifoC);
             } 
             else { //We have more than 1 packet but less than 200 bytes of data in the FIFO Buffer
-               
-                uint8_t Trash[I2CDEVLIB_WIRE_BUFFER_LENGTH];
+                uint8_t Trash[128];
+                get_fifo_count(fifoC);
 
-                while ((fifoC = getFIFOCount()) > length) {  // Test each time just in case the MPU is writing to the FIFO Buffer
-                     fifoC = fifoC - length; // Save the last packet
-                     uint16_t  RemoveBytes;
-                     while (fifoC) { // fifo count will reach zero so this is safe
-                                        //180   < 32? (false) 180 : (true) 32
-                         RemoveBytes = (fifoC < I2CDEVLIB_WIRE_BUFFER_LENGTH) ? fifoC : I2CDEVLIB_WIRE_BUFFER_LENGTH; // Buffer Length is different than the packet length this will efficiently clear the buffer
-                         getFIFOBytes(Trash, (uint8_t)RemoveBytes);
-                         fifoC -= RemoveBytes;
-                     }
-                 }
-             }
+                while (fifoC > length) {  // Test each time just in case the MPU is writing to the FIFO Buffer
+                    
+                    fifoC = fifoC - length; // Save the last packet
+                    uint16_t  RemoveBytes;
+
+                    while (fifoC) { // fifo count will reach zero so this is safe
+                        RemoveBytes = (fifoC < 128) ? fifoC : 128; // Buffer Length is different than the packet length this will efficiently clear the buffer
+                        i2c->read(this->address,FIFO_R_W_REG, Trash, (uint8_t)RemoveBytes);
+                        fifoC -= RemoveBytes;
+                    }
+
+                    get_fifo_count(fifoC);
+                    vTaskDelay(10/portTICK_PERIOD_MS);
+                    if(countLoop>200)
+                        return 0;
+                    countLoop++;
+                }
+            }
          }
-
+        if(countLoop>200)
+                return 0;
+            countLoop++;
          if (!fifoC) return 0; // Called too early no data or we timed out after FIFO Reset
          // We have 1 packet
          packetReceived = fifoC == length;
-         if (!packetReceived && (micros() - BreakTimer) > (getFIFOTimeout())) return 0;
      } while (!packetReceived);
-     getFIFOBytes(data, length); //Get 1 packet
+     i2c->read(this->address,FIFO_R_W_REG, data, (uint8_t)length);
      return 1;
 }
 
-*/
+
 
 esp_err_t Mpu6050::get_fifo_count(uint16_t& count){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s:\n", __func__);
@@ -995,17 +1009,15 @@ esp_err_t Mpu6050::get_quaternion(Quaternion& quaternion){
     
     ESP_RETURN_ON_ERROR(!new_data_exists(), log_tag, "No new data exists\n");
 
-    int16_t w = ((dmpBuffer[0] << 8) | dmpBuffer[1]);    //
-    int16_t x = ((dmpBuffer[4] << 8) | dmpBuffer[5]);    //
-    int16_t y = ((dmpBuffer[8] << 8) | dmpBuffer[9]);    //
-    int16_t z = ((dmpBuffer[12] << 8) | dmpBuffer[13]);  //
+    int16_t w = ((dmpBuffer[0]  << 8) | dmpBuffer[1]);      //
+    int16_t x = ((dmpBuffer[4]  << 8) | dmpBuffer[5]);      //
+    int16_t y = ((dmpBuffer[8]  << 8) | dmpBuffer[9]);      //
+    int16_t z = ((dmpBuffer[12] << 8) | dmpBuffer[13]);     //
 
-    //printf("raw: w %d x %d y %d z %d\n", w, x, y, z);
-    quaternion.w = (float)w / 16384.0f;
-    quaternion.x = (float)x / 16384.0f;
-    quaternion.y = (float)y / 16384.0f;
-    quaternion.z = (float)z / 16384.0f;
-    //printf("pro: w %-3f x %-3f y %-3f z %-3f\n", quaternion.w, quaternion.x, quaternion.y, quaternion.z);
+    quaternion.w = (float)w / 16384.0f;     // 
+    quaternion.x = (float)x / 16384.0f;     //
+    quaternion.y = (float)y / 16384.0f;     //
+    quaternion.z = (float)z / 16384.0f;     //
 
     return ESP_OK;
 }
@@ -1028,11 +1040,11 @@ esp_err_t Mpu6050::get_gravity(VectorFloat& vector, Quaternion quaternion){
 esp_err_t Mpu6050::get_yaw_pitch_roll(Quaternion& q, VectorFloat& gravity) {
 
     // yaw: (about Z axis)
-    yawPitchRoll[YAW] = atan2(2*q.x*q.y - 2*q.w*q.z, 2*q.w*q.w + 2*q.x*q.x - 1);
+    yawPitchRoll[YAW]   = atan2(2*q.x*q.y - 2*q.w*q.z, 2*q.w*q.w + 2*q.x*q.x - 1);
     // pitch: (nose up/down, about Y axis)
     yawPitchRoll[PITCH] = atan2(gravity.x , sqrt(gravity.y*gravity.y + gravity.z*gravity.z));
     // roll: (tilt left/right, about X axis)
-    yawPitchRoll[ROLL] = atan2(gravity.y , gravity.z);
+    yawPitchRoll[ROLL]  = atan2(gravity.y , gravity.z);
 
     if (gravity.z < 0) {
         if(yawPitchRoll[PITCH] > 0) {
@@ -1041,8 +1053,8 @@ esp_err_t Mpu6050::get_yaw_pitch_roll(Quaternion& q, VectorFloat& gravity) {
             yawPitchRoll[PITCH] = -M_PI - yawPitchRoll[PITCH];
         }
     }
-    printf("[2A  roll      pitch      yaw\n");
-    printf("%-7.3f °C %-7.3f °C %-7.3f °C\n",yawPitchRoll[ROLL] * RAD_TO_DEG, yawPitchRoll[PITCH] * RAD_TO_DEG, yawPitchRoll[YAW] * RAD_TO_DEG);
+    printf("[2A  Roll      Pitch      Yaw\n");
+    printf("%-7.3f °C %-7.3f °C %-7.3f °C\n", yawPitchRoll[ROLL] * RAD_TO_DEG, yawPitchRoll[PITCH] * RAD_TO_DEG, yawPitchRoll[YAW] * RAD_TO_DEG);
 
 
     return ESP_OK;
