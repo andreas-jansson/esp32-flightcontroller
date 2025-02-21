@@ -7,6 +7,8 @@ idf_component_register(SRCS
                          "src/mpu6050.cpp"
                          "src/webClient.cpp"
                          "src/drone.cpp"
+                         "src/development.cpp"
+                         "src/dshot600.cpp"
                        INCLUDE_DIRS 
                          "."
                          "includes"
