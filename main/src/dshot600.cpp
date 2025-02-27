@@ -1,5 +1,9 @@
+
+#include <chrono>
+
 #include "dshot600.h"
 #include "common_data.h"
+#include "debug.h"
 
 #include "esp_err.h"
 #include "esp_log.h"
@@ -10,125 +14,411 @@
 #define DSHOT_ESC_RESOLUTION_HZ 40000000 
 static const char *TAG = "dshot_encoder";
 
+
+using namespace Dshot;
+
+Dshot600* Dshot600::dshot = nullptr;
+
+
+// Could argue to remove 0 values and handle that seperately
+constexpr TickType_t dshotWaitLookup[48] = {
+    pdMS_TO_TICKS(1000), //DSHOT_CMD_MOTOR_STOP
+    pdMS_TO_TICKS(260),  //DSHOT_CMD_BEEP1
+    pdMS_TO_TICKS(260),  //DSHOT_CMD_BEEP2
+    pdMS_TO_TICKS(260),  //DSHOT_CMD_BEEP3
+    pdMS_TO_TICKS(260),  //DSHOT_CMD_BEEP4
+    pdMS_TO_TICKS(260),  //DSHOT_CMD_BEEP5
+    pdMS_TO_TICKS(12),   //DSHOT_CMD_ESC_INFO
+    pdMS_TO_TICKS(0),    //DSHOT_CMD_SPIN_DIRECTION_1
+    pdMS_TO_TICKS(0),    //DSHOT_CMD_SPIN_DIRECTION_2
+    pdMS_TO_TICKS(0),    //DSHOT_CMD_3D_MODE_OFF
+    pdMS_TO_TICKS(0),    //DSHOT_CMD_3D_MODE_ON
+    pdMS_TO_TICKS(0),    //DSHOT_CMD_SETTINGS_REQUEST
+    pdMS_TO_TICKS(35),   //DSHOT_CMD_SAVE_SETTINGS
+    pdMS_TO_TICKS(0),    //DSHOT_EXTENDED_TELEMETRY_ENABLE
+    pdMS_TO_TICKS(0),    //DSHOT_EXTENDED_TELEMETRY_DISABLE
+    pdMS_TO_TICKS(0),    //NOT_KNOWN1
+    pdMS_TO_TICKS(0),    //NOT_KNOWN2
+    pdMS_TO_TICKS(0),    //NOT_KNOWN3
+    pdMS_TO_TICKS(0),    //NOT_KNOWN4
+    pdMS_TO_TICKS(0),    //NOT_KNOWN5
+    pdMS_TO_TICKS(0),    //DSHOT_CMD_SPIN_DIRECTION_NORMAL
+    pdMS_TO_TICKS(0),    //DSHOT_CMD_SPIN_DIRECTION_REVERSED
+    pdMS_TO_TICKS(0),    //DSHOT_CMD_LED0_ON
+    pdMS_TO_TICKS(0),    //DSHOT_CMD_LED1_ON
+    pdMS_TO_TICKS(0),    //DSHOT_CMD_LED2_ON
+    pdMS_TO_TICKS(0),    //DSHOT_CMD_LED3_ON
+    pdMS_TO_TICKS(0),    //DSHOT_CMD_LED0_OFF
+    pdMS_TO_TICKS(0),    //DSHOT_CMD_LED1_OFF
+    pdMS_TO_TICKS(0),    //DSHOT_CMD_LED2_OFF
+    pdMS_TO_TICKS(0),    //DSHOT_CMD_LED3_OFF
+    pdMS_TO_TICKS(0),    //AUDIO_STREAM_MODE
+    pdMS_TO_TICKS(0),    //SILENT_MODE
+    pdMS_TO_TICKS(0),    //DSHOT_CMD_SIGNAL_LINE_TELEMETRY_DISABLE
+    pdMS_TO_TICKS(0),    //DSHOT_CMD_SIGNAL_LINE_TELEMETRY_ENABLE
+    pdMS_TO_TICKS(0),    //DSHOT_CMD_SIGNAL_LINE_CONTINUOUS_ERPM_TELEMETRY
+    pdMS_TO_TICKS(0),    //DSHOT_CMD_SIGNAL_LINE_CONTINUOUS_ERPM_PERIOD_TELEMETRY
+    pdMS_TO_TICKS(0),    //NOT_KNOWN6
+    pdMS_TO_TICKS(0),    //NOT_KNOWN7
+    pdMS_TO_TICKS(0),    //NOT_KNOWN8
+    pdMS_TO_TICKS(0),    //NOT_KNOWN9
+    pdMS_TO_TICKS(0),    //NOT_KNOWN10
+    pdMS_TO_TICKS(0),    //NOT_KNOWN11
+    pdMS_TO_TICKS(0),    //DSHOT_CMD_SIGNAL_LINE_TEMPERATURE_TELEMETRY
+    pdMS_TO_TICKS(0),    //DSHOT_CMD_SIGNAL_LINE_VOLTAGE_TELEMETRY
+    pdMS_TO_TICKS(0),    //DSHOT_CMD_SIGNAL_LINE_CURRENT_TELEMETRY
+    pdMS_TO_TICKS(0),    //DSHOT_CMD_SIGNAL_LINE_CONSUMPTION_TELEMETRY
+    pdMS_TO_TICKS(0),    //DSHOT_CMD_SIGNAL_LINE_ERPM_TELEMETRY
+    pdMS_TO_TICKS(0)     //DSHOT_CMD_SIGNAL_LINE_ERPM_PERIOD_TELEMETRY
+};
+
+constexpr uint16_t dshotLoopsLookup[48] = {
+    1,      //DSHOT_CMD_MOTOR_STOP
+    1,      //DSHOT_CMD_BEEP1
+    1,      //DSHOT_CMD_BEEP2
+    1,      //DSHOT_CMD_BEEP3
+    1,      //DSHOT_CMD_BEEP4
+    1,      //DSHOT_CMD_BEEP5
+    1,      //DSHOT_CMD_ESC_INFO
+    6,      //DSHOT_CMD_SPIN_DIRECTION_1
+    6,      //DSHOT_CMD_SPIN_DIRECTION_2
+    6,      //DSHOT_CMD_3D_MODE_OFF
+    6,      //DSHOT_CMD_3D_MODE_ON
+    1,      //DSHOT_CMD_SETTINGS_REQUEST
+    6,      //DSHOT_CMD_SAVE_SETTINGS
+    6,      //DSHOT_EXTENDED_TELEMETRY_ENABLE
+    6,      //DSHOT_EXTENDED_TELEMETRY_DISABLE
+    1,      //NOT_KNOWN1
+    1,      //NOT_KNOWN2
+    1,      //NOT_KNOWN3
+    1,      //NOT_KNOWN4
+    1,      //NOT_KNOWN5
+    1,      //DSHOT_CMD_SPIN_DIRECTION_NORMAL
+    6,      //DSHOT_CMD_SPIN_DIRECTION_REVERSED
+    6,      //DSHOT_CMD_LED0_ON
+    1,      //DSHOT_CMD_LED1_ON
+    1,      //DSHOT_CMD_LED2_ON
+    1,      //DSHOT_CMD_LED3_ON
+    1,      //DSHOT_CMD_LED0_OFF
+    1,      //DSHOT_CMD_LED1_OFF
+    1,      //DSHOT_CMD_LED2_OFF
+    1,      //DSHOT_CMD_LED3_OFF
+    1,      //AUDIO_STREAM_MODE
+    1,      //SILENT_MODE
+    6,      //DSHOT_CMD_SIGNAL_LINE_TELEMETRY_DISABLE
+    6,      //DSHOT_CMD_SIGNAL_LINE_TELEMETRY_ENABLE
+    6,      //DSHOT_CMD_SIGNAL_LINE_CONTINUOUS_ERPM_TELEMETRY
+    6,      //DSHOT_CMD_SIGNAL_LINE_CONTINUOUS_ERPM_PERIOD_TELEMETRY
+    1,      //NOT_KNOWN6
+    1,      //NOT_KNOWN7
+    1,      //NOT_KNOWN8
+    1,      //NOT_KNOWN9
+    1,      //NOT_KNOWN10
+    1,      //NOT_KNOWN11
+    1,      //DSHOT_CMD_SIGNAL_LINE_TEMPERATURE_TELEMETRY
+    1,      //DSHOT_CMD_SIGNAL_LINE_VOLTAGE_TELEMETRY
+    1,      //DSHOT_CMD_SIGNAL_LINE_CURRENT_TELEMETRY
+    1,      //DSHOT_CMD_SIGNAL_LINE_CONSUMPTION_TELEMETRY
+    1,      //DSHOT_CMD_SIGNAL_LINE_ERPM_TELEMETRY
+    1       //DSHOT_CMD_SIGNAL_LINE_ERPM_PERIOD_TELEMETRY
+};
+
+
+
+
+
+
 /*      My logic        */
 
 Dshot600::Dshot600(gpio_num_t motorPin[Dshot::maxChannels]){
 
     rmt_tx_channel_config_t tx_chan_config{};
 
-    tx_chan_config.clk_src = RMT_CLK_SRC_APB;                   // select source clock
-    //tx_chan_config.gpio_num = m1_pin;                         // GPIO number
-    tx_chan_config.mem_block_symbols = 64;                      // memory block size, 64 * 4 = 256Bytes
+    tx_chan_config.clk_src = RMT_CLK_SRC_DEFAULT;               // select source clock
+    tx_chan_config.mem_block_symbols = 128;                     // memory block size, 64 * 4 = 256Bytes
     tx_chan_config.resolution_hz = DSHOT_ESC_RESOLUTION_HZ;     // 1MHz tick resolution, i.e. 1 tick = 1us
-    tx_chan_config.trans_queue_depth = 10;                      // set the number of transactions that can pend in the background
+    tx_chan_config.trans_queue_depth = 1;                       // set the number of transactions that can pend in the background
 
-    //ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_new_tx_channel(&tx_chan_config, &this->esc_motor_chan[0]));
-    //ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_new_tx_channel(&tx_chan_config, &this->esc_motor_chan[1]));
-    //ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_new_tx_channel(&tx_chan_config, &this->esc_motor_chan[2]));
-    //ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_new_tx_channel(&tx_chan_config, &this->esc_motor_chan[3]));
 
     dshot_esc_encoder_config_t encoder_config = {
         .resolution = DSHOT_ESC_RESOLUTION_HZ,
         .baud_rate = 600000, 
-        .post_delay_us = 50, // extra delay between each frame
+        .post_delay_us = 25, // extra delay between each frame
     };
     ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_new_dshot_esc_encoder(&encoder_config, &this->dshot_encoder));
-
-
-    //rmt_enable(this->esc_motor_chan[0]);
-    //rmt_enable(this->esc_motor_chan[1]);
-    //rmt_enable(this->esc_motor_chan[2]);
-    //rmt_enable(this->esc_motor_chan[3]);
 
     for(int i=0;i<Dshot::maxChannels;i++){
         tx_chan_config.gpio_num = motorPin[i];
         ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_new_tx_channel(&tx_chan_config, &this->esc_motor_chan[i]));
+        printf("motor chan %d: %p\n", i, this->esc_motor_chan[i]);
     }
 
     for(int i=0;i<Dshot::maxChannels;i++){
         ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_enable(this->esc_motor_chan[i]));
     }
 
+    this->m_dshot_queue_handle = xRingbufferCreate(sizeof(DshotMessage) * 10, RINGBUF_TYPE_NOSPLIT);
+    if (this->m_dshot_queue_handle == NULL) {
+        printf("Failed to create drone ring buffer\n");
+    }
 
-    //rmt_sync_manager_config_t synchro_config = {
-    //    .tx_channel_array = this->esc_motor_chan,
-    //    .array_size = 4,
-    //};
+    //DshotMessage msg{};
+    //msg.writeTo[MOTOR1] = true;
+    //msg.cmd[MOTOR1] = 0;
+    //msg.loops[MOTOR1] = -1;
 
-   //ESP_ERROR_CHECK(rmt_new_sync_manager(&synchro_config, &synchro));
+    //write_command(msg);
+    //vTaskDelay(pdMS_TO_TICKS(3000));
 
+    //msg.speed[MOTOR1] = 100;
 
-    //rmt_transmit_config_t tx_config = {
-    //    .loop_count = -1, // infinite loop
-    //};
-
-    //dshot_esc_throttle_t throttle = {
-    //    .throttle = 0,
-    //    .telemetry_req = false, // telemetry is not supported in this example
-    //};
-
-
-    //ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_transmit(this->esc_chan_m1, this->dshot_encoder, &throttle, sizeof(throttle), &tx_config));
-    //ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_transmit(this->esc_chan_m2, this->dshot_encoder, &throttle, sizeof(throttle), &tx_config));
-    //ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_transmit(this->esc_chan_m3, this->dshot_encoder, &throttle, sizeof(throttle), &tx_config));
-    //ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_transmit(this->esc_chan_m4, this->dshot_encoder, &throttle, sizeof(throttle), &tx_config));
+    //for(int i=0;i<1000;i++){
+    //    ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_disable(this->esc_motor_chan[MOTOR1]));
+    //    ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_enable(this->esc_motor_chan[MOTOR1]));
+    //    write_speed(msg);
+    //    vTaskDelay(pdMS_TO_TICKS(1000));
+    //    msg.speed[MOTOR1] += 10;
+    //}
 
 }
 
-esp_err_t Dshot600::write(struct DshotMessage& msg, bool sendCommand){
+Dshot600* Dshot600::GetInstance(gpio_num_t motorPin[Dshot::maxChannels]){
+    if(dshot==nullptr){
+        dshot = new Dshot600(motorPin);
+    }
+    return dshot;
+}
+
+Dshot600* Dshot600::GetInstance(){
+    return dshot;
+}
+
+void Dshot600::dshot_task_old(void* args){
+
+    esp_err_t status = 0;
+    uint16_t prevSpeed[Dshot::maxChannels]{};
+
+    DshotMessage msg{};
+    DshotMessage prevSpeedMsg{};
+
+    bool speedMsgRecieved{false};
+
+
+    while(true){
+
+        if(!speedMsgRecieved){
+            print_debug(DEBUG_DSHOT, DEBUG_LOGIC, "awaiting msg - init\n");
+            status = get_message(msg, portMAX_DELAY);
+            ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+            print_debug(DEBUG_DSHOT, DEBUG_LOGIC, "awaiting msg complete - init status: %d\n", status);
+            print_debug(DEBUG_DRONE, DEBUG_DATA, "init msg: writeTo %d cmd:%u speed: %u\n", msg.writeTo[MOTOR1], msg.cmd[MOTOR1], msg.speed[MOTOR1] );
+        }
+        else{
+            print_debug(DEBUG_DSHOT, DEBUG_LOGIC, "awaiting msg\n");
+            status = get_message(msg, pdMS_TO_TICKS(0));
+            print_debug(DEBUG_DSHOT, DEBUG_LOGIC, "awaiting msg status: %d\n", status);
+            print_debug(DEBUG_DRONE, DEBUG_DATA, "init msg: writeTo %d cmd:%u speed: %u\n", msg.writeTo[MOTOR1], msg.cmd[MOTOR1], msg.speed[MOTOR1] );
+        }
+
+        if(status == ESP_OK){
+            print_debug(DEBUG_DSHOT, DEBUG_LOGIC, "writing new msg\n");
+            status = parse_dshot_message(msg);
+            ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+
+            if(status){
+                print_debug(DEBUG_DSHOT, DEBUG_LOGIC, "no valid msg\n");
+                continue;
+            }
+
+            for(int i=0;i<Dshot::maxChannels;i++){
+
+                if(is_command(msg, i)){
+                    ESP_ERROR_CHECK_WITHOUT_ABORT(write_command(msg));
+                }
+                else if(is_speed(msg, i)){
+                    ESP_ERROR_CHECK_WITHOUT_ABORT(set_speed(msg));
+                    prevSpeedMsg = msg;
+
+                    if(!speedMsgRecieved)
+                        speedMsgRecieved = true;
+                }
+            }
+        }
+        else if(status == ESP_ERR_NOT_FOUND){
+            print_debug(DEBUG_DSHOT, DEBUG_LOGIC, "writing previous speed\n");
+            ESP_ERROR_CHECK_WITHOUT_ABORT(set_speed(prevSpeedMsg));
+        }
+        else{
+            ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+        }
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+}
+
+void Dshot600::dshot_task(void* args){
+
+    esp_err_t status = 0;
+    uint16_t prevSpeed[Dshot::maxChannels]{};
+
+
+    while(true){
+
+        DshotMessage msg{};
+        status = get_message(msg, portMAX_DELAY);
+        ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+   
+        if(status == ESP_OK){
+            print_debug(DEBUG_DSHOT, DEBUG_LOGIC, "writing new msg\n");
+            status = parse_dshot_message(msg);
+            ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+
+            if(status){
+                print_debug(DEBUG_DSHOT, DEBUG_LOGIC, "no valid msg\n");
+                continue;
+            }
+
+            for(int i=0;i<Dshot::maxChannels;i++){
+                if(is_command(msg, i)){
+                    ESP_ERROR_CHECK_WITHOUT_ABORT(write_command(msg));
+                }
+                else if(is_speed(msg, i)){
+                    ESP_ERROR_CHECK_WITHOUT_ABORT(set_speed(msg));
+
+                }
+            }
+        }
+
+        else{
+            ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+        }
+        vTaskDelay(pdMS_TO_TICKS(2));
+    }
+}
+
+
+bool Dshot600::is_command(struct Dshot::DshotMessage& msg, int i){
+
+    if(!msg.writeTo[i]){
+        return false;
+    }
+
+    if(msg.speed[i] > 0){
+        return false;
+    } 
+
+    if(!(msg.cmd[i] >= 0 && msg.cmd[i] <= 47)){
+        return false;
+    } 
+
+
+    return true;
+}
+
+bool Dshot600::is_speed(struct Dshot::DshotMessage& msg, int i){
+    return msg.speed[i] > 0 && msg.writeTo[i];
+}
+
+esp_err_t Dshot600::get_message(struct Dshot::DshotMessage& msg, TickType_t ticks){
+    esp_err_t status = 0;
+
+    size_t itemSize = sizeof(Dshot::DshotMessage);
+    DshotMessage* data = (Dshot::DshotMessage*)xRingbufferReceive(this->m_dshot_queue_handle, &itemSize, ticks);
+    if(data != nullptr){
+        msg = *data;
+        vRingbufferReturnItem(this->m_dshot_queue_handle, (void*)data);
+    }
+    else{
+        return ESP_ERR_NOT_FOUND;
+    }
+
+    return status;
+}
+
+esp_err_t Dshot600::write_speed(struct Dshot::DshotMessage& msg){
 
     esp_err_t status = 0;
     dshot_esc_throttle_t throttle[Dshot::maxChannels]{};
     rmt_transmit_config_t tx_config[Dshot::maxChannels]{};
 
     for(int i=0;i<Dshot::maxChannels;i++){
-
         throttle[i] = {
-            .throttle = static_cast<uint16_t>(sendCommand? msg.cmd[i] : msg.speed[i]),
+            .throttle = msg.speed[i],
             .telemetry_req = msg.telemetryReq[i], 
         };
 
         tx_config[i] = {
-            .loop_count = msg.loops[i],
-        };
+            .loop_count = msg.loops[i] == -1? -1 : 0,
+        };    
     }
 
-    //status = rmt_transmit(this->esc_chan, this->dshot_encoder, &throttle, sizeof(throttle), &tx_config);
-    //ESP_RETURN_ON_ERROR(status, TAG, "Failed to write dshoot value %u telemetry: %s", throttleValue, telemetryReq? "yes" : "no");
-
-
-    // currently writes to all 4 synced.
     for(int i=0;i<Dshot::maxChannels;i++){
-        status |= rmt_transmit(this->esc_motor_chan[0], this->dshot_encoder, &throttle[i], sizeof(throttle[i]), &tx_config[i]);
+        if(msg.writeTo[i]){
+
+            ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_disable(this->esc_motor_chan[i]));
+            ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_enable(this->esc_motor_chan[i]));
+            ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_transmit(this->esc_motor_chan[i], this->dshot_encoder, &throttle[i], sizeof(throttle[i]), &tx_config[i]));   
+            printf("%5u : %d 1 ms in ticks: %lu\n", throttle[i].throttle, tx_config[i].loop_count, pdMS_TO_TICKS(1));
+        }
     }
 
-    return ESP_OK;
+    return status;
+}
+
+esp_err_t Dshot600::write_command(struct Dshot::DshotMessage& msg){
+
+    esp_err_t status = 0;
+    dshot_esc_throttle_t throttle[Dshot::maxChannels]{};
+    rmt_transmit_config_t tx_config[Dshot::maxChannels]{};
+
+    for(int i=0;i<Dshot::maxChannels;i++){
+        throttle[i] = {
+            .throttle = msg.cmd[i],
+            .telemetry_req = msg.telemetryReq[i], 
+        };
+
+        tx_config[i] = {
+            .loop_count = msg.loops[i] == -1? -1 : 0,
+        };    
+    }
+
+    
+
+    for(int i=0;i<Dshot::maxChannels;i++){
+
+        if(msg.writeTo[i]){
+
+            for(uint16_t j=0;j<dshotLoopsLookup[msg.cmd[i]];j++){
+                ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_disable(this->esc_motor_chan[i]));
+                ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_enable(this->esc_motor_chan[i]));
+                vTaskDelay(pdMS_TO_TICKS(2));
+                ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_transmit(this->esc_motor_chan[i], this->dshot_encoder, &throttle[i], sizeof(throttle[i]), &tx_config[i]));
+
+                if(dshotWaitLookup[msg.cmd[i]] > 0) 
+                    vTaskDelay(dshotWaitLookup[msg.cmd[i]]);
+            }
+        }
+    }
+    return status;
 }
 
 /**
  * speed_mX should be between 0 - 2000
  * loops_mX should be larger than 0 if write_to_mX is true
  */
-esp_err_t Dshot600::set_speed(struct DshotMessage& msg){
+esp_err_t Dshot600::set_speed(struct Dshot::DshotMessage& msg){
 
     esp_err_t status = 0;
-    constexpr uint8_t throttle_offset{48}; // value 0 - 47 is reserved for commands, 48 - 2047 is speed
-
-
-    for(int i=0;i<Dshot::maxChannels;i++){
-        msg.speed[i] += throttle_offset;
-    }
 
     status = parse_dshot_message(msg);
     ESP_RETURN_ON_ERROR(status, TAG, "Failed to parse msg");
 
-    status = write(msg, false);
+    status = write_speed(msg);
     ESP_RETURN_ON_ERROR(status, TAG, "Failed to write dshoot value msg");
 
     return status;
 }
 
-esp_err_t Dshot600::parse_dshot_message(struct DshotMessage& msg) {
+esp_err_t Dshot600::parse_dshot_message(struct Dshot::DshotMessage& msg) {
     bool badMsg = false;
     uint8_t writeToCheck{};
 
@@ -139,17 +429,23 @@ esp_err_t Dshot600::parse_dshot_message(struct DshotMessage& msg) {
 
     if (writeToCheck == 0) {
         ESP_LOGE(TAG, "Invalid: No motor write request");
+        for(int i=0;i<Dshot::maxChannels;i++){
+            printf("m%d writeTo: %d speed: %d cmd: %d\n", i, msg.writeTo[i], msg.speed[i], msg.cmd[i]);
+        }
         return ESP_FAIL;
     }
 
-
     // Validate motor speed and loop count
     auto validate_motor = [](uint16_t speed, uint8_t loops) {
-        return (speed >= 48 && speed <= 2047) && (loops > 0);
+        return (speed >= Dshot::minThrottleValue && speed <= Dshot::maxThrottleValue);
     };
 
     for(int i=0;i<Dshot::maxChannels;i++){
-        if (msg.writeTo[i] && !validate_motor(msg.speed[i], msg.loops[i])) badMsg = true;
+        if(msg.speed[i] != 0)
+            if (msg.writeTo[i] && !validate_motor(msg.speed[i], msg.loops[i])) {
+                printf("bad msg: %d writeTo %d cmd %u speed %u\n", i, msg.writeTo[i], msg.cmd[i], msg.speed[i]);
+                badMsg = true;
+            }
     }
 
     for(int i=0;i<Dshot::maxChannels;i++){
@@ -181,32 +477,79 @@ esp_err_t Dshot600::set_motor_spin_cmd(enum Motor motorNum, enum MotorDirection 
     status = parse_dshot_message(msg);
     ESP_RETURN_ON_ERROR(status, TAG, "Failed to parse msg");
 
-    status = write(msg, true);
+    status = write_command(msg);
     ESP_RETURN_ON_ERROR(status, TAG, "Failed to write dshoot value msg");
 
     return status;
 }
 
-esp_err_t Dshot600::beep_cmd(enum BeepNum num){
+esp_err_t Dshot600::beep_cmd(enum Dshot::BeepNum num){
+
+    esp_err_t status = 0;
+    DshotMessage msg{};
+    
+
+    msg.writeTo[0] = true;
+    msg.cmd[0] = DSHOT_CMD_BEEP1 + num;
+    msg.loops[0] = 1;
+
+
+    status = parse_dshot_message(msg);
+    ESP_RETURN_ON_ERROR(status, TAG, "Failed to parse msg");
+
+    status = write_command(msg);
+    ESP_RETURN_ON_ERROR(status, TAG, "Failed to write dshoot value msg");
+
+    return status;
+
+}
+
+esp_err_t Dshot600::blink_led_cmd(){
+
+    esp_err_t status = 0;
+    DshotMessage msg{};
+    
+
+    msg.writeTo[0] = true;
+    msg.cmd[0] = DSHOT_CMD_LED0_ON;
+    msg.loops[0] = 1;
+
+
+    status = parse_dshot_message(msg);
+    ESP_RETURN_ON_ERROR(status, TAG, "Failed to parse msg");
+
+    status = write_command(msg);
+    ESP_RETURN_ON_ERROR(status, TAG, "Failed to write dshoot value msg");
+
+    vTaskDelay(pdMS_TO_TICKS(1000));
+
+    msg.cmd[0] = DSHOT_CMD_LED0_OFF;
+    status = write_command(msg);
+    ESP_RETURN_ON_ERROR(status, TAG, "Failed to write dshoot value msg");
+
+    return status;
+
+}
+
+esp_err_t Dshot600::arm_esc_cmd(){
 
     esp_err_t status = 0;
     DshotMessage msg{};
     
     for(int i=0;i<Dshot::maxChannels;i++){
-        msg.writeTo[i] = true;
-        msg.cmd[i] = DSHOT_CMD_BEEP1 + num;
+        msg.writeTo[i] = i == 0? true : false;
+        msg.cmd[i] = DSHOT_CMD_MOTOR_STOP;
+        msg.loops[i] = 10000;
+
+        status = parse_dshot_message(msg);
+        ESP_RETURN_ON_ERROR(status, TAG, "Failed to parse msg");
     }
 
-    status = parse_dshot_message(msg);
-    ESP_RETURN_ON_ERROR(status, TAG, "Failed to parse msg");
-
-    status = write(msg, true);
+    status = write_command(msg);
     ESP_RETURN_ON_ERROR(status, TAG, "Failed to write dshoot value msg");
 
     return status;
-
 }
-
 
 
 
@@ -284,6 +627,8 @@ static size_t rmt_encode_dshot_esc(rmt_encoder_t *encoder, rmt_channel_handle_t 
     *ret_state = state;
     return encoded_symbols;
 }
+
+
 
 /* configure timings for rmt data */
 esp_err_t Dshot600::rmt_new_dshot_esc_encoder(const dshot_esc_encoder_config_t *config, rmt_encoder_handle_t *ret_encoder)

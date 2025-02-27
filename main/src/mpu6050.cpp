@@ -70,7 +70,7 @@ esp_err_t Mpu6050::mpu6050_init(){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s:\n", __func__);
     esp_err_t status = 0;
 
-    status = set_clk_source(0x3);
+    status = set_clk_source(1);
     ESP_RETURN_ON_ERROR(status, log_tag, "Failed to set clock source: 0x%x", 0);
 
     status = set_sample_rate(4);
@@ -146,7 +146,7 @@ esp_err_t Mpu6050::dmp_init(){
     ESP_RETURN_ON_ERROR(status, log_tag, "Failed to reset i2c master");
 
     // setClockSource(MPU6050_CLOCK_PLL_ZGYRO);
-    status = set_clk_source(0x2);
+    status = set_clk_source(0x3);
     ESP_RETURN_ON_ERROR(status, log_tag, "Failed to set clk source 0x%x", 0x3);
 
     // setIntEnabled(1<<MPU6050_INTERRUPT_FIFO_OFLOW_BIT|1<<MPU6050_INTERRUPT_DMP_INT_BIT);
@@ -270,24 +270,32 @@ void Mpu6050::dmp_task(void* args){
     status = this->set_fifo_enable(true);
     ESP_ERROR_CHECK_WITHOUT_ABORT(status);
 
-
+    // old
     // getXAccelOffset: -3881
     // getYAccelOffset: 246
     // getZAccelOffset: 56
     // getXGyroOffset: 13
     // getYGyroOffset: 82
     // getZGyroOffset: 7
-    status = set_x_accel_offset(-3881);
+
+    // new
+    //getXAccelOffset: -4991
+    //getYAccelOffset: 1534
+    //getZAccelOffset: 476
+    //getXGyroOffset: -61
+    //getYGyroOffset: 32
+    //getZGyroOffset: 3
+    status = set_x_accel_offset(-4991);
     ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-	status = set_y_accel_offset(246);
+	status = set_y_accel_offset(1534);
     ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-	status = set_z_accel_offset(56);
+	status = set_z_accel_offset(476);
     ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-	status = set_x_gyro_offset(13);
+	status = set_x_gyro_offset(-61);
     ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-    status = set_y_gyro_offset(82);
+    status = set_y_gyro_offset(32);
     ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-	status = set_z_gyro_offset(7);
+	status = set_z_gyro_offset(3);
     ESP_ERROR_CHECK_WITHOUT_ABORT(status);
     //status = mpu.calibrate_accel(6);
     //ESP_ERROR_CHECK_WITHOUT_ABORT(status);
@@ -338,7 +346,7 @@ void Mpu6050::dmp_task(void* args){
         if(ypr != yprPrev){ // compare the first 4 bytes of the struct which are the 3 floats
             BaseType_t res = xRingbufferSend(dmp_buf_handle, &ypr, sizeof(YawPitchRoll), 1);
             if (res != pdTRUE) {
-                printf("Failed to send dmp item: handle %p size %u\n", web_buf_handle, sizeof(ypr));
+                //printf("Failed to send dmp item: handle %p size %u\n", web_buf_handle, sizeof(ypr));
             } 
         }
     }
@@ -711,7 +719,6 @@ esp_err_t Mpu6050::set_full_scale_accel_range(uint8_t data){
     return status; 
 }
 
-
 esp_err_t Mpu6050:: set_dmp_config1(uint8_t data){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s: data 0x%x\n", __func__, data);
     esp_err_t status = 0;
@@ -797,8 +804,6 @@ esp_err_t Mpu6050::set_dmp_enabled(bool enable){
     return status; 
 }
 
-
-
 esp_err_t Mpu6050::reset_dmp(){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s:\n", __func__);
     esp_err_t status = 0;
@@ -833,7 +838,6 @@ esp_err_t Mpu6050::get_int_satus(uint8_t& data){
     return status; 
 }
 
-
 esp_err_t Mpu6050::calibrate_gyro(){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s:\n", __func__);
     esp_err_t status = 0;
@@ -841,7 +845,6 @@ esp_err_t Mpu6050::calibrate_gyro(){
 
     return status;
 }
-
 
 esp_err_t Mpu6050::get_6axis_motion(int16_t& ax, int16_t& ay, int16_t& az, int16_t& gx, int16_t& gy, int16_t& gz){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s:\n", __func__);
@@ -1041,22 +1044,18 @@ esp_err_t Mpu6050::get_curr_fifo_packet2(){
     return status;
 }
 
-
-
 esp_err_t Mpu6050::get_dmp_packet() { // overflow proof    
 
     esp_err_t status = 0;
     uint16_t count = 0;
 
-    status = i2c->read(this->address,FIFO_R_W_REG, dmpBuffer.get(), (uint8_t)dmpPacketSize);
+    status = i2c->read(this->address, FIFO_R_W_REG, dmpBuffer.get(), (uint8_t)dmpPacketSize);
     ESP_RETURN_ON_ERROR(status, log_tag, "Failed to read DMP data");
 
     set_new_data_exists();
 
     return status;
 }
-
-
 
 esp_err_t Mpu6050::get_fifo_count(uint16_t& count){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s:\n", __func__);
@@ -1212,7 +1211,6 @@ esp_err_t Mpu6050::dump_registers(){
     return status;
 }
 
-
 esp_err_t Mpu6050::set_x_accel_offset(int16_t offset){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s: offset %d\n", __func__, offset);
     esp_err_t status = 0;
@@ -1223,6 +1221,7 @@ esp_err_t Mpu6050::set_x_accel_offset(int16_t offset){
 
     return status;
 }
+
 esp_err_t Mpu6050::set_y_accel_offset(int16_t offset){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s: offset %d\n", __func__, offset);
     esp_err_t status = 0;
@@ -1233,6 +1232,7 @@ esp_err_t Mpu6050::set_y_accel_offset(int16_t offset){
 
     return status;
 }
+
 esp_err_t Mpu6050::set_z_accel_offset(int16_t offset){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s: offset %d\n", __func__, offset);
     esp_err_t status = 0;
@@ -1243,6 +1243,7 @@ esp_err_t Mpu6050::set_z_accel_offset(int16_t offset){
 
     return status;
 }
+
 esp_err_t Mpu6050::set_x_gyro_offset(int16_t offset){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s: offset %d\n", __func__, offset);
     esp_err_t status = 0;
@@ -1380,7 +1381,7 @@ esp_err_t Mpu6050::get_yaw_pitch_roll(Quaternion& q, VectorFloat& gravity, YawPi
     //printf("[2A[2K  Roll    Pitch     Yaw\n");
     //printf("[2K%-5.3f °C %-5.3f °C %-5.3f °C\n", ypr.roll * RAD_TO_DEG, ypr.pitch * RAD_TO_DEG, ypr.yaw * RAD_TO_DEG);
 
-    r_yawPitchRoll = this->ypr;
+  r_yawPitchRoll = this->ypr;
 
     return ESP_OK;
 }

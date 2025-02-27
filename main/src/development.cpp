@@ -4,8 +4,13 @@
 #include "development.h"
 #include "common_data.h"
 #include "drone.h"
+#include "debug.h"
 
 #define WEB_TASK
+
+
+#define log_tag "console_telemetry"
+
 
 static RingbufHandle_t ringBuffer_web = nullptr;
 
@@ -24,30 +29,30 @@ int mapValue(int x, int in_min, int in_max, int out_min, int out_max) {
 void draw_progress_char_single(){
 
     wchar_t block = '*';
-    printf("%lc", block);
+    print_debug(DEBUG_TELEMETRY, DEBUG_DATA,"%lc", block);
     fflush(stdout);
 }
 
 void draw_progress_bar_pos(std::string num, int value, int nrOfChars,  int slivers, int maxChars){
 
-    printf("channel (%s) %5d                   |", num.c_str(), value);
+    print_debug(DEBUG_TELEMETRY, DEBUG_DATA,"channel (%s) %5d                   |", num.c_str(), value);
     for(int i=0;i<nrOfChars;i++) {
         draw_progress_char_single();
     }
-    printf("\n");
+    print_debug(DEBUG_TELEMETRY, DEBUG_DATA,"\n");
 }
 
 void draw_progress_bar_neg(std::string num, int value, int nrOfChars,  int slivers, int maxChars){
 
-    printf("channel (%s) %5d         ", num.c_str(), value);//          |", value, nrOfChars, slivers);
+    print_debug(DEBUG_TELEMETRY, DEBUG_DATA,"channel (%s) %5d         ", num.c_str(), value);//          |", value, nrOfChars, slivers);
 
     for(int i=0;i<(10 - nrOfChars);i++) {
-        printf(" ");
+        print_debug(DEBUG_TELEMETRY, DEBUG_DATA," ");
     }
     for(int i=0;i<(nrOfChars);i++) {
         draw_progress_char_single();
     }
-    printf("|\n");
+    print_debug(DEBUG_TELEMETRY, DEBUG_DATA,"|\n");
     
 }
 
@@ -63,22 +68,23 @@ void draw_channels(std::string num, int rawValue, int newRawValue, int counter) 
         constexpr int maxChars = 10;
     
         //delete current line and move cursor to start of line
-        printf("\u001B[K");
+        print_debug(DEBUG_TELEMETRY, DEBUG_DATA,"\u001B[K");
         if(value>0)
             draw_progress_bar_pos(num, value, nrOfChars, slivers, maxChars);
         else if(value < 0)
             draw_progress_bar_neg(num, value, nrOfChars, slivers, maxChars);
         else{
-            printf("channel (%s) %5d                   |\n", num.c_str(), value);
+            print_debug(DEBUG_TELEMETRY, DEBUG_DATA,"channel (%s) %5d                   |\n", num.c_str(), value);
         }
     }
     else{
-        printf("\n");
+        print_debug(DEBUG_TELEMETRY, DEBUG_DATA,"\n");
     }
 }
 
 void telemetry_task(void* args){
 
+    static bool firstPrint{true};
     init_telemetry_buffer();
     RingbufHandle_t ringBuffer_telemetry = Drone::GetInstance()->get_queue_handle();
 
@@ -98,7 +104,6 @@ void telemetry_task(void* args){
 
 
 
-    printf("\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n");
 
     while (true)
     {
@@ -113,13 +118,18 @@ void telemetry_task(void* args){
         #ifdef WEB_TASK
         BaseType_t res = xRingbufferSend(ringBuffer_web, &telemetry, sizeof(TelemetryData), 1);
         if (res != pdTRUE) {
-            //printf("Failed to send telemetry item: handle %p size %u\n", telemetry_queue_handle, sizeof(TelemetryData));
+            printf("Failed to send telemetry item: handle %p size %u\n", ringBuffer_web, sizeof(TelemetryData));
         } 
         #endif
         
-        printf("[15A");
-        printf("[K  Roll    Pitch     Yaw\n");
-        printf("[K%6.3f °C %6.3f °C %6.3f °C\n", 
+        if(firstPrint){
+            firstPrint = false;
+        }
+        else{
+            print_debug(DEBUG_TELEMETRY, DEBUG_DATA,"[15A");
+        }
+        print_debug(DEBUG_TELEMETRY, DEBUG_DATA,"[K  Roll    Pitch     Yaw\n");
+        print_debug(DEBUG_TELEMETRY, DEBUG_DATA,"[K%6.3f °C %6.3f °C %6.3f °C\n", 
             telemetry.ypr.roll * radToDegree, 
             telemetry.ypr.pitch * radToDegree, 
             telemetry.ypr.yaw * radToDegree);
@@ -135,12 +145,13 @@ void telemetry_task(void* args){
         draw_channels("9", telemetry.channel.ch9,  chPrev.ch9,  counter);
         draw_channels("10", telemetry.channel.ch10, chPrev.ch10, counter);
         draw_channels("11", telemetry.channel.ch11, chPrev.ch11, counter);
-        printf("[KArmed: %3s mode: %-17s (%d) dmp: %lu Hz radio: %lu Hz\n", 
+        print_debug(DEBUG_TELEMETRY, DEBUG_DATA,"[KArmed: %3s mode: %-17s (%d) dmp: %lu Hz radio: %lu Hz loop Hz: %lu\n", 
             telemetry.drone.isArmed? "Yes" : "No", 
             mode[telemetry.drone.mode].c_str(), 
             telemetry.drone.mode, 
             telemetry.drone.dmpFreq,
-            telemetry.drone.radioFreq
+            telemetry.drone.radioFreq,
+            telemetry.drone.loopFreq
         );
 
         chPrev = ch;

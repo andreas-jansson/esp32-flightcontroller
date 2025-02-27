@@ -194,7 +194,7 @@ esp_err_t RadioController::send_channel_to_queue(void* newChannel){
 
     BaseType_t res = xRingbufferSend(radio_queue_handle, newChannel + 3, sizeof(Channel), 1);
     if (res != pdTRUE) {
-        printf("Failed to send radio item: handle %p size %u\n", radio_queue_handle, sizeof(Channel));
+        //printf("Failed to send radio item: handle %p size %u\n", radio_queue_handle, sizeof(Channel));
     } 
     memcpy(&this->channel, newChannel + 3, 22);
 

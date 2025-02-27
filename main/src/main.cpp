@@ -214,6 +214,12 @@ void dispatch_drone(void *args)
     drone->drone_task(nullptr);
 }
 
+void dispatch_dshot(void *args)
+{
+    Dshot600 *dshot = Dshot600::GetInstance();
+    dshot->dshot_task(nullptr);
+}
+
 void main_task(void *args)
 {
     TaskHandle_t altitude_handle{}, dmp_handle{}, raw_handle{}, radio_handle{}, web_handle{}, telemetry_handle{}, drone_handle{};
@@ -222,6 +228,7 @@ void main_task(void *args)
     RingbufHandle_t ringBuffer_radio{};
     RingbufHandle_t ringBuffer_web{};
     RingbufHandle_t ringBuffer_telemetry{};
+    RingbufHandle_t ringBuffer_dshot{};
 
     /* radio */
     RadioController* radio = RadioController::GetInstance();
@@ -254,17 +261,21 @@ void main_task(void *args)
     motorPin[MOTOR3] = static_cast<gpio_num_t>(12);
     motorPin[MOTOR4] = static_cast<gpio_num_t>(13);
 
-    Dshot600* dshot = new Dshot600(motorPin);
+    //Dshot600* dshot = new Dshot600(motorPin);
+    Dshot600* dshot = Dshot600::GetInstance(motorPin);
+    ringBuffer_dshot = dshot->get_queue_handle();
 
     /* Drone */
-    Drone* drone = Drone::GetInstance(dshot, ringBuffer_dmp, ringBuffer_radio);
+    Drone* drone = Drone::GetInstance(ringBuffer_dshot, ringBuffer_dmp, ringBuffer_radio);
     ringBuffer_telemetry = drone->get_queue_handle();
     
+
+
     /* start tasks */
     print_debug(DEBUG_MAIN, DEBUG_LOGIC, "starting tasks\n");
     #ifdef WEB_TASK
     xTaskCreatePinnedToCore(dispatch_webClient, "web_task", 4048, nullptr, 23, &web_handle, 1);
-    vTaskDelay(3000 / portTICK_PERIOD_MS);
+    //vTaskDelay(3000 / portTICK_PERIOD_MS);
     #endif
     #ifdef TELEMETRY_TASK
     xTaskCreatePinnedToCore(telemetry_task, "telemetry_task", 4048, nullptr, 23, &telemetry_handle, 1);
@@ -272,19 +283,20 @@ void main_task(void *args)
     xTaskCreatePinnedToCore(dispatch_drone, "dispatch_drone", 4048, nullptr,  23, &drone_handle, 1);
     xTaskCreatePinnedToCore(dispatch_radio, "radio_task", 4048, nullptr,  23, &radio_handle, 0);
     xTaskCreatePinnedToCore(dispatch_dmp, "dmp_task", 4048, nullptr,  23, &dmp_handle, 1);
+    xTaskCreatePinnedToCore(dispatch_dshot, "dshot_task", 4048, nullptr,  23, &dmp_handle, 1);
     //xTaskCreatePinnedToCore(dispatch_raw, "raw_task", 4048, nullptr,  23, &dmp_handle, 1);
 
     while (true)
     {
-        vTaskDelay(10000 / portTICK_PERIOD_MS);
+        vTaskDelay(10000000 / portTICK_PERIOD_MS);
     }
 }
 
 void app_main(void)
 {
     TaskHandle_t main_handle{};
-    uint32_t files = DEBUG_MAIN; // | DEBUG_RADIO | DEBUG_MPU6050; // | DEBUG_MPU6050 | DEBUG_I2C; // | DEBUG_BMP ;
-    uint32_t prio = DEBUG_DATA;  // | DEBUG_LOGIC; // | DEBUG_ARGS;// | DEBUG_LOGIC;
+    uint32_t files = DEBUG_MAIN;// | DEBUG_DSHOT | DEBUG_DRONE;// | DEBUG_TELEMETRY; // | DEBUG_RADIO | DEBUG_MPU6050; // | DEBUG_MPU6050 | DEBUG_I2C; // | DEBUG_BMP ;
+    uint32_t prio = DEBUG_DATA;// | DEBUG_LOGIC;  // | DEBUG_LOGIC; // | DEBUG_ARGS;// | DEBUG_LOGIC;
 
     set_loglevel(files, prio);
 

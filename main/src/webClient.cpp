@@ -28,16 +28,15 @@ Client* Client::client = nullptr;
 
 esp_err_t Client::sendDataToServer(const std::string& server_ip, int port, const std::string& message) {
     struct sockaddr_in server_addr;
-    
 
     if(this->socketFd == -1 || !this->connected){
         // Create socket
         this->socketFd = socket(AF_INET, SOCK_STREAM, 0);
         if (this->socketFd < 0) {
-            //ESP_LOGE(TAG, "Unable to create socket: errno %d", errno);
+            ESP_LOGE(TAG, "Unable to create socket: errno %d", errno);
             return ESP_FAIL;
         }
-        //ESP_LOGI(TAG, "Socket created");
+        ESP_LOGI(TAG, "Socket created");
         
         int yes = 1;
         setsockopt(this->socketFd, IPPROTO_TCP, TCP_NODELAY, (char *) &yes, sizeof(int)); 
@@ -50,17 +49,19 @@ esp_err_t Client::sendDataToServer(const std::string& server_ip, int port, const
         // Connect to server
         int err = connect(this->socketFd, (struct sockaddr *)&server_addr, sizeof(server_addr));
         if (err != 0) {
-            //ESP_LOGE(TAG, "Socket unable to connect: errno %d", errno);
+            ESP_LOGE(TAG, "Socket unable to connect: errno %d", errno);
             close(this->socketFd);
             return ESP_FAIL;
         }
-        //ESP_LOGI(TAG, "Successfully connected to server");
+        this->connected = true;
+        ESP_LOGI(TAG, "Successfully connected to server");
     }
 
     int sent = send(this->socketFd, message.c_str(), message.length(), 0);
 
-    if (sent < 0) {
+    if (sent <= 0) {
         ESP_LOGE(TAG, "Error occurred during sending: errno %d", errno);
+        close(this->socketFd);
         connected = false;
     } 
     
@@ -69,14 +70,18 @@ esp_err_t Client::sendDataToServer(const std::string& server_ip, int port, const
 }
 
 esp_err_t Client::sendDataToServer(const std::string& server_ip, int port, const std::vector<std::string> messages) {
+   
     struct sockaddr_in server_addr;
+
     if(this->socketFd == -1){
 
         this->socketFd = socket(AF_INET, SOCK_STREAM, 0);
         if (this->socketFd < 0) {
+            ESP_LOGE(TAG, "Unable to create socket: errno %d", errno);
             return ESP_FAIL;
         }
-        
+        ESP_LOGI(TAG, "Socket created");
+
         int yes = 1;
         setsockopt(this->socketFd, IPPROTO_TCP, TCP_NODELAY, (char *) &yes, sizeof(int)); 
 
@@ -90,6 +95,7 @@ esp_err_t Client::sendDataToServer(const std::string& server_ip, int port, const
             close(this->socketFd);
             return ESP_FAIL;
         }
+
     }
 
     std::string sendMsg{};
@@ -99,14 +105,14 @@ esp_err_t Client::sendDataToServer(const std::string& server_ip, int port, const
 
     // Send message
     int sent = send(this->socketFd, sendMsg.c_str(), sendMsg.length(), 0);
-    if (sent < 0) {
+    if (sent <= 0) {
         ESP_LOGE(TAG, "Error occurred during sending: errno %d", errno);
+        close(this->socketFd);
         this->socketFd = -1;
     } 
     else {
         //ESP_LOGI(TAG, "Message sent: %s", message.c_str());
     }
-
 
     return ESP_OK;
 }
@@ -212,7 +218,6 @@ void Client::web_task(void* args){
         for (int i = 0; i < 5; i++) {
             // Receive data from the ring buffer
             YawPitchRoll* received_data = (YawPitchRoll*)xRingbufferReceive(this->dmp_buf_handle, &item_size, pdMS_TO_TICKS(5));
-
             if (received_data != nullptr && item_size == sizeof(YawPitchRoll)) {
 
                 if(received_data->yaw >= 666){
@@ -247,8 +252,7 @@ void Client::web_task2(void* args){
         
         for (int i = 0; i < 10; i++) {
             TelemetryData* received_data = (TelemetryData*)xRingbufferReceive(this->web_buf_handle, &item_size, pdMS_TO_TICKS(50));
-
-            if (received_data != nullptr && item_size == sizeof(TelemetryData)) {
+            if (received_data != nullptr) {
                 messages.insert(messages.begin(), received_data->ypr.to_str());
                 vRingbufferReturnItem(this->web_buf_handle, (void*)received_data);
             }
