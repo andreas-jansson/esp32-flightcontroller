@@ -73,8 +73,8 @@ esp_err_t Mpu6050::mpu6050_init(){
     status = set_clk_source(1);
     ESP_RETURN_ON_ERROR(status, log_tag, "Failed to set clock source: 0x%x", 0);
 
-    status = set_sample_rate(4);
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to set sample rate: 0x%x", 0);
+    //status = set_sample_rate(4);
+    //ESP_RETURN_ON_ERROR(status, log_tag, "Failed to set sample rate: 0x%x", 0);
 
     status = set_full_scale_gyro_range(0);
     ESP_RETURN_ON_ERROR(status, log_tag, "Failed to set gyro scale range: 0x%x", 0);
@@ -144,6 +144,8 @@ esp_err_t Mpu6050::dmp_init(){
     // resetI2CMaster();
     status = resetI2CMaster();
     ESP_RETURN_ON_ERROR(status, log_tag, "Failed to reset i2c master");
+
+    vTaskDelay(pdMS_TO_TICKS(20));
 
     // setClockSource(MPU6050_CLOCK_PLL_ZGYRO);
     status = set_clk_source(0x3);
@@ -267,8 +269,8 @@ void Mpu6050::dmp_task(void* args){
     status = this->dmp_init();
     ESP_ERROR_CHECK_WITHOUT_ABORT(status);
 
-    status = this->set_fifo_enable(true);
-    ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+    //status = this->set_fifo_enable(true);
+    //ESP_ERROR_CHECK_WITHOUT_ABORT(status);
 
     // old
     // getXAccelOffset: -3881
@@ -285,6 +287,7 @@ void Mpu6050::dmp_task(void* args){
     //getXGyroOffset: -61
     //getYGyroOffset: 32
     //getZGyroOffset: 3
+
     status = set_x_accel_offset(-4991);
     ESP_ERROR_CHECK_WITHOUT_ABORT(status);
 	status = set_y_accel_offset(1534);
@@ -331,6 +334,7 @@ void Mpu6050::dmp_task(void* args){
         BaseType_t semStatus = xSemaphoreTake(this->dmp_avail_sem, portMAX_DELAY);
 
         status = get_dmp_packet();
+        //status = get_curr_fifo_packet2();
         if(status != ESP_OK){
             continue;
         }
@@ -639,10 +643,7 @@ esp_err_t Mpu6050::resetI2CMaster(){
     status = i2c->write_bit(address, USER_CTRL_REG, 1u, USER_CTRL_I2C_MST_RESET_LSB); 
     ESP_RETURN_ON_ERROR(status, log_tag, "Failed to i2c->write to addr 0x%x reg 0x%x data 0x%x", address, USER_CTRL_REG , 1u);
 
-    delay(20);
-
     return status; 
-
 }
 
 esp_err_t Mpu6050::set_clk_source(uint8_t src){
@@ -1381,7 +1382,7 @@ esp_err_t Mpu6050::get_yaw_pitch_roll(Quaternion& q, VectorFloat& gravity, YawPi
     //printf("[2A[2K  Roll    Pitch     Yaw\n");
     //printf("[2K%-5.3f °C %-5.3f °C %-5.3f °C\n", ypr.roll * RAD_TO_DEG, ypr.pitch * RAD_TO_DEG, ypr.yaw * RAD_TO_DEG);
 
-  r_yawPitchRoll = this->ypr;
+    r_yawPitchRoll = this->ypr;
 
     return ESP_OK;
 }

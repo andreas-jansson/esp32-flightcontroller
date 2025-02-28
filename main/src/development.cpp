@@ -116,7 +116,7 @@ void telemetry_task(void* args){
         }
 
         #ifdef WEB_TASK
-        BaseType_t res = xRingbufferSend(ringBuffer_web, &telemetry, sizeof(TelemetryData), 1);
+        BaseType_t res = xRingbufferSend(ringBuffer_web, &telemetry, sizeof(TelemetryData), 0);
         if (res != pdTRUE) {
             printf("Failed to send telemetry item: handle %p size %u\n", ringBuffer_web, sizeof(TelemetryData));
         } 
@@ -126,7 +126,7 @@ void telemetry_task(void* args){
             firstPrint = false;
         }
         else{
-            print_debug(DEBUG_TELEMETRY, DEBUG_DATA,"[15A");
+            print_debug(DEBUG_TELEMETRY, DEBUG_DATA,"[14A");
         }
         print_debug(DEBUG_TELEMETRY, DEBUG_DATA,"[K  Roll    Pitch     Yaw\n");
         print_debug(DEBUG_TELEMETRY, DEBUG_DATA,"[K%6.3f °C %6.3f °C %6.3f °C\n", 

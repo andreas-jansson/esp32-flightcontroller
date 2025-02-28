@@ -386,7 +386,7 @@ void Drone::drone_task(void* args){
 
         auto end_telemetry = std::chrono::system_clock::now();
         auto elapsed_telemetry = std::chrono::duration_cast<std::chrono::milliseconds>(end_telemetry - start_telemetry).count();
-        if(elapsed_telemetry >= 50){
+        if(elapsed_telemetry >= 10){
             TelemetryData telemetry{};
 
             telemetry.ypr = this->ypr;
@@ -486,6 +486,7 @@ esp_err_t Drone::send_telemetry_message(TelemetryData& msg){
     BaseType_t res = xRingbufferSend(telemetry_queue_handle, &msg, sizeof(TelemetryData), 1);
     if (res != pdTRUE) {
         //printf("Failed to send telemetry item: handle %p size %u\n", telemetry_queue_handle, sizeof(TelemetryData));
+        return ESP_OK; // to avoid ugly error prints
         return ESP_FAIL;
     } 
     return ESP_OK;

@@ -357,7 +357,6 @@ esp_err_t Dshot600::write_speed(struct Dshot::DshotMessage& msg){
             ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_disable(this->esc_motor_chan[i]));
             ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_enable(this->esc_motor_chan[i]));
             ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_transmit(this->esc_motor_chan[i], this->dshot_encoder, &throttle[i], sizeof(throttle[i]), &tx_config[i]));   
-            printf("%5u : %d 1 ms in ticks: %lu\n", throttle[i].throttle, tx_config[i].loop_count, pdMS_TO_TICKS(1));
         }
     }
 

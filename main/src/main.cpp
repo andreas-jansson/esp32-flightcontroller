@@ -295,7 +295,7 @@ void main_task(void *args)
 void app_main(void)
 {
     TaskHandle_t main_handle{};
-    uint32_t files = DEBUG_MAIN;// | DEBUG_DSHOT | DEBUG_DRONE;// | DEBUG_TELEMETRY; // | DEBUG_RADIO | DEBUG_MPU6050; // | DEBUG_MPU6050 | DEBUG_I2C; // | DEBUG_BMP ;
+    uint32_t files = DEBUG_MAIN | DEBUG_TELEMETRY;// | DEBUG_DSHOT | DEBUG_DRONE;// | DEBUG_TELEMETRY; // | DEBUG_RADIO | DEBUG_MPU6050; // | DEBUG_MPU6050 | DEBUG_I2C; // | DEBUG_BMP ;
     uint32_t prio = DEBUG_DATA;// | DEBUG_LOGIC;  // | DEBUG_LOGIC; // | DEBUG_ARGS;// | DEBUG_LOGIC;
 
     set_loglevel(files, prio);

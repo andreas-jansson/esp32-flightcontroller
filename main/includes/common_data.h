@@ -122,8 +122,8 @@ struct YawPitchRoll{
 
     void operator = (const YawPitchRoll& ypr){
         this->yaw = ypr.yaw;
-        this->pitch = ypr.yaw;
-        this->roll = ypr.yaw;
+        this->pitch = ypr.pitch;
+        this->roll = ypr.roll;
         this->z_accel = ypr.z_accel;
         this->x_accel = ypr.x_accel;
         this->y_accel = ypr.y_accel;
