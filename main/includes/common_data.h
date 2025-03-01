@@ -16,18 +16,21 @@ namespace Radio{
 
     static constexpr uint8_t maxChannels{11};
 }
-    
-enum Motor{
+ 
+
+typedef enum Motor{
     MOTOR1,
     MOTOR2,
     MOTOR3,
     MOTOR4
-};
+} motor_type_t;
+
 
 typedef enum MotorDirection{
     NORMAL,
     REVERSED,
 };
+
 
 /* chatgpt created */
 struct Kalman { 
@@ -101,11 +104,32 @@ enum FlightMode{
 };
 
 struct DroneState{
-    bool isArmed;
+
+    bool isPaired{};
+    bool isArmed{};
+    bool isGrounded{};
+
     enum FlightMode mode;
     uint32_t dmpFreq{};
     uint32_t radioFreq{};
     uint32_t loopFreq{};
+
+    uint16_t throttle{};
+    uint16_t motorRlSpeed{};
+    uint16_t motorRrSpeed{};
+    uint16_t motorFlSpeed{};
+    uint16_t motorFrSpeed{};
+
+    float pidCPitch{};
+    float pidCYaw{};
+
+    float targetPitch{};
+    float targetYaw{};
+    float targetRoll{};
+    float currPitch{};
+    float currYaw{};
+    float currRoll{};
+
 };
 
 struct YawPitchRoll{
@@ -181,7 +205,7 @@ struct TelemetryData{
 };
 
 struct Pid{
-    const float kP{0.1};
+    const float kP{3};
     const float kI{0.1};
     const float kD{0.1};
 	const float dt{1};

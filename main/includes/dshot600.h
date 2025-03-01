@@ -11,6 +11,7 @@
 
 #include "driver/rmt_tx.h"
 
+#include "dshot600.h"
 #include "common_data.h"
 #include "i2c.h"
  
@@ -24,6 +25,8 @@ namespace Dshot{
     static constexpr uint16_t minThrottleValue{48}; 
     static constexpr uint16_t maxThrottleValue{2047}; 
 
+    static constexpr uint16_t invalidThrottle{0xFFFF}; 
+
     typedef enum BeepNum{
         BEEP1,
         BEEP2,
@@ -32,9 +35,14 @@ namespace Dshot{
         BEEP5,
     };
 
+    typedef enum DshotMessageType{
+        COMMAND,
+        THROTTLE,
+    }dshot_msg_type_t;
+
     struct DshotMessage{
-    
-        uint16_t speed[Dshot::maxChannels];
+        dshot_msg_type_t msgType{};
+        uint16_t speed[Dshot::maxChannels]{};
         int32_t loops[Dshot::maxChannels]{};
         uint8_t cmd[Dshot::maxChannels]{};
     

@@ -126,7 +126,7 @@ void telemetry_task(void* args){
             firstPrint = false;
         }
         else{
-            print_debug(DEBUG_TELEMETRY, DEBUG_DATA,"[14A");
+            print_debug(DEBUG_TELEMETRY, DEBUG_DATA,"[18A");
         }
         print_debug(DEBUG_TELEMETRY, DEBUG_DATA,"[K  Roll    Pitch     Yaw\n");
         print_debug(DEBUG_TELEMETRY, DEBUG_DATA,"[K%6.3f °C %6.3f °C %6.3f °C\n", 
@@ -153,6 +153,11 @@ void telemetry_task(void* args){
             telemetry.drone.radioFreq,
             telemetry.drone.loopFreq
         );
+
+        print_debug(DEBUG_TELEMETRY, DEBUG_DATA, "target: %5.2f curr: %5.2f\n", telemetry.drone.targetPitch, telemetry.drone.currPitch);
+        print_debug(DEBUG_TELEMETRY, DEBUG_DATA, "target: %5.2f curr: %5.2f\n", telemetry.drone.targetRoll, telemetry.drone.currRoll);
+        print_debug(DEBUG_TELEMETRY, DEBUG_DATA, "fl: %4u fr: %4u\n", telemetry.drone.motorFlSpeed, telemetry.drone.motorFrSpeed);
+        print_debug(DEBUG_TELEMETRY, DEBUG_DATA, "rl: %4u rr: %4u\n", telemetry.drone.motorRlSpeed, telemetry.drone.motorRrSpeed);
 
         chPrev = ch;
         counter++;

@@ -222,7 +222,13 @@ void dispatch_dshot(void *args)
 
 void main_task(void *args)
 {
-    TaskHandle_t altitude_handle{}, dmp_handle{}, raw_handle{}, radio_handle{}, web_handle{}, telemetry_handle{}, drone_handle{};
+    TaskHandle_t altitude_handle{};
+    TaskHandle_t dmp_handle{}; 
+    TaskHandle_t raw_handle{}; 
+    TaskHandle_t radio_handle{}; 
+    TaskHandle_t web_handle{}; 
+    TaskHandle_t telemetry_handle{}; 
+    TaskHandle_t drone_handle{};
 
     RingbufHandle_t ringBuffer_dmp{};
     RingbufHandle_t ringBuffer_radio{};
@@ -230,19 +236,27 @@ void main_task(void *args)
     RingbufHandle_t ringBuffer_telemetry{};
     RingbufHandle_t ringBuffer_dshot{};
 
-    /* radio */
+
+
+    /******* radio *******/
     RadioController* radio = RadioController::GetInstance();
     ringBuffer_radio = radio->get_queue_handle();
 
-    /* I2C setup */
+
+
+    /******* I2C setup *******/
     I2cHandler *i2c = new I2cHandler(I2C_MASTER_SDA_IO, I2C_MASTER_SCL_IO, I2C_MASTER_FREQ_HZ);
     i2c->init();
 
-    /* MPU setup */
+
+
+    /******* MPU setup *******/
     Mpu6050 *mpu = Mpu6050::GetInstance(ADDR_68, i2c);
     ringBuffer_dmp = mpu->get_queue_handle();
 
-    /* wifi */
+
+
+    /******* wifi *******/
     #ifdef WEB_TASK
     std::string ssid{"Ubiquity 2"};
     std::string wpa{"#SupderDuper66!"};
@@ -254,19 +268,30 @@ void main_task(void *args)
     client->init(ringBuffer_dmp, ringBuffer_web);
     #endif
 
-    /* Dshot600 */
+
+
+    /******* Dshot600 *******/
     gpio_num_t motorPin[Radio::maxChannels]{};
     motorPin[MOTOR1] = static_cast<gpio_num_t>(15);
     motorPin[MOTOR2] = static_cast<gpio_num_t>(2);
     motorPin[MOTOR3] = static_cast<gpio_num_t>(12);
     motorPin[MOTOR4] = static_cast<gpio_num_t>(13);
 
-    //Dshot600* dshot = new Dshot600(motorPin);
     Dshot600* dshot = Dshot600::GetInstance(motorPin);
     ringBuffer_dshot = dshot->get_queue_handle();
 
-    /* Drone */
+
+
+    /*******  Drone *******/
+    MotorLaneMapping motorLanes{
+        .rearLeftlane = MOTOR1,
+        .rearRightlane = MOTOR2,
+        .frontLeftlane = MOTOR3,
+        .frontRightlane = MOTOR4
+    };
+
     Drone* drone = Drone::GetInstance(ringBuffer_dshot, ringBuffer_dmp, ringBuffer_radio);
+    drone->set_motor_lane_mapping(motorLanes);
     ringBuffer_telemetry = drone->get_queue_handle();
     
 
@@ -295,8 +320,8 @@ void main_task(void *args)
 void app_main(void)
 {
     TaskHandle_t main_handle{};
-    uint32_t files = DEBUG_MAIN | DEBUG_TELEMETRY;// | DEBUG_DSHOT | DEBUG_DRONE;// | DEBUG_TELEMETRY; // | DEBUG_RADIO | DEBUG_MPU6050; // | DEBUG_MPU6050 | DEBUG_I2C; // | DEBUG_BMP ;
-    uint32_t prio = DEBUG_DATA;// | DEBUG_LOGIC;  // | DEBUG_LOGIC; // | DEBUG_ARGS;// | DEBUG_LOGIC;
+    uint32_t files = DEBUG_MAIN | DEBUG_RADIO;// | DEBUG_TELEMETRY;// | DEBUG_DSHOT | DEBUG_DRONE | DEBUG_TELEMETRY | DEBUG_MPU6050 | DEBUG_I2C; | DEBUG_BMP ;
+    uint32_t prio = DEBUG_DATA; // | DEBUG_LOGIC;  // | DEBUG_LOGIC; // | DEBUG_ARGS;// | DEBUG_LOGIC;
 
     set_loglevel(files, prio);
 

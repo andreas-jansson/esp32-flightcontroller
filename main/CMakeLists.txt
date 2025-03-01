@@ -19,6 +19,7 @@ idf_component_register(SRCS
                          spi_flash
                          esp_partition
                          esp_wifi
+                         esp_rom
                          nvs_flash
                          "driver"
                        )
