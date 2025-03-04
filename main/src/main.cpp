@@ -38,6 +38,10 @@
 #define I2C_MASTER_FREQ_HZ 400000 // Frequency of the I2C bus
 #define I2C_DMP_DATA_PIN 27
 
+#define UART_ESC_RX_IO 37
+#define UART_ESC_TX_IO 17
+#define UART_ESC_BAUDRATE 115200
+
 #define log_tag "main"
 
 SemaphoreHandle_t cfg_btn_sem = nullptr;
@@ -220,6 +224,11 @@ void dispatch_dshot(void *args)
     dshot->dshot_task(nullptr);
 }
 
+void dispatch_esc_telemetry(void *args){
+    Dshot600 *dshot = Dshot600::GetInstance();
+    dshot->esc_telemetry_task(nullptr);
+}
+
 void main_task(void *args)
 {
     TaskHandle_t altitude_handle{};
@@ -229,6 +238,7 @@ void main_task(void *args)
     TaskHandle_t web_handle{}; 
     TaskHandle_t telemetry_handle{}; 
     TaskHandle_t drone_handle{};
+    TaskHandle_t esc_telemetry_handle{};
 
     RingbufHandle_t ringBuffer_dmp{};
     RingbufHandle_t ringBuffer_radio{};
@@ -279,6 +289,9 @@ void main_task(void *args)
 
     Dshot600* dshot = Dshot600::GetInstance(motorPin);
     ringBuffer_dshot = dshot->get_queue_handle();
+    dshot->init_uart(UART_ESC_RX_IO, UART_ESC_TX_IO, 420000);
+
+
 
 
 
@@ -300,7 +313,6 @@ void main_task(void *args)
     print_debug(DEBUG_MAIN, DEBUG_LOGIC, "starting tasks\n");
     #ifdef WEB_TASK
     xTaskCreatePinnedToCore(dispatch_webClient, "web_task", 4048, nullptr, 23, &web_handle, 1);
-    //vTaskDelay(3000 / portTICK_PERIOD_MS);
     #endif
     #ifdef TELEMETRY_TASK
     xTaskCreatePinnedToCore(telemetry_task, "telemetry_task", 4048, nullptr, 23, &telemetry_handle, 1);
@@ -309,6 +321,7 @@ void main_task(void *args)
     xTaskCreatePinnedToCore(dispatch_radio, "radio_task", 4048, nullptr,  23, &radio_handle, 0);
     xTaskCreatePinnedToCore(dispatch_dmp, "dmp_task", 4048, nullptr,  23, &dmp_handle, 1);
     xTaskCreatePinnedToCore(dispatch_dshot, "dshot_task", 4048, nullptr,  23, &dmp_handle, 1);
+    xTaskCreatePinnedToCore(dispatch_esc_telemetry, "esc_telemetry_task", 4048, nullptr,  23, &esc_telemetry_handle, 1);
     //xTaskCreatePinnedToCore(dispatch_raw, "raw_task", 4048, nullptr,  23, &dmp_handle, 1);
 
     while (true)
@@ -320,8 +333,8 @@ void main_task(void *args)
 void app_main(void)
 {
     TaskHandle_t main_handle{};
-    uint32_t files = DEBUG_MAIN | DEBUG_RADIO;// | DEBUG_TELEMETRY;// | DEBUG_DSHOT | DEBUG_DRONE | DEBUG_TELEMETRY | DEBUG_MPU6050 | DEBUG_I2C; | DEBUG_BMP ;
-    uint32_t prio = DEBUG_DATA; // | DEBUG_LOGIC;  // | DEBUG_LOGIC; // | DEBUG_ARGS;// | DEBUG_LOGIC;
+    uint32_t files = DEBUG_MAIN;// | DEBUG_DSHOT;// | DEBUG_TELEMETRY;// | DEBUG_DSHOT | DEBUG_RADIO | DEBUG_DRONE | DEBUG_TELEMETRY | DEBUG_MPU6050 | DEBUG_I2C; | DEBUG_BMP ;
+    uint32_t prio = DEBUG_DATA;// | DEBUG_LOGIC;  // | DEBUG_LOGIC; // | DEBUG_ARGS;// | DEBUG_LOGIC;
 
     set_loglevel(files, prio);
 

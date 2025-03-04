@@ -10,7 +10,7 @@ namespace Radio{
     static constexpr int maxChannelThld{maxChannelValue-100};
 
     static constexpr int minChannelValue{174};
-    static constexpr int minChannelThld{maxChannelValue+100};
+    static constexpr int minChannelThld{minChannelValue+100};
 
     static constexpr int neutralChannelValue{997};
 

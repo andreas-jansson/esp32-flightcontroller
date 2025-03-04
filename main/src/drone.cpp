@@ -181,7 +181,7 @@ esp_err_t Drone::arming_process(){
     status = set_armed(1);
     ESP_RETURN_ON_ERROR(status, log_tag, "Failed to arm drone");
 
-    vTaskDelay(pdMS_TO_TICKS(1500));
+    vTaskDelay(pdMS_TO_TICKS(3000));
 
     ESP_LOGI(log_tag, "Drone armed");
     return ESP_OK;
@@ -498,6 +498,7 @@ void Drone::drone_task(void* args){
         if(newMotorRlSpeed > 70 && newMotorRrSpeed > 70 && newMotorFlSpeed > 70 && newMotorFrSpeed > 70)
             if(anyNewSpeed){
                 msg.msgType = Dshot::THROTTLE;
+                msg.telemetryReq[MOTOR1] = newMotorRlSpeed >= 500 && newMotorRlSpeed <= 505 ? true : false;
                 //print_debug(DEBUG_DRONE, DEBUG_LOGIC, "sending new dshot msg\n");
             ESP_ERROR_CHECK_WITHOUT_ABORT(send_dshot_message(msg));
             //for(int i=0;i<Dshot::maxChannels;i++)
@@ -568,7 +569,7 @@ esp_err_t Drone::parse_channel_state(const Channel& newChannel){
     else if(this->channel.ch8 != newChannel.ch8){
         status = blink_led(newChannel.ch8);
     }
-    else if(newChannel.ch9 > Radio::maxChannelValue - 100 && this->channel.ch9 < Radio::minChannelValue + 100){
+    else if(newChannel.ch9 > Radio::maxChannelThld && this->channel.ch9 < Radio::minChannelThld){
         status = send_beep();
     }
     else if(this->channel.ch10 != newChannel.ch10){

@@ -32,7 +32,7 @@ RadioController::RadioController(){
     uart_config.rx_flow_ctrl_thresh = 0;
     uart_config.source_clk = UART_SCLK_APB;  
 
-    this->uartNum = UART_NUM_1;
+    this->uartNum = UART_NUM_2;
 
     ESP_ERROR_CHECK(uart_param_config(this->uartNum, &uart_config));
     ESP_ERROR_CHECK(uart_set_pin(this->uartNum, txPin, rxPin, rtsPin, ctsPin));
@@ -101,6 +101,15 @@ void RadioController::radio_task(void* args){
 
     esp_err_t status = 0;
 
+    constexpr uint8_t flightControllerAddr{0xC8};
+    constexpr uint8_t c_addrIdx{0};
+    constexpr uint8_t c_frameLenIdx{1};
+    constexpr uint8_t c_dataIdx{2};
+
+    constexpr uint8_t c_frameTypeChannels{0x16};
+    constexpr uint8_t c_frameTypeLinkStatistics{0x14};
+
+
     while(true){
 
         uint8_t data[512]{};
@@ -117,12 +126,22 @@ void RadioController::radio_task(void* args){
                     continue;
                 }
 
-                if(data[0] == 0xc8){
-                    uint8_t frameLen = data[1];
-                    uint8_t type = data[2];
+                if(data[c_addrIdx] == flightControllerAddr){
+                    uint8_t frameLen = data[c_frameLenIdx];
+                    uint8_t type = data[c_dataIdx];
 
-                    if(type == 0x16){
+                    if(type == c_frameTypeChannels){
                         send_channel_to_queue((Channel*)data);
+                    }
+                    else if(type == c_frameTypeLinkStatistics){
+                        // TODO send a specific channel message so that drone attempts to land safely.
+                        // uplink_Link_quality: 0x0, detect loss of controller
+                        //printf("stats: uplink_RSSI_1: 0x%x uplink_RSSI_2: 0x%x uplink_Link_quality: 0x%x uplink_SNR: 0x%x active_antenna: 0x%x rf_Mode: 0x%x uplink_TX_Power: 0x%x\n",
+                        //data[3], data[4], data[5], data[6], data[7], data[8], data[9]);
+                    }
+                    else{
+                        // only ever seen 0x16 & 0x14 messages
+                        //printf("Frame type: 0x%x len: %u\n", type, frameLen);
                     }
                 }
             }

@@ -10,6 +10,7 @@
 #include "freertos/semphr.h"
 
 #include "driver/rmt_tx.h"
+#include "driver/uart.h"
 
 #include "dshot600.h"
 #include "common_data.h"
@@ -148,6 +149,9 @@ class Dshot600{
     rmt_sync_manager_handle_t synchro{};
     rmt_channel_handle_t esc_motor_chan[4]{};
     rmt_encoder_handle_t dshot_encoder{};
+    QueueHandle_t uart_queue{};
+    uart_port_t uartNum{1};
+
 
     Dshot600(gpio_num_t motorPin[Dshot::maxChannels]);
 
@@ -160,13 +164,12 @@ class Dshot600{
     /* helper */
     esp_err_t parse_dshot_message(struct Dshot::DshotMessage& msg);
 
-
     esp_err_t delay(struct Dshot::DshotMessage& msg);
 
-
     esp_err_t get_message(struct Dshot::DshotMessage& msg, TickType_t ticks);
-    bool is_command(struct Dshot::DshotMessage& msg, int i);
-    bool is_speed(struct Dshot::DshotMessage& msg, int i);
+
+    esp_err_t set_speed(struct Dshot::DshotMessage& msg);
+
 
     public:
 
@@ -175,12 +178,14 @@ class Dshot600{
     static Dshot600 *GetInstance(gpio_num_t motorPin[Dshot::maxChannels]);
     static Dshot600 *GetInstance();
 
-    void dshot_task_old(void* args);
     void dshot_task(void* args);
+    void esc_telemetry_task(void* args);
 
     RingbufHandle_t get_queue_handle(){return m_dshot_queue_handle;}
 
-    esp_err_t set_speed(struct Dshot::DshotMessage& msg);
+    esp_err_t init_uart(int rxPin, int txPin, int baudrate);
+
+
 
 
     // Commands
