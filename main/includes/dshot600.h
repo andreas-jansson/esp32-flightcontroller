@@ -10,6 +10,7 @@
 #include "freertos/semphr.h"
 
 #include "driver/rmt_tx.h"
+#include "driver/rmt_rx.h"
 #include "driver/uart.h"
 
 #include "dshot600.h"
@@ -148,12 +149,13 @@ class Dshot600{
 
     rmt_sync_manager_handle_t synchro{};
     rmt_channel_handle_t esc_motor_chan[4]{};
+    rmt_channel_handle_t rmt_rx_handle{};
     rmt_encoder_handle_t dshot_encoder{};
-    QueueHandle_t uart_queue{};
-    uart_port_t uartNum{1};
 
 
     Dshot600(gpio_num_t motorPin[Dshot::maxChannels]);
+
+    void read_dshot_telemetry();
 
     esp_err_t rmt_new_dshot_esc_encoder(const Dshot::dshot_esc_encoder_config_t *config, rmt_encoder_handle_t *ret_encoder);
 
@@ -170,6 +172,7 @@ class Dshot600{
 
     esp_err_t set_speed(struct Dshot::DshotMessage& msg);
 
+    esp_err_t set_idle();
 
     public:
 
@@ -179,11 +182,9 @@ class Dshot600{
     static Dshot600 *GetInstance();
 
     void dshot_task(void* args);
-    void esc_telemetry_task(void* args);
 
     RingbufHandle_t get_queue_handle(){return m_dshot_queue_handle;}
 
-    esp_err_t init_uart(int rxPin, int txPin, int baudrate);
 
 
 

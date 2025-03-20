@@ -39,7 +39,7 @@
 #define I2C_DMP_DATA_PIN 27
 
 #define UART_ESC_RX_IO 37
-#define UART_ESC_TX_IO 17
+#define UART_ESC_TX_IO 17   // not used
 #define UART_ESC_BAUDRATE 115200
 
 #define log_tag "main"
@@ -225,8 +225,8 @@ void dispatch_dshot(void *args)
 }
 
 void dispatch_esc_telemetry(void *args){
-    Dshot600 *dshot = Dshot600::GetInstance();
-    dshot->esc_telemetry_task(nullptr);
+    Drone *drone = Drone::GetInstance();
+    drone->esc_telemetry_task(nullptr);
 }
 
 void main_task(void *args)
@@ -270,7 +270,7 @@ void main_task(void *args)
     #ifdef WEB_TASK
     std::string ssid{"Ubiquity 2"};
     std::string wpa{"#SupderDuper66!"};
-    std::string ip{"192.168.1.246"};
+    std::string ip{"192.168.1.247"};
 
     init_telemetry_buffer();
     ringBuffer_web = get_telemetry_handle();
@@ -289,8 +289,6 @@ void main_task(void *args)
 
     Dshot600* dshot = Dshot600::GetInstance(motorPin);
     ringBuffer_dshot = dshot->get_queue_handle();
-    dshot->init_uart(UART_ESC_RX_IO, UART_ESC_TX_IO, 420000);
-
 
 
 
@@ -304,6 +302,7 @@ void main_task(void *args)
     };
 
     Drone* drone = Drone::GetInstance(ringBuffer_dshot, ringBuffer_dmp, ringBuffer_radio);
+    drone->init_uart(UART_ESC_RX_IO, UART_ESC_TX_IO, UART_ESC_BAUDRATE);
     drone->set_motor_lane_mapping(motorLanes);
     ringBuffer_telemetry = drone->get_queue_handle();
     
@@ -333,8 +332,8 @@ void main_task(void *args)
 void app_main(void)
 {
     TaskHandle_t main_handle{};
-    uint32_t files = DEBUG_MAIN;// | DEBUG_DSHOT;// | DEBUG_TELEMETRY;// | DEBUG_DSHOT | DEBUG_RADIO | DEBUG_DRONE | DEBUG_TELEMETRY | DEBUG_MPU6050 | DEBUG_I2C; | DEBUG_BMP ;
-    uint32_t prio = DEBUG_DATA;// | DEBUG_LOGIC;  // | DEBUG_LOGIC; // | DEBUG_ARGS;// | DEBUG_LOGIC;
+    uint32_t files = DEBUG_MAIN | DEBUG_TELEMETRY;// | DEBUG_TELEMETRY;// | DEBUG_DSHOT // | DEBUG_TELEMETRY;// | DEBUG_DSHOT | DEBUG_DSHOT | DEBUG_RADIO | DEBUG_DRONE | DEBUG_TELEMETRY | DEBUG_MPU6050 | DEBUG_I2C; | DEBUG_BMP ;
+    uint32_t prio = DEBUG_DATA;// | DEBUG_LOGIC;  // | DEBUG_ARGS;// | DEBUG_LOGIC;
 
     set_loglevel(files, prio);
 

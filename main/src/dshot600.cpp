@@ -10,6 +10,8 @@
 #include "esp_log.h"
 #include "esp_check.h"
 #include "rom/ets_sys.h"
+#include "freertos/queue.h"
+
 
 
 
@@ -95,7 +97,7 @@ constexpr uint16_t dshotLoopsLookup[48] = {
     1,      //NOT_KNOWN3
     1,      //NOT_KNOWN4
     1,      //NOT_KNOWN5
-    1,      //DSHOT_CMD_SPIN_DIRECTION_NORMAL
+    6,      //DSHOT_CMD_SPIN_DIRECTION_NORMAL
     6,      //DSHOT_CMD_SPIN_DIRECTION_REVERSED
     6,      //DSHOT_CMD_LED0_ON
     1,      //DSHOT_CMD_LED1_ON
@@ -130,6 +132,26 @@ constexpr uint16_t dshotLoopsLookup[48] = {
 
 
 
+/*          rmt RX          */
+
+
+static bool example_rmt_rx_done_callback(rmt_channel_handle_t channel, const rmt_rx_done_event_data_t *edata, void *user_data)
+{
+    BaseType_t high_task_wakeup = pdFALSE;
+    QueueHandle_t receive_queue = (QueueHandle_t)user_data;
+    // send the received RMT symbols to the parser task
+    xQueueSendFromISR(receive_queue, edata, &high_task_wakeup);
+    // return whether any task is woken up
+    return high_task_wakeup == pdTRUE;
+}
+
+
+
+/********* RX END ***********/
+
+
+
+
 /*      My logic        */
 
 Dshot600::Dshot600(gpio_num_t motorPin[Dshot::maxChannels]){
@@ -145,7 +167,7 @@ Dshot600::Dshot600(gpio_num_t motorPin[Dshot::maxChannels]){
     dshot_esc_encoder_config_t encoder_config = {
         .resolution = DSHOT_ESC_RESOLUTION_HZ,
         .baud_rate = 600000, 
-        .post_delay_us = 25, // extra delay between each frame
+        .post_delay_us = 10, // extra delay between each frame
     };
     ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_new_dshot_esc_encoder(&encoder_config, &this->dshot_encoder));
 
@@ -163,89 +185,26 @@ Dshot600::Dshot600(gpio_num_t motorPin[Dshot::maxChannels]){
     if (this->m_dshot_queue_handle == NULL) {
         printf("Failed to create drone ring buffer\n");
     }
+/*
+    DshotMessage msgArm{};
 
-    /*
+    msgArm.msgType = COMMAND;
+    msgArm.writeTo[0] = true;
+    msgArm.cmd[0] = 0;
+    msgArm.loops[0] = -1;
 
-    dshot_esc_throttle_t throttle[Dshot::maxChannels]{};
-    rmt_transmit_config_t tx_config[Dshot::maxChannels]{};
-   
-
-    printf("sending arm sequence\n");
-    DshotMessage msg2{};
-
-    msg2.speed[MOTOR1] = 0;
-    msg2.telemetryReq[MOTOR1] = false;
-    msg2.loops[MOTOR1] = -1;
-
-    throttle[MOTOR1] = {
-        .throttle = msg2.speed[MOTOR1],
-        .telemetry_req = msg2.telemetryReq[MOTOR1], 
-    };
-
-    tx_config[MOTOR1] = {
-        .loop_count = msg2.loops[MOTOR1] == -1? -1 : 0,
-    };    
-
-    ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_transmit(this->esc_motor_chan[MOTOR1], this->dshot_encoder, &throttle[MOTOR1], sizeof(throttle[MOTOR1]), &tx_config[MOTOR1]));   
-    ets_delay_us(10);
-    vTaskDelay(pdTICKS_TO_MS(3000));    
-
-    ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_disable(this->esc_motor_chan[MOTOR1]));
-    vTaskDelay(pdTICKS_TO_MS(3000));    
-    ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_enable(this->esc_motor_chan[MOTOR1]));
+    write_command(msgArm);
+    vTaskDelay(pdMS_TO_TICKS(3500));
 
 
 
-    DshotMessage msg3{};
-
-    msg3.speed[MOTOR1] = DSHOT_CMD_SIGNAL_LINE_TELEMETRY_ENABLE;
-    msg3.telemetryReq[MOTOR1] = false;
-    msg3.loops[MOTOR1] = 0;
-
-    throttle[MOTOR1] = {
-        .throttle = msg3.speed[MOTOR1],
-        .telemetry_req = msg3.telemetryReq[MOTOR1], 
-    };
-
-    tx_config[MOTOR1] = {
-        .loop_count = msg3.loops[MOTOR1] == -1? -1 : 0,
-    };    
-
-    for(int i=0;i<dshotLoopsLookup[DSHOT_CMD_SIGNAL_LINE_TELEMETRY_ENABLE];i++){
-        printf("sending telemetry enable sequence\n");
-        ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_transmit(this->esc_motor_chan[MOTOR1], this->dshot_encoder, &throttle[MOTOR1], sizeof(throttle[MOTOR1]), &tx_config[MOTOR1]));   
-        ets_delay_us(100);
-    }  
-    vTaskDelay(pdTICKS_TO_MS(3000));    
-
-
-    DshotMessage msg{};
-
-    msg.speed[MOTOR1] = 100;
-    msg.telemetryReq[MOTOR1] = true;
-    msg.loops[MOTOR1] = 0;
-
-    throttle[MOTOR1] = {
-        .throttle = msg.speed[MOTOR1],
-        .telemetry_req = msg.telemetryReq[MOTOR1], 
-    };
-
-    tx_config[MOTOR1] = {
-        .loop_count = msg.loops[MOTOR1] == -1? -1 : 0,
-    };    
-
-    printf("sending valid throttle\n");
+    msgArm.loops[0] = 0;
+    msgArm.telemetryReq[0] = true;
     while(true){
-        vTaskDelay(pdTICKS_TO_MS(3000));    
-        ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_transmit(this->esc_motor_chan[MOTOR1], this->dshot_encoder, &throttle[MOTOR1], sizeof(throttle[MOTOR1]), &tx_config[MOTOR1]));   
-        ets_delay_us(10);
-    }  
-
-    printf("DONE\n");
-
-    vTaskDelay(pdTICKS_TO_MS(1000000));    
-
-    */
+        write_command(msgArm);
+        vTaskDelay(pdMS_TO_TICKS(35)); 00000010000000000
+    }
+*/
 }
 
 Dshot600* Dshot600::GetInstance(gpio_num_t motorPin[Dshot::maxChannels]){
@@ -281,12 +240,13 @@ void Dshot600::dshot_task(void* args){
             }
 
             if(msg.msgType == COMMAND){
-                print_debug(DEBUG_DSHOT, DEBUG_LOGIC, "writing new command\n");
                 ESP_ERROR_CHECK_WITHOUT_ABORT(write_command(msg));
+                //ESP_ERROR_CHECK_WITHOUT_ABORT(set_idle());
             }
             else if(msg.msgType == THROTTLE){
-                print_debug(DEBUG_DSHOT, DEBUG_LOGIC, "writing new throttle\n");
                 ESP_ERROR_CHECK_WITHOUT_ABORT(set_speed(msg));
+
+                
             }
         }
 
@@ -294,38 +254,6 @@ void Dshot600::dshot_task(void* args){
             ESP_ERROR_CHECK_WITHOUT_ABORT(status);
         }
         vTaskDelay(pdMS_TO_TICKS(5));
-    }
-}
-
-void Dshot600::esc_telemetry_task(void* args){
-
-    uart_event_t event;
-    uint8_t data[512]{};
-    size_t dataLength{}; 
-
-    while(true){
-
-        if (xQueueReceive(uart_queue, (void *)&event, (TickType_t)portMAX_DELAY)){
-            if (event.type == UART_DATA) {
-                memset(data, 0, 512);
-                dataLength = 0; //should be 10 bytes
-
-                ESP_ERROR_CHECK(uart_get_buffered_data_len(this->uartNum, &dataLength));
-                dataLength = uart_read_bytes(this->uartNum, data, dataLength, 100);
-
-                if(!dataLength){
-                    continue;
-                }
-            }
-        }
-
-        if(dataLength == 80){
-            printf("esc read:");
-            for(int i=0;i<dataLength;i++){
-                printf(" 0x%x", data[i]);
-            }
-            printf("\n");
-        }
     }
 }
 
@@ -362,15 +290,33 @@ esp_err_t Dshot600::write_speed(struct Dshot::DshotMessage& msg){
         };    
     }
 
+
+
     for(int i=0;i<Dshot::maxChannels;i++){
+
         if(msg.writeTo[i]){
-            //print_debug(DEBUG_DSHOT, DEBUG_DATA, "throttle: %u tele: %d\n", throttle[i].throttle, throttle[i].telemetry_req);
+            print_debug(DEBUG_DSHOT, DEBUG_DATA, "m%d throttle: %u telemetry: %d  ", i, throttle[i].throttle, throttle[i].telemetry_req);
+
+            /* write telemetry req only once*/
+            //if(throttle[i].telemetry_req == true){
+            //    tx_config[i].loop_count = 0; //ensures this is only written once
+            //    ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_disable(this->esc_motor_chan[i]));
+            //    ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_enable(this->esc_motor_chan[i]));
+            //    ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_transmit(this->esc_motor_chan[i], this->dshot_encoder, &throttle[i], sizeof(throttle[i]), &tx_config[i]));   
+            //    ets_delay_us(200);
+            //    /* remove telemetry flag and loop forever*/
+            //    throttle[i].telemetry_req = false;
+            //    tx_config[i].loop_count = -1;
+            //}
+            
             ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_disable(this->esc_motor_chan[i]));
             ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_enable(this->esc_motor_chan[i]));
             ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_transmit(this->esc_motor_chan[i], this->dshot_encoder, &throttle[i], sizeof(throttle[i]), &tx_config[i]));   
-            ets_delay_us(10);
+            ets_delay_us(100);
         }
     }
+    print_debug(DEBUG_DSHOT, DEBUG_DATA, "\n---\n");
+
 
     return status;
 }
@@ -395,19 +341,38 @@ esp_err_t Dshot600::write_command(struct Dshot::DshotMessage& msg){
     for(int i=0;i<Dshot::maxChannels;i++){
 
         if(msg.writeTo[i]){
-            //print_debug(DEBUG_DSHOT, DEBUG_DATA, "cmd: %u\n", throttle[i].throttle, throttle[i].telemetry_req);
-
             for(uint16_t j=0;j<dshotLoopsLookup[msg.cmd[i]];j++){
+                print_debug(DEBUG_DSHOT, DEBUG_DATA, "m%d command: %u   ", i, throttle[i].throttle);
                 ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_disable(this->esc_motor_chan[i]));
                 ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_enable(this->esc_motor_chan[i]));
                 ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_transmit(this->esc_motor_chan[i], this->dshot_encoder, &throttle[i], sizeof(throttle[i]), &tx_config[i]));
-                ets_delay_us(10);
+                ets_delay_us(200);
 
                 if(dshotWaitLookup[msg.cmd[i]] > 0) 
                     vTaskDelay(dshotWaitLookup[msg.cmd[i]]);
             }
         }
     }
+    print_debug(DEBUG_DSHOT, DEBUG_DATA, "\n");
+    return status;
+}
+
+esp_err_t Dshot600::set_idle(){
+
+    esp_err_t status = 0;
+    DshotMessage msg = {
+        .msgType = COMMAND,
+        .loops = {-1, -1, -1, -1},
+        .cmd = {0, 0, 0, 0},
+        .writeTo = {true, true, true, true},
+    };
+
+    status = parse_dshot_message(msg);
+    ESP_RETURN_ON_ERROR(status, TAG, "Failed to parse msg");
+
+    status = write_command(msg);
+    ESP_RETURN_ON_ERROR(status, TAG, "Failed to write dshoot value msg");
+
     return status;
 }
 
@@ -562,35 +527,6 @@ esp_err_t Dshot600::arm_esc_cmd(){
     return status;
 }
 
-esp_err_t Dshot600::init_uart(int rxPin, int txPin, int baudrate){
-
-    esp_err_t status = 0;
-
-
-    constexpr int rtsPin = UART_PIN_NO_CHANGE;
-    constexpr int ctsPin = UART_PIN_NO_CHANGE;
-    constexpr int uart_buffer_size = (512);
-    uart_config_t uart_config;
-
-    uart_config.baud_rate = baudrate;
-    uart_config.data_bits = UART_DATA_8_BITS;
-    uart_config.parity = UART_PARITY_DISABLE;
-    uart_config.stop_bits = UART_STOP_BITS_1;
-    uart_config.flow_ctrl = UART_HW_FLOWCTRL_DISABLE;
-    uart_config.rx_flow_ctrl_thresh = 0;
-    uart_config.source_clk = UART_SCLK_APB;  
-
-    this->uartNum = UART_NUM_1;
-
-    ESP_ERROR_CHECK(uart_param_config(this->uartNum, &uart_config));
-    ESP_ERROR_CHECK(uart_set_pin(this->uartNum, txPin, rxPin, rtsPin, ctsPin));
-    ESP_ERROR_CHECK(uart_driver_install(this->uartNum, uart_buffer_size, uart_buffer_size, 10, &this->uart_queue, 0));
-
-
-    return status;
-}
-
-
 
 /*      RMT example functions       */
 
@@ -727,3 +663,4 @@ esp_err_t Dshot600::rmt_new_dshot_esc_encoder(const dshot_esc_encoder_config_t *
 
     return ret;
 } 
+

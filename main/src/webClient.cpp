@@ -27,96 +27,33 @@ Client* Client::client = nullptr;
 
 
 esp_err_t Client::sendDataToServer(const std::string& server_ip, int port, const std::string& message) {
-    struct sockaddr_in server_addr;
+    static struct sockaddr_in server_addr;
 
-    if(this->socketFd == -1 || !this->connected){
+    if(this->socketFd == -1){
         // Create socket
-        this->socketFd = socket(AF_INET, SOCK_STREAM, 0);
+        this->socketFd = socket(AF_INET, SOCK_DGRAM, 0);
         if (this->socketFd < 0) {
             ESP_LOGE(TAG, "Unable to create socket: errno %d", errno);
             return ESP_FAIL;
         }
-        ESP_LOGI(TAG, "Socket created");
-        
-        int yes = 1;
-        setsockopt(this->socketFd, IPPROTO_TCP, TCP_NODELAY, (char *) &yes, sizeof(int)); 
 
         // Configure server address
         server_addr.sin_family = AF_INET;
         server_addr.sin_port = htons(port);
         inet_pton(AF_INET, server_ip.c_str(), &server_addr.sin_addr);
-
-        // Connect to server
-        int err = connect(this->socketFd, (struct sockaddr *)&server_addr, sizeof(server_addr));
-        if (err != 0) {
-            ESP_LOGE(TAG, "Socket unable to connect: errno %d", errno);
-            close(this->socketFd);
-            return ESP_FAIL;
-        }
-        this->connected = true;
-        ESP_LOGI(TAG, "Successfully connected to server");
     }
 
-    int sent = send(this->socketFd, message.c_str(), message.length(), 0);
+    int sent = sendto(this->socketFd, message.c_str(), message.length(), 0, (struct sockaddr*)&server_addr, sizeof(server_addr));
 
     if (sent <= 0) {
-        ESP_LOGE(TAG, "Error occurred during sending: errno %d", errno);
+        //ESP_LOGE(TAG, "Error occurred during sending: errno %d msg: %s len %u", errno, message.c_str(), message.length());
         close(this->socketFd);
-        connected = false;
+        this->socketFd = -1;
     } 
     
 
     return ESP_OK;
 }
-
-esp_err_t Client::sendDataToServer(const std::string& server_ip, int port, const std::vector<std::string> messages) {
-   
-    struct sockaddr_in server_addr;
-
-    if(this->socketFd == -1){
-
-        this->socketFd = socket(AF_INET, SOCK_STREAM, 0);
-        if (this->socketFd < 0) {
-            ESP_LOGE(TAG, "Unable to create socket: errno %d", errno);
-            return ESP_FAIL;
-        }
-        ESP_LOGI(TAG, "Socket created");
-
-        int yes = 1;
-        setsockopt(this->socketFd, IPPROTO_TCP, TCP_NODELAY, (char *) &yes, sizeof(int)); 
-
-        server_addr.sin_family = AF_INET;
-        server_addr.sin_port = htons(port);
-        inet_pton(AF_INET, server_ip.c_str(), &server_addr.sin_addr);
-
-        // Connect to server
-        int err = connect(this->socketFd, (struct sockaddr *)&server_addr, sizeof(server_addr));
-        if (err != 0) {
-            close(this->socketFd);
-            return ESP_FAIL;
-        }
-
-    }
-
-    std::string sendMsg{};
-    for(const auto& m : messages){
-        sendMsg += m;
-    }
-
-    // Send message
-    int sent = send(this->socketFd, sendMsg.c_str(), sendMsg.length(), 0);
-    if (sent <= 0) {
-        ESP_LOGE(TAG, "Error occurred during sending: errno %d", errno);
-        close(this->socketFd);
-        this->socketFd = -1;
-    } 
-    else {
-        //ESP_LOGI(TAG, "Message sent: %s", message.c_str());
-    }
-
-    return ESP_OK;
-}
-
 
 Client::Client(std::string wifiName, std::string wifiPassword,  std::string serverIp, uint16_t serverPort){
 
@@ -206,42 +143,6 @@ Client* Client::GetInstance(){
     return client;
 }
 
-
-void Client::web_task(void* args){
-
-    size_t item_size{12};
-
-    while(true){
-
-        std::vector<std::string> messages;
-        
-        for (int i = 0; i < 5; i++) {
-            // Receive data from the ring buffer
-            YawPitchRoll* received_data = (YawPitchRoll*)xRingbufferReceive(this->dmp_buf_handle, &item_size, pdMS_TO_TICKS(5));
-            if (received_data != nullptr && item_size == sizeof(YawPitchRoll)) {
-
-                if(received_data->yaw >= 666){
-                    vRingbufferReturnItem(this->dmp_buf_handle, (void*)received_data);
-                    continue;
-                }
-
-                messages.insert(messages.begin(), received_data->to_str());
-                vRingbufferReturnItem(this->dmp_buf_handle, (void*)received_data);
-            }
-            else {
-                break;
-            }
-            vTaskDelay(10/portTICK_PERIOD_MS);
-        }   
-
-        if(messages.size() == 1)
-            this->sendDataToServer(this->serverIp, this->serverPort, messages[0]);
-        else if(messages.size() > 1){
-            this->sendDataToServer(this->serverIp, this->serverPort, messages);
-        }
-    }
-}
-
 void Client::web_task2(void* args){
 
     size_t item_size = sizeof(TelemetryData);
@@ -250,8 +151,8 @@ void Client::web_task2(void* args){
 
         std::vector<std::string> messages;
         
-        for (int i = 0; i < 10; i++) {
-            TelemetryData* received_data = (TelemetryData*)xRingbufferReceive(this->web_buf_handle, &item_size, pdMS_TO_TICKS(50));
+        for (int i = 0; i < 5; i++) {
+            TelemetryData* received_data = (TelemetryData*)xRingbufferReceive(this->web_buf_handle, &item_size, portMAX_DELAY);
             if (received_data != nullptr) {
                 messages.insert(messages.begin(), received_data->ypr.to_str());
                 vRingbufferReturnItem(this->web_buf_handle, (void*)received_data);
@@ -261,10 +162,18 @@ void Client::web_task2(void* args){
             }
         }   
 
-        if(messages.size() == 1)
-            this->sendDataToServer(this->serverIp, this->serverPort, messages[0]);
-        else if(messages.size() > 1){
-            this->sendDataToServer(this->serverIp, this->serverPort, messages);
+        std::string jsonMsg;
+
+        jsonMsg = "{ \"ypr\": [";
+        for (size_t i = 0; i < messages.size(); i++) {
+            jsonMsg += "\"" + messages[i] + "\"";
+            if (i < messages.size() - 1) { 
+                jsonMsg += ", ";
+            }
         }
+        jsonMsg += "]}";
+
+        this->sendDataToServer(this->serverIp, this->serverPort, jsonMsg);
+
     }
 }

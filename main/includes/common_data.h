@@ -103,11 +103,23 @@ enum FlightMode{
     SELFLEVL_MODE,
 };
 
+struct EscTelemetry{
+    
+    uint8_t temperature{};
+    uint16_t voltage{};
+    uint16_t current{};
+    uint16_t consumption{};
+    uint16_t rpm{};
+
+};
+
 struct DroneState{
 
     bool isPaired{};
     bool isArmed{};
     bool isGrounded{};
+
+    float currentDraw{};
 
     enum FlightMode mode;
     uint32_t dmpFreq{};
@@ -130,6 +142,7 @@ struct DroneState{
     float currYaw{};
     float currRoll{};
 
+    EscTelemetry escState[4];
 };
 
 struct YawPitchRoll{
@@ -193,8 +206,7 @@ struct YawPitchRoll{
     }
 
 	std::string to_str(){
-		//std::string str = {std::to_string(yaw) + "," + std::to_string(pitch) + "," + std::to_string(roll)};
-		return (std::to_string(yaw) + "," + std::to_string(pitch) + "," + std::to_string(roll) + "\n");
+		return (std::to_string(yaw) + "," + std::to_string(pitch) + "," + std::to_string(roll));
 	}
 };
 
@@ -205,7 +217,7 @@ struct TelemetryData{
 };
 
 struct Pid{
-    const float kP{3};
+    const float kP{2};
     const float kI{0.1};
     const float kD{0.1};
 	const float dt{1};
