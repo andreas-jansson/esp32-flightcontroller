@@ -167,7 +167,7 @@ Dshot600::Dshot600(gpio_num_t motorPin[Dshot::maxChannels]){
     dshot_esc_encoder_config_t encoder_config = {
         .resolution = DSHOT_ESC_RESOLUTION_HZ,
         .baud_rate = 600000, 
-        .post_delay_us = 10, // extra delay between each frame
+        .post_delay_us = 20, // extra delay between each frame
     };
     ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_new_dshot_esc_encoder(&encoder_config, &this->dshot_encoder));
 
@@ -298,16 +298,16 @@ esp_err_t Dshot600::write_speed(struct Dshot::DshotMessage& msg){
             print_debug(DEBUG_DSHOT, DEBUG_DATA, "m%d throttle: %u telemetry: %d  ", i, throttle[i].throttle, throttle[i].telemetry_req);
 
             /* write telemetry req only once*/
-            //if(throttle[i].telemetry_req == true){
-            //    tx_config[i].loop_count = 0; //ensures this is only written once
-            //    ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_disable(this->esc_motor_chan[i]));
-            //    ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_enable(this->esc_motor_chan[i]));
-            //    ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_transmit(this->esc_motor_chan[i], this->dshot_encoder, &throttle[i], sizeof(throttle[i]), &tx_config[i]));   
-            //    ets_delay_us(200);
-            //    /* remove telemetry flag and loop forever*/
-            //    throttle[i].telemetry_req = false;
-            //    tx_config[i].loop_count = -1;
-            //}
+            if(throttle[i].telemetry_req == true){
+                tx_config[i].loop_count = 0; //ensures this is only written once
+                ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_disable(this->esc_motor_chan[i]));
+                ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_enable(this->esc_motor_chan[i]));
+                ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_transmit(this->esc_motor_chan[i], this->dshot_encoder, &throttle[i], sizeof(throttle[i]), &tx_config[i]));   
+                ets_delay_us(200);
+                /* remove telemetry flag and loop forever*/
+                throttle[i].telemetry_req = false;
+                tx_config[i].loop_count = -1;
+            }
             
             ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_disable(this->esc_motor_chan[i]));
             ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_enable(this->esc_motor_chan[i]));
@@ -346,7 +346,7 @@ esp_err_t Dshot600::write_command(struct Dshot::DshotMessage& msg){
                 ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_disable(this->esc_motor_chan[i]));
                 ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_enable(this->esc_motor_chan[i]));
                 ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_transmit(this->esc_motor_chan[i], this->dshot_encoder, &throttle[i], sizeof(throttle[i]), &tx_config[i]));
-                ets_delay_us(200);
+                ets_delay_us(100);
 
                 if(dshotWaitLookup[msg.cmd[i]] > 0) 
                     vTaskDelay(dshotWaitLookup[msg.cmd[i]]);

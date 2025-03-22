@@ -554,7 +554,7 @@ void Drone::drone_task(void *args)
         }
 
         if(!m_state.isArmed){
-            vTaskDelay(pdMS_TO_TICKS(5));
+            vTaskDelay(pdMS_TO_TICKS(20));
             continue;
         }
 
@@ -562,18 +562,16 @@ void Drone::drone_task(void *args)
         Dshot::DshotMessage msg{};
   
 
-        //ESP_ERROR_CHECK_WITHOUT_ABORT(signal_telemetry_request(msg));
+        ESP_ERROR_CHECK_WITHOUT_ABORT(signal_telemetry_request(msg));
         startTel = std::chrono::steady_clock::now();
 
 
-
         #ifdef TELEMETRY_TASK
-        ESP_ERROR_CHECK_WITHOUT_ABORT(measure_current());
-
         auto end_telemetry = std::chrono::system_clock::now();
         auto elapsed_telemetry = std::chrono::duration_cast<std::chrono::milliseconds>(end_telemetry - start_telemetry).count();
-        if (elapsed_telemetry >= 10)
+        if (elapsed_telemetry >= 20)
         {
+            ESP_ERROR_CHECK_WITHOUT_ABORT(measure_current());
             ESP_ERROR_CHECK_WITHOUT_ABORT(send_telemetry());
             start_telemetry = std::chrono::system_clock::now();
         }
@@ -583,7 +581,7 @@ void Drone::drone_task(void *args)
         get_new_speed(msg, newSpeedValues);
 
         if(!newSpeedValues){
-            vTaskDelay(pdMS_TO_TICKS(5));
+            vTaskDelay(pdMS_TO_TICKS(1));
             continue;
         }
 
@@ -591,7 +589,7 @@ void Drone::drone_task(void *args)
         ESP_ERROR_CHECK_WITHOUT_ABORT(send_dshot_message(msg));
 
         loopCounter++;
-        vTaskDelay(pdMS_TO_TICKS(30));
+        vTaskDelay(pdMS_TO_TICKS(1));
     }
 }
 
@@ -603,7 +601,7 @@ void Drone::esc_telemetry_task(void* args){
     constexpr uint8_t chunkSize{10};
     constexpr uint8_t crcIdx{9};
 
-    vTaskDelay(pdMS_TO_TICKS(5000000000));
+    vTaskDelay(pdMS_TO_TICKS(5000));
 
 
     while(true){
@@ -791,8 +789,12 @@ void Drone::get_new_speed(Dshot::DshotMessage& msg, bool& didChange){
 
 esp_err_t Drone::measure_current() {
 
-    adc1_config_width(ADC_WIDTH_BIT_12);
-    adc1_config_channel_atten(ADC1_CHANNEL_0, ADC_ATTEN_DB_11);
+    static bool init = false;
+    if(!init){
+        adc1_config_width(ADC_WIDTH_BIT_12);
+        adc1_config_channel_atten(ADC1_CHANNEL_0, ADC_ATTEN_DB_11);
+        init = true;
+    }
 
     const uint8_t samples = 100;
     std::vector<uint32_t> voltageSamples;
@@ -811,6 +813,7 @@ esp_err_t Drone::measure_current() {
 
     // Convert voltage to current using ESC's scaling factor (mV per Amp)
     m_state.currentDraw = (medianVoltage) * (float)ESC_MV_PER_AMP;  // Current in Amps
+
 
     return ESP_OK;
 }

@@ -311,16 +311,16 @@ void main_task(void *args)
     /* start tasks */
     print_debug(DEBUG_MAIN, DEBUG_LOGIC, "starting tasks\n");
     #ifdef WEB_TASK
-    xTaskCreatePinnedToCore(dispatch_webClient, "web_task", 4048, nullptr, 23, &web_handle, 1);
+    xTaskCreatePinnedToCore(dispatch_webClient, "web_task", 4048, nullptr, 22, &web_handle, 1);
     #endif
     #ifdef TELEMETRY_TASK
-    xTaskCreatePinnedToCore(telemetry_task, "telemetry_task", 4048, nullptr, 23, &telemetry_handle, 1);
+    xTaskCreatePinnedToCore(telemetry_task, "telemetry_task", 4048, nullptr, 22, &telemetry_handle, 1);
     #endif
     xTaskCreatePinnedToCore(dispatch_drone, "dispatch_drone", 4048, nullptr,  23, &drone_handle, 1);
     xTaskCreatePinnedToCore(dispatch_radio, "radio_task", 4048, nullptr,  23, &radio_handle, 0);
     xTaskCreatePinnedToCore(dispatch_dmp, "dmp_task", 4048, nullptr,  23, &dmp_handle, 1);
-    xTaskCreatePinnedToCore(dispatch_dshot, "dshot_task", 4048, nullptr,  23, &dmp_handle, 1);
-    xTaskCreatePinnedToCore(dispatch_esc_telemetry, "esc_telemetry_task", 4048, nullptr,  23, &esc_telemetry_handle, 1);
+    xTaskCreatePinnedToCore(dispatch_dshot, "dshot_task", 4048, nullptr,  24, &dmp_handle, 1);
+    xTaskCreatePinnedToCore(dispatch_esc_telemetry, "esc_telemetry_task", 4048, nullptr,  22, &esc_telemetry_handle, 1);
     //xTaskCreatePinnedToCore(dispatch_raw, "raw_task", 4048, nullptr,  23, &dmp_handle, 1);
 
     while (true)
