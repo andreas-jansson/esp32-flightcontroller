@@ -1363,7 +1363,7 @@ esp_err_t Mpu6050::get_yaw_pitch_roll(Quaternion& q, VectorFloat& gravity, YawPi
         case ROTATE_90:
             tmp = ypr.roll;
             ypr.roll = ypr.pitch;
-            ypr.pitch = tmp * -1;
+            ypr.pitch = tmp;
             break;
         case ROTATE_180:
             //not testeed

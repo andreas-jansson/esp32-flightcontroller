@@ -89,8 +89,6 @@ void telemetry_task(void* args){
     RingbufHandle_t ringBuffer_telemetry = Drone::GetInstance()->get_queue_handle();
 
     constexpr float radToDegree = (180.0 / M_PI);
-    // constexpr char moveCursorUp[] = "[4A";
-    // constexpr char clearRow[] = "[K";
     constexpr char hideCursor[] = "\033[?25l";
     printf("%s", hideCursor);
 
@@ -101,8 +99,6 @@ void telemetry_task(void* args){
 
     size_t item_size2 = sizeof(TelemetryData);
     std::map<int, std::string> mode = {{ACRO_MODE, "Acro mode"}, {SELFLEVL_MODE, "Self level mode"}, {ANGLE_MODE, "Angle mode"}};
-
-
 
 
     while (true)
@@ -134,6 +130,7 @@ void telemetry_task(void* args){
             telemetry.ypr.pitch * radToDegree, 
             telemetry.ypr.yaw * radToDegree);
 
+
         draw_channels("1", telemetry.channel.ch1,  chPrev.ch1,  counter);
         draw_channels("2", telemetry.channel.ch2,  chPrev.ch2,  counter);
         draw_channels("3", telemetry.channel.ch3,  chPrev.ch3,  counter);
@@ -145,6 +142,8 @@ void telemetry_task(void* args){
         draw_channels("9", telemetry.channel.ch9,  chPrev.ch9,  counter);
         draw_channels("10", telemetry.channel.ch10, chPrev.ch10, counter);
         draw_channels("11", telemetry.channel.ch11, chPrev.ch11, counter);
+
+
         print_debug(DEBUG_TELEMETRY, DEBUG_DATA,"[KArmed: %3s mode: %-17s (%d) dmp: %lu Hz radio: %lu Hz loop Hz: %lu\n", 
             telemetry.drone.isArmed? "Yes" : "No", 
             mode[telemetry.drone.mode].c_str(), 
@@ -153,6 +152,8 @@ void telemetry_task(void* args){
             telemetry.drone.radioFreq,
             telemetry.drone.loopFreq
         );
+
+
 
         print_debug(DEBUG_TELEMETRY, DEBUG_DATA, "[Ktarget: %5.2f curr: %5.2f\n", telemetry.drone.targetPitch, telemetry.drone.currPitch);
         print_debug(DEBUG_TELEMETRY, DEBUG_DATA, "[Ktarget: %5.2f curr: %5.2f\n", telemetry.drone.targetRoll, telemetry.drone.currRoll);
@@ -191,7 +192,7 @@ void telemetry_task(void* args){
 
         chPrev = ch;
         counter++;
-        vTaskDelay(2/portTICK_PERIOD_MS);
+        vTaskDelay(pdMS_TO_TICKS(1));
     }
 
 }

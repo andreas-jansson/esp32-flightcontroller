@@ -113,7 +113,10 @@ void RadioController::radio_task(void* args){
     while(true){
 
         uint8_t data[512]{};
-        size_t dataLength{}; 
+        size_t dataLength{};
+        TickType_t lastSleep = xTaskGetTickCount();
+        TickType_t sleepThld = pdMS_TO_TICKS(100);
+        TickType_t sleepDur = pdMS_TO_TICKS(1); 
 
         uart_event_t event;
         if (xQueueReceive(uart_queue, (void *)&event, (TickType_t)portMAX_DELAY)){
@@ -145,6 +148,12 @@ void RadioController::radio_task(void* args){
                     }
                 }
             }
+        }
+        
+        TickType_t now = xTaskGetTickCount();
+        if ((now - lastSleep) >= sleepThld) {
+            vTaskDelay(sleepDur);
+            lastSleep = now;
         }
     }
 }

@@ -222,7 +222,9 @@ void Dshot600::dshot_task(void* args){
 
     esp_err_t status = 0;
     uint16_t prevSpeed[Dshot::maxChannels]{};
-
+    TickType_t lastSleep = xTaskGetTickCount();
+    TickType_t sleepThld = pdMS_TO_TICKS(100);
+    TickType_t sleepDur = pdMS_TO_TICKS(1);
 
     while(true){
 
@@ -241,7 +243,6 @@ void Dshot600::dshot_task(void* args){
 
             if(msg.msgType == COMMAND){
                 ESP_ERROR_CHECK_WITHOUT_ABORT(write_command(msg));
-                //ESP_ERROR_CHECK_WITHOUT_ABORT(set_idle());
             }
             else if(msg.msgType == THROTTLE){
                 ESP_ERROR_CHECK_WITHOUT_ABORT(set_speed(msg));
@@ -249,11 +250,16 @@ void Dshot600::dshot_task(void* args){
                 
             }
         }
-
         else{
             ESP_ERROR_CHECK_WITHOUT_ABORT(status);
         }
-        vTaskDelay(pdMS_TO_TICKS(5));
+
+        TickType_t now = xTaskGetTickCount();
+        if ((now - lastSleep) >= sleepThld) {
+            vTaskDelay(sleepDur);
+            lastSleep = now;
+        }
+
     }
 }
 
@@ -315,7 +321,7 @@ esp_err_t Dshot600::write_speed(struct Dshot::DshotMessage& msg){
             ets_delay_us(100);
         }
     }
-    print_debug(DEBUG_DSHOT, DEBUG_DATA, "\n---\n");
+    print_debug(DEBUG_DSHOT, DEBUG_DATA, "\n");
 
 
     return status;
@@ -346,7 +352,7 @@ esp_err_t Dshot600::write_command(struct Dshot::DshotMessage& msg){
                 ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_disable(this->esc_motor_chan[i]));
                 ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_enable(this->esc_motor_chan[i]));
                 ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_transmit(this->esc_motor_chan[i], this->dshot_encoder, &throttle[i], sizeof(throttle[i]), &tx_config[i]));
-                ets_delay_us(100);
+                ets_delay_us(30);
 
                 if(dshotWaitLookup[msg.cmd[i]] > 0) 
                     vTaskDelay(dshotWaitLookup[msg.cmd[i]]);

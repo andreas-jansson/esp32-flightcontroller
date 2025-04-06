@@ -1,5 +1,6 @@
 #pragma once
 
+#include <iostream>
 #include <map>
 #include <vector>
 #include <string>
@@ -94,6 +95,31 @@ typedef struct __attribute__((packed)){
     unsigned ch14 : 11;
     unsigned ch15 : 11;
     unsigned ch16 : 11;
+
+    std::string to_str(){
+
+        std::string str;
+
+        str += std::to_string(ch1) + ",";
+        str += std::to_string(ch2) + ",";
+        str += std::to_string(ch3) + ",";
+        str += std::to_string(ch4) + ",";
+        str += std::to_string(ch5) + ",";
+        str += std::to_string(ch6) + ",";
+        str += std::to_string(ch7) + ",";
+        str += std::to_string(ch8) + ",";
+        str += std::to_string(ch9) + ",";
+        str += std::to_string(ch10) + ",";
+        str += std::to_string(ch11) + ",";
+        str += std::to_string(ch12) + ",";
+        str += std::to_string(ch13) + ",";
+        str += std::to_string(ch14) + ",";
+        str += std::to_string(ch15) + ",";
+        str += std::to_string(ch16);
+
+
+        return str;
+    }
     
 } Channel;
 
@@ -110,6 +136,14 @@ struct EscTelemetry{
     uint16_t current{};
     uint16_t consumption{};
     uint16_t rpm{};
+
+    std::string to_str(){
+        return std::to_string(temperature) + "," + 
+               std::to_string(voltage * 0.10) + "," + 
+               std::to_string(current * 0.10) + "," + 
+               std::to_string(consumption * 0.10)  + "," + 
+               std::to_string(rpm * 100 / 7); // erpm per 100 to rpm
+    }
 
 };
 
@@ -143,6 +177,18 @@ struct DroneState{
     float currRoll{};
 
     EscTelemetry escState[4];
+
+    std::string throttle_fl_to_str(){return std::to_string(motorFlSpeed);}
+
+    std::string throttle_fr_to_str(){return std::to_string(motorFrSpeed);}
+
+    std::string throttle_rl_to_str(){return std::to_string(motorRlSpeed);}
+
+    std::string throttle_rr_to_str(){return std::to_string(motorRrSpeed);}
+
+    std::string current_to_str(){return std::to_string(currentDraw);}
+
+
 };
 
 struct YawPitchRoll{
@@ -217,7 +263,7 @@ struct TelemetryData{
 };
 
 struct Pid{
-    const float kP{2};
+    const float kP{.5};
     const float kI{0.1};
     const float kD{0.1};
 	const float dt{1};

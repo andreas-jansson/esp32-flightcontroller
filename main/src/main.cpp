@@ -246,8 +246,6 @@ void main_task(void *args)
     RingbufHandle_t ringBuffer_telemetry{};
     RingbufHandle_t ringBuffer_dshot{};
 
-
-
     /******* radio *******/
     RadioController* radio = RadioController::GetInstance();
     ringBuffer_radio = radio->get_queue_handle();
@@ -270,7 +268,7 @@ void main_task(void *args)
     #ifdef WEB_TASK
     std::string ssid{"Ubiquity 2"};
     std::string wpa{"#SupderDuper66!"};
-    std::string ip{"192.168.1.247"};
+    std::string ip{"192.168.1.246"};
 
     init_telemetry_buffer();
     ringBuffer_web = get_telemetry_handle();
@@ -316,11 +314,11 @@ void main_task(void *args)
     #ifdef TELEMETRY_TASK
     xTaskCreatePinnedToCore(telemetry_task, "telemetry_task", 4048, nullptr, 22, &telemetry_handle, 1);
     #endif
-    xTaskCreatePinnedToCore(dispatch_drone, "dispatch_drone", 4048, nullptr,  23, &drone_handle, 1);
+    xTaskCreatePinnedToCore(dispatch_drone, "drone_task", 4048, nullptr,  23, &drone_handle, 1);
     xTaskCreatePinnedToCore(dispatch_radio, "radio_task", 4048, nullptr,  23, &radio_handle, 0);
     xTaskCreatePinnedToCore(dispatch_dmp, "dmp_task", 4048, nullptr,  23, &dmp_handle, 1);
-    xTaskCreatePinnedToCore(dispatch_dshot, "dshot_task", 4048, nullptr,  24, &dmp_handle, 1);
-    xTaskCreatePinnedToCore(dispatch_esc_telemetry, "esc_telemetry_task", 4048, nullptr,  22, &esc_telemetry_handle, 1);
+    xTaskCreatePinnedToCore(dispatch_dshot, "dshot_task", 4048, nullptr,  24, &dmp_handle, 0);
+    xTaskCreatePinnedToCore(dispatch_esc_telemetry, "esc_telemetry_task", 4048, nullptr,  23, &esc_telemetry_handle, 1);
     //xTaskCreatePinnedToCore(dispatch_raw, "raw_task", 4048, nullptr,  23, &dmp_handle, 1);
 
     while (true)
@@ -332,7 +330,7 @@ void main_task(void *args)
 void app_main(void)
 {
     TaskHandle_t main_handle{};
-    uint32_t files = DEBUG_MAIN | DEBUG_TELEMETRY;// | DEBUG_TELEMETRY;// | DEBUG_DSHOT // | DEBUG_TELEMETRY;// | DEBUG_DSHOT | DEBUG_DSHOT | DEBUG_RADIO | DEBUG_DRONE | DEBUG_TELEMETRY | DEBUG_MPU6050 | DEBUG_I2C; | DEBUG_BMP ;
+    uint32_t files = DEBUG_MAIN | DEBUG_TELEMETRY;// | DEBUG_TELEMETRY;// | DEBUG_TELEMETRY | DEBUG_DSHOT  | DEBUG_RADIO | DEBUG_DRONE | DEBUG_MPU6050 | DEBUG_I2C; | DEBUG_BMP ;
     uint32_t prio = DEBUG_DATA;// | DEBUG_LOGIC;  // | DEBUG_ARGS;// | DEBUG_LOGIC;
 
     set_loglevel(files, prio);
