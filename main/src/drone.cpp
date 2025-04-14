@@ -1032,6 +1032,11 @@ esp_err_t Drone::parse_channel_state(const Channel &newChannel)
 esp_err_t Drone::send_dshot_message(Dshot::DshotMessage &msg)
 {
 
+    //msg.writeTo[m_motorLaneMapping.frontLeftlane] = false;
+    //msg.writeTo[m_motorLaneMapping.frontRightlane] = false;
+    //msg.writeTo[m_motorLaneMapping.rearLeftlane] = false;
+    //msg.writeTo[m_motorLaneMapping.rearRightlane] = false;
+
     print_debug(DEBUG_DRONE, DEBUG_ARGS, "send_dshot_message: msg <todo>\n");
     BaseType_t res = xRingbufferSend(m_dshot_queue_handle, &msg, sizeof(Dshot::DshotMessage), 1);
     if (res != pdTRUE)

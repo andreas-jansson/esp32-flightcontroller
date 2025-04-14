@@ -293,11 +293,15 @@ void main_task(void *args)
 
     /*******  Drone *******/
     MotorLaneMapping motorLanes{
-        .rearLeftlane = MOTOR1,
-        .rearRightlane = MOTOR2,
-        .frontLeftlane = MOTOR3,
-        .frontRightlane = MOTOR4
+        .rearLeftlane = MOTOR3,
+        .rearRightlane = MOTOR1,
+        .frontLeftlane = MOTOR4,    
+        .frontRightlane = MOTOR2
     };
+
+    // m1 = rear rught
+    // m4 = front left
+    
 
     Drone* drone = Drone::GetInstance(ringBuffer_dshot, ringBuffer_dmp, ringBuffer_radio);
     drone->init_uart(UART_ESC_RX_IO, UART_ESC_TX_IO, UART_ESC_BAUDRATE);
