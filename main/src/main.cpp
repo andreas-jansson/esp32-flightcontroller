@@ -25,6 +25,7 @@
 #include "webClient.h"
 #include "development.h"
 #include "drone.h"
+#include "display.h"
 
 
 // uncommen to add back tasks
@@ -69,7 +70,7 @@ void web_task(void *args)
     std::string wpa{"#SupderDuper66!"};
     std::string ip{"192.168.1.246"};
 
-    Client *client = Client::GetInstance(ssid, wpa, ip, 6669);
+    WebClient *client = WebClient::GetInstance(ssid, wpa, ip, 6669);
     client->init(ringBuffer_dmp, nullptr);
 
     while (true)
@@ -208,7 +209,7 @@ void dispatch_raw(void *args)
 
 void dispatch_webClient(void *args)
 {
-    Client *client = Client::GetInstance();
+    WebClient *client = WebClient::GetInstance();
     client->web_task2(nullptr);
 }
 
@@ -222,6 +223,12 @@ void dispatch_dshot(void *args)
 {
     Dshot600 *dshot = Dshot600::GetInstance();
     dshot->dshot_task(nullptr);
+}
+
+void dispatch_display(void *args)
+{
+    Display *display = Display::GetInstance();
+    display->display_task(nullptr);
 }
 
 void dispatch_esc_telemetry(void *args){
@@ -239,6 +246,7 @@ void main_task(void *args)
     TaskHandle_t telemetry_handle{}; 
     TaskHandle_t drone_handle{};
     TaskHandle_t esc_telemetry_handle{};
+    TaskHandle_t display_handle{};
 
     RingbufHandle_t ringBuffer_dmp{};
     RingbufHandle_t ringBuffer_radio{};
@@ -272,10 +280,9 @@ void main_task(void *args)
 
     init_telemetry_buffer();
     ringBuffer_web = get_telemetry_handle();
-    Client *client = Client::GetInstance(ssid, wpa, ip, 6669);
+    WebClient *client = WebClient::GetInstance(ssid, wpa, ip, 6669);
     client->init(ringBuffer_dmp, ringBuffer_web);
     #endif
-
 
 
     /******* Dshot600 *******/
@@ -312,6 +319,7 @@ void main_task(void *args)
 
     /* start tasks */
     print_debug(DEBUG_MAIN, DEBUG_LOGIC, "starting tasks\n");
+    xTaskCreatePinnedToCore(dispatch_display, "display_task", 32256, nullptr,  23, &display_handle, 1);
     #ifdef WEB_TASK
     xTaskCreatePinnedToCore(dispatch_webClient, "web_task", 4048, nullptr, 22, &web_handle, 1);
     #endif

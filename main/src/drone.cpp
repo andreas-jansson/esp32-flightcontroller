@@ -14,6 +14,7 @@
 #include "driver/adc_types_legacy.h"
 #include "drone.h"
 #include "debug.h"
+#include "display.h"
 
 #define TELEMETRY_TASK
 
@@ -227,6 +228,8 @@ esp_err_t Drone::arming_process()
     }
 
     ESP_LOGI(log_tag, "Drone armed");
+    Display::set_armed_status(true);
+
     return ESP_OK;
 }
 
@@ -573,10 +576,10 @@ void Drone::drone_task(void *args)
         if (elapsed_telemetry >= 10)
         {
 
-            m_state.motorRlSpeed = msg.speed[m_motorLaneMapping.rearLeftlane];
-            m_state.motorRrSpeed = msg.speed[m_motorLaneMapping.rearRightlane];
-            m_state.motorFlSpeed = msg.speed[m_motorLaneMapping.frontLeftlane];
-            m_state.motorFrSpeed = msg.speed[m_motorLaneMapping.frontRightlane];
+            //m_state.motorRlSpeed = msg.speed[m_motorLaneMapping.rearLeftlane];
+            //m_state.motorRrSpeed = msg.speed[m_motorLaneMapping.rearRightlane];
+            //m_state.motorFlSpeed = msg.speed[m_motorLaneMapping.frontLeftlane];
+            //m_state.motorFrSpeed = msg.speed[m_motorLaneMapping.frontRightlane];
 
             ESP_ERROR_CHECK_WITHOUT_ABORT(measure_current());
             ESP_ERROR_CHECK_WITHOUT_ABORT(send_telemetry());
@@ -1081,10 +1084,15 @@ esp_err_t Drone::set_armed(uint32_t value)
     status = send_dshot_message(msg);
     ESP_RETURN_ON_ERROR(status, log_tag, "Failed to start arm process");
 
-    if(value >= Radio::maxChannelThld)
+    if(value >= Radio::maxChannelThld){
         m_state.isArmed = true;
-    else if(value <= Radio::minChannelThld)
+        Display::set_armed_status(true);
+    }
+    else if(value <= Radio::minChannelThld){
         m_state.isArmed = false;
+        Display::set_armed_status(false);
+    }
+
 
 
     return ESP_OK;

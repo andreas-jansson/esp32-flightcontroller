@@ -8,8 +8,8 @@
 #include "esp_wifi.h"
 
 
-class Client{
-    static class Client* client;
+class WebClient{
+    static class WebClient* client;
     int socketFd{};
     bool connected{};
 
@@ -21,13 +21,13 @@ class Client{
     RingbufHandle_t web_buf_handle;
 
     static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data);
-    Client(std::string wifiName, std::string wifiPassword,  std::string serverIp, uint16_t serverPort);
+    WebClient(std::string wifiName, std::string wifiPassword,  std::string serverIp, uint16_t serverPort);
 
     public:
-    Client(Client &other) = delete;
-    void operator=(const Client &) = delete;
-    static Client *GetInstance(std::string wifiName, std::string wifiPassword,  std::string serverIp, uint16_t serverPort);
-	static Client *GetInstance();
+    WebClient(WebClient &other) = delete;
+    void operator=(const WebClient &) = delete;
+    static WebClient *GetInstance(std::string wifiName, std::string wifiPassword,  std::string serverIp, uint16_t serverPort);
+	static WebClient *GetInstance();
 
     esp_err_t sendDataToServer(const std::string& server_ip, int port, const std::string& message);
     esp_err_t sendDataToServer(const std::string& server_ip, int port, const std::vector<std::string> messages);

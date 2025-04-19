@@ -9,6 +9,7 @@
 #include "driver/gpio.h"
 
 #include "debug.h"
+#include "display.h"
 
 #define log_tag "radio"
 
@@ -117,6 +118,7 @@ void RadioController::radio_task(void* args){
         TickType_t lastSleep = xTaskGetTickCount();
         TickType_t sleepThld = pdMS_TO_TICKS(100);
         TickType_t sleepDur = pdMS_TO_TICKS(1); 
+        bool alertDisplayActive{};
 
         uart_event_t event;
         if (xQueueReceive(uart_queue, (void *)&event, (TickType_t)portMAX_DELAY)){
@@ -135,8 +137,16 @@ void RadioController::radio_task(void* args){
 
                     if(type == c_frameTypeChannels){
                         send_channel_to_queue((Channel*)data);
+
+                        if(!alertDisplayActive){
+                            Display::set_radio_status(true);
+                            alertDisplayActive = true;
+                        }
                     }
                     else if(type == c_frameTypeLinkStatistics){
+                        Display::set_radio_status(false);
+                        alertDisplayActive = false;
+ 
                         // TODO send a specific channel message so that drone attempts to land safely.
                         // uplink_Link_quality: 0x0, detect loss of controller
                         //printf("stats: uplink_RSSI_1: 0x%x uplink_RSSI_2: 0x%x uplink_Link_quality: 0x%x uplink_SNR: 0x%x active_antenna: 0x%x rf_Mode: 0x%x uplink_TX_Power: 0x%x\n",

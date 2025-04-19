@@ -6,6 +6,7 @@
 #include "webClient.h"
 #include "dshot600.h"
 #include "common_data.h"
+#include "display.h"
 
 
 
@@ -24,7 +25,7 @@ static const char *TAG = "scan";
 #include "esp_log.h"
 #include "esp_system.h"
 
-Client* Client::client = nullptr;
+WebClient* WebClient::client = nullptr;
 
 
 
@@ -95,7 +96,7 @@ std::string create_json(std::vector<std::string>& items){
 
 
 
-esp_err_t Client::sendDataToServer(const std::string& server_ip, int port, const std::string& message) {
+esp_err_t WebClient::sendDataToServer(const std::string& server_ip, int port, const std::string& message) {
     static struct sockaddr_in server_addr;
 
     if(this->socketFd == -1){
@@ -123,7 +124,7 @@ esp_err_t Client::sendDataToServer(const std::string& server_ip, int port, const
     return ESP_OK;
 }
 
-Client::Client(std::string wifiName, std::string wifiPassword,  std::string serverIp, uint16_t serverPort){
+WebClient::WebClient(std::string wifiName, std::string wifiPassword,  std::string serverIp, uint16_t serverPort){
 
     this->wifiName = wifiName;
     this->wifiPassword = wifiPassword;
@@ -133,7 +134,7 @@ Client::Client(std::string wifiName, std::string wifiPassword,  std::string serv
 }
 
 
-esp_err_t Client::init(RingbufHandle_t dmp_buf_handle, RingbufHandle_t web_buf_handle){
+esp_err_t WebClient::init(RingbufHandle_t dmp_buf_handle, RingbufHandle_t web_buf_handle){
 
     esp_err_t status = 0;
 
@@ -188,7 +189,7 @@ esp_err_t Client::init(RingbufHandle_t dmp_buf_handle, RingbufHandle_t web_buf_h
     return status;
 }
 
-void Client::event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data)
+void WebClient::event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data)
 {
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
         ESP_ERROR_CHECK(esp_wifi_connect());
@@ -197,21 +198,22 @@ void Client::event_handler(void* arg, esp_event_base_t event_base, int32_t event
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
         ESP_LOGI(TAG, "got ip:" IPSTR, IP2STR(&event->ip_info.ip));
+        Display::set_wifi_status(true);
     }
 }
 
-Client* Client::GetInstance(std::string wifiName, std::string wifiPassword, std::string serverIp, uint16_t serverPort){
+WebClient* WebClient::GetInstance(std::string wifiName, std::string wifiPassword, std::string serverIp, uint16_t serverPort){
   if(client==nullptr){
-        client = new Client(wifiName, wifiPassword, serverIp, serverPort);
+        client = new WebClient(wifiName, wifiPassword, serverIp, serverPort);
     }
     return client;
 }
 
-Client* Client::GetInstance(){
+WebClient* WebClient::GetInstance(){
     return client;
 }
 
-void Client::web_task2(void* args){
+void WebClient::web_task2(void* args){
 
     size_t item_size = sizeof(TelemetryData);
 
@@ -254,21 +256,6 @@ void Client::web_task2(void* args){
                 break;
             }
         }   
-
-
-
-        //std::string jsonMsg;
-
-        //jsonMsg = "{ \"ypr\": [";
-
-        //for (size_t i = 0; i < messages.size(); i++) {
-        //    jsonMsg += "\"" + messages[i] + "\"";
-        //    if (i < messages.size() - 1) { 
-        //        jsonMsg += ", ";
-        //    }
-        //}
-
-        //jsonMsg += "]}";
 
         /* ypr json */
         std::string ypr_key{"ypr"};

@@ -50,7 +50,7 @@ class Drone{
     const float m_maxRoll{45};
     const float m_minRoll{-45};
 
-    const uint16_t c_minThrottleValue{80}; //sending lower may cause strange motor behaviour
+    const uint16_t c_minThrottleValue{100}; //sending lower may cause strange motor behaviour
     const bool c_saftyParams{true}; //limists various values while testing
 
     DroneState m_state{};
