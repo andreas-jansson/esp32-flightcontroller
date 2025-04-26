@@ -67,7 +67,7 @@ class Drone{
     Pid m_pid[3]{};
 
     RingbufHandle_t dmp_queue_handle{};
-    RingbufHandle_t radio_queue_handle{};
+    CircularHandle_t radio_queue_handle{};
     RingbufHandle_t telemetry_queue_handle{};
     RingbufHandle_t m_dshot_queue_handle{};
 
@@ -92,7 +92,7 @@ class Drone{
     Drone(
         RingbufHandle_t dshot, 
         RingbufHandle_t dmp_queue_handle, 
-        RingbufHandle_t radio_queue_handle);
+        CircularHandle_t radio_queue_handle);
 
 
     esp_err_t parse_channel_state(const Channel& channel);
@@ -150,7 +150,7 @@ class Drone{
     static Drone *GetInstance(
         RingbufHandle_t dshot, 
         RingbufHandle_t dmp_queue_handle, 
-        RingbufHandle_t radio_queue_handle);
+        CircularHandle_t radio_queue_handle);
     static Drone *GetInstance();
 
     esp_err_t set_motor_lane_mapping(const MotorLaneMapping motorMapping);

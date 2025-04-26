@@ -42,7 +42,8 @@ RadioController::RadioController(){
     channelSem = xSemaphoreCreateMutex();
     ESP_ERROR_CHECK((channelSem==nullptr));
 
-    this->radio_queue_handle = xRingbufferCreate(sizeof(channel)*5, RINGBUF_TYPE_NOSPLIT);
+    //this->radio_queue_handle = xRingbufferCreate(sizeof(channel)*5, RINGBUF_TYPE_NOSPLIT);
+    this->radio_queue_handle = CircularBufCreate(10, sizeof(channel));
     if (this->radio_queue_handle == NULL) {
         printf("Failed to create DMP ring buffer\n");
     }
@@ -230,10 +231,11 @@ esp_err_t RadioController::send_channel_to_queue(void* newChannel){
         return ESP_OK;
     }
 
-    BaseType_t res = xRingbufferSend(radio_queue_handle, newChannel + 3, sizeof(Channel), 1);
-    if (res != pdTRUE) {
-        //printf("Failed to send radio item: handle %p size %u\n", radio_queue_handle, sizeof(Channel));
-    } 
+    //BaseType_t res = xRingbufferSend(radio_queue_handle, newChannel + 3, sizeof(Channel), 1);
+    CircularBufEnqueue(radio_queue_handle, newChannel + 3);
+    //if (res != pdTRUE) {
+    //    //printf("Failed to send radio item: handle %p size %u\n", radio_queue_handle, sizeof(Channel));
+    //} 
     memcpy(&this->channel, newChannel + 3, 22);
 
     return ESP_OK;

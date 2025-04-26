@@ -26,6 +26,7 @@
 #include "development.h"
 #include "drone.h"
 #include "display.h"
+#include "ringbuffer.h"
 
 
 // uncommen to add back tasks
@@ -249,7 +250,8 @@ void main_task(void *args)
     TaskHandle_t display_handle{};
 
     RingbufHandle_t ringBuffer_dmp{};
-    RingbufHandle_t ringBuffer_radio{};
+    //RingbufHandle_t ringBuffer_radio{};
+    CircularHandle_t ringBuffer_radio{};
     RingbufHandle_t ringBuffer_web{};
     RingbufHandle_t ringBuffer_telemetry{};
     RingbufHandle_t ringBuffer_dshot{};
@@ -296,8 +298,6 @@ void main_task(void *args)
     ringBuffer_dshot = dshot->get_queue_handle();
 
 
-
-
     /*******  Drone *******/
     MotorLaneMapping motorLanes{
         .rearLeftlane = MOTOR3,
@@ -305,10 +305,6 @@ void main_task(void *args)
         .frontLeftlane = MOTOR4,    
         .frontRightlane = MOTOR2
     };
-
-    // m1 = rear rught
-    // m4 = front left
-    
 
     Drone* drone = Drone::GetInstance(ringBuffer_dshot, ringBuffer_dmp, ringBuffer_radio);
     drone->init_uart(UART_ESC_RX_IO, UART_ESC_TX_IO, UART_ESC_BAUDRATE);
@@ -319,7 +315,7 @@ void main_task(void *args)
 
     /* start tasks */
     print_debug(DEBUG_MAIN, DEBUG_LOGIC, "starting tasks\n");
-    xTaskCreatePinnedToCore(dispatch_display, "display_task", 32256, nullptr,  23, &display_handle, 1);
+    xTaskCreatePinnedToCore(dispatch_display, "display_task", 8092, nullptr,  23, &display_handle, 1);
     #ifdef WEB_TASK
     xTaskCreatePinnedToCore(dispatch_webClient, "web_task", 4048, nullptr, 22, &web_handle, 1);
     #endif

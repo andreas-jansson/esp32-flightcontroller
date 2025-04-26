@@ -5,12 +5,14 @@
 
 #include "common_data.h"
 
+#include "ringbuffer.h"
 
 
 
 class RadioController{
      static RadioController* radio;
-     RingbufHandle_t radio_queue_handle;
+     //RingbufHandle_t radio_queue_handle;
+     CircularHandle_t radio_queue_handle; 
      uart_port_t uartNum{2};
      QueueHandle_t uart_queue{};
      Channel channel{};
@@ -37,7 +39,7 @@ class RadioController{
      void radio_task(void* args);
      double get_altitude();
 
-     RingbufHandle_t get_queue_handle(){return radio_queue_handle;}
+     CircularHandle_t get_queue_handle(){return radio_queue_handle;}
      esp_err_t get_channel_data(Channel& data);
      esp_err_t get_pitch(uint16_t& data);
      esp_err_t get_roll(uint16_t& data);

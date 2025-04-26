@@ -10,6 +10,8 @@ idf_component_register(SRCS
                          "src/development.cpp"
                          "src/dshot600.cpp"
                          "src/display.cpp"
+                         "src/ringbuffer.cpp"
+
                          "icons/wifi_icon.cpp"
                          "icons/flight_icon.cpp"
                          "icons/sensor_connected_icon.cpp"
@@ -27,8 +29,7 @@ idf_component_register(SRCS
                          esp_rom
                          nvs_flash
                          "driver"
-                        "nvs_flash"
-                         
+                        "nvs_flash" 
                        )
 
 #SET(CMAKE_CXX_STANDARD 17)

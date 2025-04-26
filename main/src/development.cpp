@@ -94,8 +94,11 @@ void telemetry_task(void* args){
 
     Channel ch{}, chPrev{};
     YawPitchRoll yprPrev{};
-    vTaskDelay(1000 / portTICK_PERIOD_MS);
+    printf("%d\n", __LINE__);
+    vTaskDelay(pdMS_TO_TICKS(100));
+    printf("%d\n", __LINE__);
     uint64_t counter = 0;
+    fflush(stdout);
 
     size_t item_size2 = sizeof(TelemetryData);
     std::map<int, std::string> mode = {{ACRO_MODE, "Acro mode"}, {SELFLEVL_MODE, "Self level mode"}, {ANGLE_MODE, "Angle mode"}};
@@ -105,7 +108,13 @@ void telemetry_task(void* args){
     {
 
         TelemetryData telemetry{};
+        printf("** waiting for msg... ** %p\n", ringBuffer_telemetry);
+        fflush(stdout);
         TelemetryData* data = (TelemetryData*)xRingbufferReceive(ringBuffer_telemetry, &item_size2, portMAX_DELAY);
+        printf("** got msg **\n");
+        fflush(stdout);
+        for(;;);
+
         if(data != nullptr){
             telemetry = *data;
             vRingbufferReturnItem(ringBuffer_telemetry, (void*)data);
