@@ -43,7 +43,7 @@ RadioController::RadioController(){
     ESP_ERROR_CHECK((channelSem==nullptr));
 
     //this->radio_queue_handle = xRingbufferCreate(sizeof(channel)*5, RINGBUF_TYPE_NOSPLIT);
-    this->radio_queue_handle = CircularBufCreate(10, sizeof(channel));
+    this->radio_queue_handle = CircularBufCreate(10, sizeof(channel), "radio");
     if (this->radio_queue_handle == NULL) {
         printf("Failed to create DMP ring buffer\n");
     }
@@ -230,6 +230,8 @@ esp_err_t RadioController::send_channel_to_queue(void* newChannel){
     if (!isNewData(static_cast<Channel*>(newChannel+3))){
         return ESP_OK;
     }
+
+
 
     //BaseType_t res = xRingbufferSend(radio_queue_handle, newChannel + 3, sizeof(Channel), 1);
     CircularBufEnqueue(radio_queue_handle, newChannel + 3);

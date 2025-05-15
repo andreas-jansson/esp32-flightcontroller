@@ -1,4 +1,4 @@
-#include <iostream>
+ #include <iostream>
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
@@ -15,9 +15,12 @@
 #include "driver/gpio.h"
 
 #include "radioController.h"
+#include "radiocontroller_stub.h"
+
 #include "debug.h"
 #include "bmp280.h"
 #include "mpu6050.h"
+#include "mpu6050_stub.h"
 #include "dshot600.h"
 #include "i2c.h"
 #include "quaternion.h"
@@ -32,7 +35,8 @@
 // uncommen to add back tasks
 #define WEB_TASK
 #define TELEMETRY_TASK
-
+//#define STUB_RADIOCONTROLLER
+//#define STUB_MPU6050
 
 // FIXME remove when not needed
 #define I2C_MASTER_SCL_IO 22      // GPIO number for I2C SCL
@@ -192,13 +196,22 @@ void crsf_task(void *args){
 
 void dispatch_radio(void *args)
 {
+    #ifdef STUB_RADIOCONTROLLER
+    RadioController_stub *radio = RadioController_stub::GetInstance();
+    #else
     RadioController *radio = RadioController::GetInstance();
+    #endif
     radio->radio_task(nullptr);
 }
 
 void dispatch_dmp(void *args)
 {
+    
+    #ifdef STUB_MPU6050
+    Mpu6050_stub *mpu = Mpu6050_stub::GetInstance();
+    #else
     Mpu6050 *mpu = Mpu6050::GetInstance();
+    #endif
     mpu->dmp_task(nullptr);
 }
 
@@ -250,14 +263,17 @@ void main_task(void *args)
     TaskHandle_t display_handle{};
 
     RingbufHandle_t ringBuffer_dmp{};
-    //RingbufHandle_t ringBuffer_radio{};
     CircularHandle_t ringBuffer_radio{};
     RingbufHandle_t ringBuffer_web{};
-    RingbufHandle_t ringBuffer_telemetry{};
+    //CircularHandle_t ringBuffer_telemetry{};
     RingbufHandle_t ringBuffer_dshot{};
 
     /******* radio *******/
+    #ifdef STUB_RADIOCONTROLLER
+    RadioController_stub* radio = RadioController_stub::GetInstance();
+    #else
     RadioController* radio = RadioController::GetInstance();
+    #endif
     ringBuffer_radio = radio->get_queue_handle();
 
 
@@ -269,7 +285,11 @@ void main_task(void *args)
 
 
     /******* MPU setup *******/
+    #ifdef STUB_MPU6050
+    Mpu6050_stub *mpu = Mpu6050_stub::GetInstance(ADDR_68, i2c);
+    #else
     Mpu6050 *mpu = Mpu6050::GetInstance(ADDR_68, i2c);
+    #endif
     ringBuffer_dmp = mpu->get_queue_handle();
 
 
@@ -309,20 +329,22 @@ void main_task(void *args)
     Drone* drone = Drone::GetInstance(ringBuffer_dshot, ringBuffer_dmp, ringBuffer_radio);
     drone->init_uart(UART_ESC_RX_IO, UART_ESC_TX_IO, UART_ESC_BAUDRATE);
     drone->set_motor_lane_mapping(motorLanes);
-    ringBuffer_telemetry = drone->get_queue_handle();
+    //ringBuffer_telemetry = drone->get_telemetry_handle();
     
 
 
     /* start tasks */
     print_debug(DEBUG_MAIN, DEBUG_LOGIC, "starting tasks\n");
-    xTaskCreatePinnedToCore(dispatch_display, "display_task", 8092, nullptr,  23, &display_handle, 1);
+    xTaskCreatePinnedToCore(dispatch_display, "display_task", 6144, nullptr,  23, &display_handle, 1);
+    xTaskCreatePinnedToCore(dispatch_drone, "drone_task", 4048, nullptr,  23, &drone_handle, 1);
+
     #ifdef WEB_TASK
     xTaskCreatePinnedToCore(dispatch_webClient, "web_task", 4048, nullptr, 22, &web_handle, 1);
     #endif
     #ifdef TELEMETRY_TASK
-    xTaskCreatePinnedToCore(telemetry_task, "telemetry_task", 4048, nullptr, 22, &telemetry_handle, 1);
+    xTaskCreatePinnedToCore(telemetry_task, "telemetry_task", 4048, nullptr, 22, &telemetry_handle, 0);
     #endif
-    xTaskCreatePinnedToCore(dispatch_drone, "drone_task", 4048, nullptr,  23, &drone_handle, 1);
+
     xTaskCreatePinnedToCore(dispatch_radio, "radio_task", 4048, nullptr,  23, &radio_handle, 0);
     xTaskCreatePinnedToCore(dispatch_dmp, "dmp_task", 4048, nullptr,  23, &dmp_handle, 1);
     xTaskCreatePinnedToCore(dispatch_dshot, "dshot_task", 4048, nullptr,  24, &dmp_handle, 0);
@@ -338,7 +360,7 @@ void main_task(void *args)
 void app_main(void)
 {
     TaskHandle_t main_handle{};
-    uint32_t files = DEBUG_MAIN | DEBUG_TELEMETRY;// | DEBUG_TELEMETRY;// | DEBUG_TELEMETRY | DEBUG_DSHOT  | DEBUG_RADIO | DEBUG_DRONE | DEBUG_MPU6050 | DEBUG_I2C; | DEBUG_BMP ;
+    uint32_t files = DEBUG_MAIN;// | DEBUG_TELEMETRY;// | DEBUG_TELEMETRY;// | DEBUG_TELEMETRY | DEBUG_DSHOT  | DEBUG_RADIO | DEBUG_DRONE | DEBUG_MPU6050 | DEBUG_I2C; | DEBUG_BMP ;
     uint32_t prio = DEBUG_DATA;// | DEBUG_LOGIC;  // | DEBUG_ARGS;// | DEBUG_LOGIC;
 
     set_loglevel(files, prio);
@@ -359,3 +381,4 @@ void app_main(void)
 
     
 }
+ 

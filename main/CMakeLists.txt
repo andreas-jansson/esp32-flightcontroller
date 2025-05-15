@@ -15,11 +15,17 @@ idf_component_register(SRCS
                          "icons/wifi_icon.cpp"
                          "icons/flight_icon.cpp"
                          "icons/sensor_connected_icon.cpp"
+
+                         "stub_src/radiocontroller_stub.cpp"
+                         "stub_src/mpu6050_stub.cpp"
+
                        INCLUDE_DIRS 
                          "."
                          "includes"
                          "icons"
                          "src"
+                         "stub_src"
+                         "stub_includes"
                        REQUIRES
                          arduino
                          bmp280

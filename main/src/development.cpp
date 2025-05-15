@@ -86,44 +86,41 @@ void telemetry_task(void* args){
 
     static bool firstPrint{true};
     init_telemetry_buffer();
-    RingbufHandle_t ringBuffer_telemetry = Drone::GetInstance()->get_queue_handle();
+    CircularHandle_t ringBuffer_telemetry = Drone::GetInstance()->get_telemetry_handle();
 
     constexpr float radToDegree = (180.0 / M_PI);
     constexpr char hideCursor[] = "\033[?25l";
-    printf("%s", hideCursor);
+    std::map<int, std::string> mode = {{ACRO_MODE, "Acro mode"}, {SELFLEVL_MODE, "Self level mode"}, {ANGLE_MODE, "Angle mode"}};
+
 
     Channel ch{}, chPrev{};
     YawPitchRoll yprPrev{};
-    printf("%d\n", __LINE__);
-    vTaskDelay(pdMS_TO_TICKS(100));
-    printf("%d\n", __LINE__);
+    size_t item_size2 = sizeof(TelemetryData);
     uint64_t counter = 0;
+
+    printf("%s", hideCursor);
+    printf("%d\n", __LINE__);
+    vTaskDelay(pdMS_TO_TICKS(1000));
+    printf("%d\n", __LINE__);
     fflush(stdout);
 
-    size_t item_size2 = sizeof(TelemetryData);
-    std::map<int, std::string> mode = {{ACRO_MODE, "Acro mode"}, {SELFLEVL_MODE, "Self level mode"}, {ANGLE_MODE, "Angle mode"}};
 
 
     while (true)
     {
 
         TelemetryData telemetry{};
-        printf("** waiting for msg... ** %p\n", ringBuffer_telemetry);
-        fflush(stdout);
-        TelemetryData* data = (TelemetryData*)xRingbufferReceive(ringBuffer_telemetry, &item_size2, portMAX_DELAY);
-        printf("** got msg **\n");
-        fflush(stdout);
-        for(;;);
+        TelemetryData data{};
+        esp_err_t status = CircularBufDequeue(ringBuffer_telemetry, &data, portMAX_DELAY);
 
-        if(data != nullptr){
-            telemetry = *data;
-            vRingbufferReturnItem(ringBuffer_telemetry, (void*)data);
+        if(status == ESP_OK){
+            telemetry = data;
         }
 
         #ifdef WEB_TASK
         BaseType_t res = xRingbufferSend(ringBuffer_web, &telemetry, sizeof(TelemetryData), 0);
         if (res != pdTRUE) {
-            printf("Failed to send telemetry item: handle %p size %u\n", ringBuffer_web, sizeof(TelemetryData));
+            //printf("Failed to send telemetry item: handle %p size %u\n", ringBuffer_web, sizeof(TelemetryData));
         } 
         #endif
         

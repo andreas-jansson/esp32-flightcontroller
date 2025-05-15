@@ -33,11 +33,15 @@ Drone::Drone(RingbufHandle_t dshot_queue_handle, RingbufHandle_t dmp_queue_handl
     ESP_ERROR_CHECK_WITHOUT_ABORT((radio_queue_handle == nullptr));
     ESP_ERROR_CHECK_WITHOUT_ABORT((dshot_queue_handle == nullptr));
 
-    this->telemetry_queue_handle = xRingbufferCreate(sizeof(TelemetryData) * 20, RINGBUF_TYPE_NOSPLIT);
-    if (this->telemetry_queue_handle == NULL)
+    //this->telemetry_queue_handle = xRingbufferCreate(sizeof(TelemetryData) * 20, RINGBUF_TYPE_NOSPLIT);
+    this->telemetry_queue_handle = CircularBufCreate(10, sizeof(TelemetryData), "telemetry");
+    if (this->telemetry_queue_handle == nullptr)
     {
         printf("Failed to create drone ring buffer\n");
     }
+
+    printf("telemetry_queue_handle: %p m_data: %p\n", telemetry_queue_handle, telemetry_queue_handle->m_data);
+
 
     this->dmp_queue_handle = dmp_queue_handle;
     this->radio_queue_handle = radio_queue_handle;
@@ -190,7 +194,7 @@ esp_err_t Drone::arming_process()
             {
                 if (!warningIssued)
                 {
-                    ESP_LOGI(log_tag, "WARNING! Drone controller set to armed. Disarm the controller now!");
+                    ESP_LOGE(log_tag, "WARNING! Drone controller set to armed. Disarm the controller now!");
                     warningIssued = true;
                 }
             }
@@ -228,7 +232,7 @@ esp_err_t Drone::arming_process()
     }
 
     ESP_LOGI(log_tag, "Drone armed");
-    Display::set_armed_status(true);
+    //Display::set_armed_status(true);
 
     return ESP_OK;
 }
@@ -251,18 +255,37 @@ esp_err_t Drone::get_imu_data(YawPitchRoll &newData, TickType_t ticks)
 esp_err_t Drone::get_radio_data(Channel &newData, TickType_t ticks){
 
     size_t item_size = sizeof(Channel);
+    static uint64_t elapsed{};
+    static uint64_t counter{};
+    auto start = std::chrono::steady_clock::now();
+    
+    esp_err_t status = CircularBufDequeue(radio_queue_handle, &newData, 0);
+    
 
-    //Channel *data = (Channel *)xRingbufferReceive(radio_queue_handle, &item_size, ticks);
-    CircularBufDequeue(radio_queue_handle, &newData, 0);
+    if(status != ESP_OK){
+        return status;
+    }
 
-    //if (data != nullptr)
-    //{
-    //    newData = *data;
-    //    vRingbufferReturnItem(radio_queue_handle, (void *)data);
-    //    return ESP_OK;
-    //}
+    auto end = std::chrono::steady_clock::now();
+    elapsed += std::chrono::duration_cast<std::chrono::microseconds>(end-start).count();
 
-    return ESP_OK;
+    counter++;
+
+    if(counter % 1000 == 0 && counter != 0){
+        printf("avg dequeue took %llu us\n", elapsed / 1000);
+        elapsed = 0;
+    }
+  
+    //printf("ch1: %u ch2: %u ch3: %u ch4: %u ch5: %u ch6: %u ch7: %u\n", 
+    //    newData.ch1,
+    //    newData.ch2,
+    //    newData.ch3,
+    //    newData.ch4,
+    //    newData.ch5,
+    //    newData.ch6,
+    //    newData.ch7);
+
+    return status;
 }
 
 esp_err_t Drone::verify_components_process()
@@ -303,6 +326,9 @@ esp_err_t Drone::verify_components_process()
         {
             radioCounter++;
             radioIsValid = true;
+        }
+        else{
+            continue;
         }
 
         auto end = std::chrono::steady_clock::now();
@@ -1007,6 +1033,7 @@ esp_err_t Drone::parse_channel_state(const Channel &newChannel)
     }
     if (this->channel.ch5 != newChannel.ch5)
     {
+        //printf("%u - %u\n", this->channel.ch5, newChannel.ch5);
         status = set_armed(newChannel.ch5);
         ESP_RETURN_ON_ERROR(status, log_tag, "Failed to arm drone");
     }
@@ -1028,6 +1055,7 @@ esp_err_t Drone::parse_channel_state(const Channel &newChannel)
     }
     if (this->channel.ch10 != newChannel.ch10)
     {
+
     }
 
     this->channel = newChannel;
@@ -1056,14 +1084,16 @@ esp_err_t Drone::send_dshot_message(Dshot::DshotMessage &msg)
 esp_err_t Drone::send_telemetry_message(TelemetryData &msg)
 {
 
-    BaseType_t res = xRingbufferSend(telemetry_queue_handle, &msg, sizeof(TelemetryData), 1);
-    if (res != pdTRUE)
-    {
-        //printf("Failed to send telemetry item: handle %p size %u\n", telemetry_queue_handle, sizeof(TelemetryData));
-        //return ESP_FAIL;
-        return ESP_OK;
-    }
-    printf("send ok: %p\n", telemetry_queue_handle);
+    esp_err_t status = CircularBufEnqueue(telemetry_queue_handle, &msg);
+
+    //BaseType_t res = xRingbufferSend(telemetry_queue_handle, &msg, sizeof(TelemetryData), 1);
+    //if (res != pdTRUE)
+    //{
+    //    //printf("Failed to send telemetry item: handle %p size %u\n", telemetry_queue_handle, sizeof(TelemetryData));
+    //    //return ESP_FAIL;
+    //    return ESP_OK;
+    //}
+    //printf("send ok: %p\n", telemetry_queue_handle);
     return ESP_OK;
 }
 
@@ -1072,7 +1102,7 @@ esp_err_t Drone::set_armed(uint32_t value)
     esp_err_t status = 0;
     print_debug(DEBUG_DRONE, DEBUG_ARGS, "set_armed: value %d\n", value);
 
-    channel.ch5 = value;
+    //channel.ch5 = value;
 
     Dshot::DshotMessage msg{};
 

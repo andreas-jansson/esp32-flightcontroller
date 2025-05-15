@@ -68,7 +68,7 @@ class Drone{
 
     RingbufHandle_t dmp_queue_handle{};
     CircularHandle_t radio_queue_handle{};
-    RingbufHandle_t telemetry_queue_handle{};
+    CircularHandle_t telemetry_queue_handle{};
     RingbufHandle_t m_dshot_queue_handle{};
 
     bool motor1DirectionNormal{true};
@@ -161,7 +161,7 @@ class Drone{
     esp_err_t init_uart(int rxPin, int txPin, int baudrate);
 
 
-    RingbufHandle_t get_queue_handle(){return telemetry_queue_handle;}
+    CircularHandle_t get_telemetry_handle(){return telemetry_queue_handle;}
 
     //manage state
     esp_err_t set_armed(uint32_t value);    // works
