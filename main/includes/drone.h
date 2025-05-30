@@ -63,11 +63,13 @@ class Drone{
 
     Channel channel{};
     YawPitchRoll ypr{};
+    RadioStatistics radio_statistics{};
 
     Pid m_pid[3]{};
 
     RingbufHandle_t dmp_queue_handle{};
     CircularHandle_t radio_queue_handle{};
+    CircularHandle_t radio_statistics_queue_handle{};
     CircularHandle_t telemetry_queue_handle{};
     RingbufHandle_t m_dshot_queue_handle{};
 
@@ -92,7 +94,8 @@ class Drone{
     Drone(
         RingbufHandle_t dshot, 
         RingbufHandle_t dmp_queue_handle, 
-        CircularHandle_t radio_queue_handle);
+        CircularHandle_t radio_queue_handle,
+        CircularHandle_t radio_statistics_queue_handle);
 
 
     esp_err_t parse_channel_state(const Channel& channel);
@@ -124,6 +127,7 @@ class Drone{
 
     esp_err_t get_imu_data(YawPitchRoll& newData, TickType_t ticks);
     esp_err_t get_radio_data(Channel& newData, TickType_t ticks);
+    esp_err_t get_radio_statistics(RadioStatistics &newData, TickType_t ticks);
 
     esp_err_t measure_current();
 
@@ -142,6 +146,8 @@ class Drone{
     uint8_t updateCrc8(uint8_t crc, uint8_t crc_seed);
     uint8_t calculateCrc8(const uint8_t *Buf, const uint8_t BufLen);
 
+    esp_err_t handle_signal_lost();
+
 
     public:
 
@@ -150,7 +156,9 @@ class Drone{
     static Drone *GetInstance(
         RingbufHandle_t dshot, 
         RingbufHandle_t dmp_queue_handle, 
-        CircularHandle_t radio_queue_handle);
+        CircularHandle_t radio_queue_handle,
+        CircularHandle_t radio_statistics_queue_handle
+    );
     static Drone *GetInstance();
 
     esp_err_t set_motor_lane_mapping(const MotorLaneMapping motorMapping);

@@ -32,7 +32,7 @@
 #include "ringbuffer.h"
 
 
-// uncommen to add back tasks
+// uncomment to add back tasks
 #define WEB_TASK
 #define TELEMETRY_TASK
 //#define STUB_RADIOCONTROLLER
@@ -264,6 +264,7 @@ void main_task(void *args)
 
     RingbufHandle_t ringBuffer_dmp{};
     CircularHandle_t ringBuffer_radio{};
+    CircularHandle_t ringBuffer_radio_statistics{};
     RingbufHandle_t ringBuffer_web{};
     //CircularHandle_t ringBuffer_telemetry{};
     RingbufHandle_t ringBuffer_dshot{};
@@ -275,14 +276,11 @@ void main_task(void *args)
     RadioController* radio = RadioController::GetInstance();
     #endif
     ringBuffer_radio = radio->get_queue_handle();
-
-
+    ringBuffer_radio_statistics = radio->get_statistics_queue_handle();
 
     /******* I2C setup *******/
     I2cHandler *i2c = new I2cHandler(I2C_MASTER_SDA_IO, I2C_MASTER_SCL_IO, I2C_MASTER_FREQ_HZ);
     i2c->init();
-
-
 
     /******* MPU setup *******/
     #ifdef STUB_MPU6050
@@ -291,8 +289,6 @@ void main_task(void *args)
     Mpu6050 *mpu = Mpu6050::GetInstance(ADDR_68, i2c);
     #endif
     ringBuffer_dmp = mpu->get_queue_handle();
-
-
 
     /******* wifi *******/
     #ifdef WEB_TASK
@@ -306,7 +302,6 @@ void main_task(void *args)
     client->init(ringBuffer_dmp, ringBuffer_web);
     #endif
 
-
     /******* Dshot600 *******/
     gpio_num_t motorPin[Radio::maxChannels]{};
     motorPin[MOTOR1] = static_cast<gpio_num_t>(15);
@@ -317,7 +312,6 @@ void main_task(void *args)
     Dshot600* dshot = Dshot600::GetInstance(motorPin);
     ringBuffer_dshot = dshot->get_queue_handle();
 
-
     /*******  Drone *******/
     MotorLaneMapping motorLanes{
         .rearLeftlane = MOTOR3,
@@ -326,12 +320,10 @@ void main_task(void *args)
         .frontRightlane = MOTOR2
     };
 
-    Drone* drone = Drone::GetInstance(ringBuffer_dshot, ringBuffer_dmp, ringBuffer_radio);
+    Drone* drone = Drone::GetInstance(ringBuffer_dshot, ringBuffer_dmp, ringBuffer_radio, ringBuffer_radio_statistics);
     drone->init_uart(UART_ESC_RX_IO, UART_ESC_TX_IO, UART_ESC_BAUDRATE);
     drone->set_motor_lane_mapping(motorLanes);
     //ringBuffer_telemetry = drone->get_telemetry_handle();
-    
-
 
     /* start tasks */
     print_debug(DEBUG_MAIN, DEBUG_LOGIC, "starting tasks\n");
@@ -339,7 +331,7 @@ void main_task(void *args)
     xTaskCreatePinnedToCore(dispatch_drone, "drone_task", 4048, nullptr,  23, &drone_handle, 1);
 
     #ifdef WEB_TASK
-    xTaskCreatePinnedToCore(dispatch_webClient, "web_task", 4048, nullptr, 22, &web_handle, 1);
+    xTaskCreatePinnedToCore(dispatch_webClient, "web_task", 4048, nullptr, 22, &web_handle, 0);
     #endif
     #ifdef TELEMETRY_TASK
     xTaskCreatePinnedToCore(telemetry_task, "telemetry_task", 4048, nullptr, 22, &telemetry_handle, 0);
@@ -360,7 +352,7 @@ void main_task(void *args)
 void app_main(void)
 {
     TaskHandle_t main_handle{};
-    uint32_t files = DEBUG_MAIN;// | DEBUG_TELEMETRY;// | DEBUG_TELEMETRY;// | DEBUG_TELEMETRY | DEBUG_DSHOT  | DEBUG_RADIO | DEBUG_DRONE | DEBUG_MPU6050 | DEBUG_I2C; | DEBUG_BMP ;
+    uint32_t files = DEBUG_MAIN | DEBUG_TELEMETRY;// | DEBUG_TELEMETRY;// | DEBUG_TELEMETRY;// | DEBUG_TELEMETRY | DEBUG_DSHOT  | DEBUG_RADIO | DEBUG_DRONE | DEBUG_MPU6050 | DEBUG_I2C; | DEBUG_BMP ;
     uint32_t prio = DEBUG_DATA;// | DEBUG_LOGIC;  // | DEBUG_ARGS;// | DEBUG_LOGIC;
 
     set_loglevel(files, prio);

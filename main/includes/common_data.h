@@ -123,6 +123,19 @@ typedef struct __attribute__((packed)){
     
 } Channel;
 
+
+struct RadioStatistics{
+    uint8_t upplink_rssi_1;
+    uint8_t upplink_rssi_2;
+    uint8_t upplink_quality;
+    uint8_t upplink_snr;
+    uint8_t upplink_active_antenna;
+    uint8_t rf_mode;
+    uint8_t upplink_tx_power;
+};
+
+
+
 enum FlightMode{
     ANGLE_MODE,
     ACRO_MODE,
@@ -258,6 +271,7 @@ struct YawPitchRoll{
 
 struct TelemetryData{
     Channel channel{};
+    RadioStatistics radioStatistics{};
     YawPitchRoll ypr{};
     DroneState drone{};
 };

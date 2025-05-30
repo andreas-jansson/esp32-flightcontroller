@@ -11,8 +11,9 @@
 
 class RadioController{
      static RadioController* radio;
-     //RingbufHandle_t radio_queue_handle;
      CircularHandle_t radio_queue_handle; 
+     CircularHandle_t radio_statistics_queue_handle; 
+
      uart_port_t uartNum{2};
      QueueHandle_t uart_queue{};
      Channel channel{};
@@ -30,6 +31,8 @@ class RadioController{
      esp_err_t get_channel_data(void* data);
 
      esp_err_t send_channel_to_queue(void* newChannel);
+     esp_err_t send_statistics(void* data);
+
      bool isNewData(Channel* newChannel);
 
      public:
@@ -40,6 +43,8 @@ class RadioController{
      double get_altitude();
 
      CircularHandle_t get_queue_handle(){return radio_queue_handle;}
+     CircularHandle_t get_statistics_queue_handle(){return radio_statistics_queue_handle;}
+
      esp_err_t get_channel_data(Channel& data);
      esp_err_t get_pitch(uint16_t& data);
      esp_err_t get_roll(uint16_t& data);

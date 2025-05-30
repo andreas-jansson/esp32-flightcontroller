@@ -13,7 +13,25 @@
 
 #define log_tag "radio"
 
+
+
 RadioController* RadioController::radio = nullptr;
+
+
+namespace radio{
+    enum statistics{
+        UPPLINK_RSSI_1 = 3,
+        UPPLINK_RSSI_2,
+        UPPLINK_QUALITY,
+        UPPLINK_SNR,
+        UPPLINK_ACTIVE_ANTENNA,
+        RF_MODE,
+        UPPLINK_TX_POWER
+    };
+
+}
+
+
 
 
 RadioController::RadioController(){
@@ -42,11 +60,16 @@ RadioController::RadioController(){
     channelSem = xSemaphoreCreateMutex();
     ESP_ERROR_CHECK((channelSem==nullptr));
 
-    //this->radio_queue_handle = xRingbufferCreate(sizeof(channel)*5, RINGBUF_TYPE_NOSPLIT);
     this->radio_queue_handle = CircularBufCreate(10, sizeof(channel), "radio");
     if (this->radio_queue_handle == NULL) {
-        printf("Failed to create DMP ring buffer\n");
+        printf("Failed to create radio channel ring buffer\n");
     }
+
+    this->radio_statistics_queue_handle = CircularBufCreate(10, sizeof(RadioStatistics), "radio_statistics");
+    if (this->radio_statistics_queue_handle == NULL) {
+        printf("Failed to create radio statistics ring buffer\n");
+    }
+
 
     channel.ch1 = -1;
     channel.ch2 = -1;
@@ -101,6 +124,8 @@ uint8_t reverseBits(uint8_t byte) {
 
 void RadioController::radio_task(void* args){
 
+    using namespace radio;
+
     esp_err_t status = 0;
 
     constexpr uint8_t flightControllerAddr{0xC8};
@@ -145,13 +170,26 @@ void RadioController::radio_task(void* args){
                         }
                     }
                     else if(type == c_frameTypeLinkStatistics){
-                        Display::set_radio_status(false);
-                        alertDisplayActive = false;
+                        //printf("stats: uplink_RSSI_1: 0x%x uplink_RSSI_2: 0x%x uplink_Link_quality: 0x%x uplink_SNR: 0x%x active_antenna: 0x%x rf_Mode: 0x%x uplink_TX_Power: 0x%x\n",
+                        //data[UPPLINK_RSSI_1], 
+                        //data[UPPLINK_RSSI_2], 
+                        //data[UPPLINK_QUALITY], 
+                        //data[UPPLINK_SNR], 
+                        //data[UPPLINK_ACTIVE_ANTENNA], 
+                        //data[RF_MODE], 
+                        //data[UPPLINK_TX_POWER]);
+
+                        send_statistics(data);
+                        
+                        if(data[5] == 0){
+                            print_debug(DEBUG_RADIO, DEBUG_DATA, "%-33s: Radio lost connection\n", __func__);
+                            Display::set_radio_status(false);
+                            alertDisplayActive = false;
+                        }
+   
  
                         // TODO send a specific channel message so that drone attempts to land safely.
                         // uplink_Link_quality: 0x0, detect loss of controller
-                        //printf("stats: uplink_RSSI_1: 0x%x uplink_RSSI_2: 0x%x uplink_Link_quality: 0x%x uplink_SNR: 0x%x active_antenna: 0x%x rf_Mode: 0x%x uplink_TX_Power: 0x%x\n",
-                        //data[3], data[4], data[5], data[6], data[7], data[8], data[9]);
                     }
                     else{
                         // only ever seen 0x16 & 0x14 messages
@@ -225,24 +263,33 @@ bool RadioController::isNewData(Channel* newChannel){
 
 esp_err_t RadioController::send_channel_to_queue(void* newChannel){
     esp_err_t status = ESP_OK;
+    static uint32_t bootCounter{};
+
+    if(bootCounter < 10000){
+        bootCounter++;
+    }
 
     // If data is the same, no need to update
-    if (!isNewData(static_cast<Channel*>(newChannel+3))){
+    if (!isNewData(static_cast<Channel*>(newChannel+3)) && bootCounter >= 10000){
         return ESP_OK;
     }
 
-
-
-    //BaseType_t res = xRingbufferSend(radio_queue_handle, newChannel + 3, sizeof(Channel), 1);
     CircularBufEnqueue(radio_queue_handle, newChannel + 3);
-    //if (res != pdTRUE) {
-    //    //printf("Failed to send radio item: handle %p size %u\n", radio_queue_handle, sizeof(Channel));
-    //} 
     memcpy(&this->channel, newChannel + 3, 22);
 
     return ESP_OK;
 
 }
+
+esp_err_t RadioController::send_statistics(void* data){
+    esp_err_t status = ESP_OK;
+
+    CircularBufEnqueue(radio_statistics_queue_handle, data + 3);
+
+    return ESP_OK;
+
+}
+
 
 esp_err_t RadioController::set_channel_data(void* data) {
     esp_err_t status = ESP_OK;

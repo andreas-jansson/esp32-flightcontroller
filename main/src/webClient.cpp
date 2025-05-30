@@ -94,8 +94,6 @@ std::string create_json(std::vector<std::string>& items){
 
 
 
-
-
 esp_err_t WebClient::sendDataToServer(const std::string& server_ip, int port, const std::string& message) {
     static struct sockaddr_in server_addr;
 
@@ -232,7 +230,7 @@ void WebClient::web_task2(void* args){
         std::vector<std::string> curr_message;
 
         for (int i = 0; i < 1; i++) {
-            TelemetryData* received_data = (TelemetryData*)xRingbufferReceive(this->web_buf_handle, &item_size, portMAX_DELAY);
+            TelemetryData* received_data = (TelemetryData*)xRingbufferReceive(this->web_buf_handle, &item_size, pdMS_TO_TICKS(2000));
             if (received_data != nullptr) {
                 ypr_messages.insert(ypr_messages.begin(), received_data->ypr.to_str());
 

@@ -109,6 +109,7 @@ void telemetry_task(void* args){
     while (true)
     {
 
+
         TelemetryData telemetry{};
         TelemetryData data{};
         esp_err_t status = CircularBufDequeue(ringBuffer_telemetry, &data, portMAX_DELAY);
@@ -120,7 +121,7 @@ void telemetry_task(void* args){
         #ifdef WEB_TASK
         BaseType_t res = xRingbufferSend(ringBuffer_web, &telemetry, sizeof(TelemetryData), 0);
         if (res != pdTRUE) {
-            //printf("Failed to send telemetry item: handle %p size %u\n", ringBuffer_web, sizeof(TelemetryData));
+            printf("Failed to send telemetry item: handle %p size %u\n", ringBuffer_web, sizeof(TelemetryData));
         } 
         #endif
         
@@ -128,7 +129,7 @@ void telemetry_task(void* args){
             firstPrint = false;
         }
         else{
-            print_debug(DEBUG_TELEMETRY, DEBUG_DATA,"[23A");
+            print_debug(DEBUG_TELEMETRY, DEBUG_DATA,"[24A"); //24
         }
         print_debug(DEBUG_TELEMETRY, DEBUG_DATA,"[K  Roll    Pitch     Yaw\n");
         print_debug(DEBUG_TELEMETRY, DEBUG_DATA,"[K%6.3f °C %6.3f °C %6.3f °C\n", 
@@ -195,6 +196,8 @@ void telemetry_task(void* args){
             telemetry.drone.escState[MOTOR4].rpm * 100 / 7);
 
         print_debug(DEBUG_TELEMETRY, DEBUG_DATA, "[Kcurrent: %.2f A\n", telemetry.drone.currentDraw);  
+
+        print_debug(DEBUG_TELEMETRY, DEBUG_DATA, "[Kradio signal: %3d %\n", telemetry.radioStatistics.upplink_quality);  
 
         chPrev = ch;
         counter++;

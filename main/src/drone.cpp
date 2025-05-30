@@ -28,10 +28,11 @@ static auto startTel = std::chrono::steady_clock::now();
 static auto endTel = std::chrono::steady_clock::now();
 
 
-Drone::Drone(RingbufHandle_t dshot_queue_handle, RingbufHandle_t dmp_queue_handle, CircularHandle_t radio_queue_handle){
-    ESP_ERROR_CHECK_WITHOUT_ABORT((dmp_queue_handle == nullptr));
-    ESP_ERROR_CHECK_WITHOUT_ABORT((radio_queue_handle == nullptr));
-    ESP_ERROR_CHECK_WITHOUT_ABORT((dshot_queue_handle == nullptr));
+Drone::Drone(RingbufHandle_t dshot_queue_handle, RingbufHandle_t dmp_queue_handle, CircularHandle_t radio_queue_handle, CircularHandle_t radio_statistics_queue_handle){
+    ESP_ERROR_CHECK_WITHOUT_ABORT((dmp_queue_handle              == nullptr));
+    ESP_ERROR_CHECK_WITHOUT_ABORT((radio_queue_handle            == nullptr));
+    ESP_ERROR_CHECK_WITHOUT_ABORT((radio_statistics_queue_handle == nullptr));
+    ESP_ERROR_CHECK_WITHOUT_ABORT((dshot_queue_handle            == nullptr));
 
     //this->telemetry_queue_handle = xRingbufferCreate(sizeof(TelemetryData) * 20, RINGBUF_TYPE_NOSPLIT);
     this->telemetry_queue_handle = CircularBufCreate(10, sizeof(TelemetryData), "telemetry");
@@ -45,6 +46,7 @@ Drone::Drone(RingbufHandle_t dshot_queue_handle, RingbufHandle_t dmp_queue_handl
 
     this->dmp_queue_handle = dmp_queue_handle;
     this->radio_queue_handle = radio_queue_handle;
+    this->radio_statistics_queue_handle = radio_statistics_queue_handle;
     this->m_dshot_queue_handle = dshot_queue_handle;
 
 
@@ -71,10 +73,13 @@ esp_err_t Drone::set_motor_lane_mapping(const MotorLaneMapping motorMapping){
     return status;
 }
 
-Drone *Drone::GetInstance(RingbufHandle_t dshot_queue_handle, RingbufHandle_t dmp_queue_handle, CircularHandle_t radio_queue_handle){
+Drone *Drone::GetInstance(RingbufHandle_t dshot_queue_handle, 
+    RingbufHandle_t dmp_queue_handle, 
+    CircularHandle_t radio_queue_handle, 
+    CircularHandle_t radio_statistics_queue_handle){
     if (drone == nullptr)
     {
-        drone = new Drone(dshot_queue_handle, dmp_queue_handle, radio_queue_handle);
+        drone = new Drone(dshot_queue_handle, dmp_queue_handle, radio_queue_handle, radio_statistics_queue_handle);
     }
     return drone;
 }
@@ -195,6 +200,8 @@ esp_err_t Drone::arming_process()
                 if (!warningIssued)
                 {
                     ESP_LOGE(log_tag, "WARNING! Drone controller set to armed. Disarm the controller now!");
+                    Display::set_armed_bad_state_status(true);
+                
                     warningIssued = true;
                 }
             }
@@ -255,38 +262,21 @@ esp_err_t Drone::get_imu_data(YawPitchRoll &newData, TickType_t ticks)
 esp_err_t Drone::get_radio_data(Channel &newData, TickType_t ticks){
 
     size_t item_size = sizeof(Channel);
-    static uint64_t elapsed{};
-    static uint64_t counter{};
-    auto start = std::chrono::steady_clock::now();
     
     esp_err_t status = CircularBufDequeue(radio_queue_handle, &newData, 0);
-    
-
-    if(status != ESP_OK){
-        return status;
-    }
-
-    auto end = std::chrono::steady_clock::now();
-    elapsed += std::chrono::duration_cast<std::chrono::microseconds>(end-start).count();
-
-    counter++;
-
-    if(counter % 1000 == 0 && counter != 0){
-        printf("avg dequeue took %llu us\n", elapsed / 1000);
-        elapsed = 0;
-    }
-  
-    //printf("ch1: %u ch2: %u ch3: %u ch4: %u ch5: %u ch6: %u ch7: %u\n", 
-    //    newData.ch1,
-    //    newData.ch2,
-    //    newData.ch3,
-    //    newData.ch4,
-    //    newData.ch5,
-    //    newData.ch6,
-    //    newData.ch7);
 
     return status;
 }
+
+esp_err_t Drone::get_radio_statistics(RadioStatistics &newData, TickType_t ticks){
+
+    size_t item_size = sizeof(radio_statistics);
+    
+    esp_err_t status = CircularBufDequeue(radio_statistics_queue_handle, &newData, 0);
+
+    return status;
+}
+
 
 esp_err_t Drone::verify_components_process()
 {
@@ -300,6 +290,8 @@ esp_err_t Drone::verify_components_process()
     uint64_t radioCounter = 0;
     uint64_t yprValidCounter = 0;
     uint64_t radioValidCounter = 0;
+
+    ESP_LOGI(log_tag, "Verifying IMU and Radio");
 
     auto start = std::chrono::steady_clock::now();
 
@@ -382,6 +374,7 @@ esp_err_t Drone::verify_components_process()
         vTaskDelay(2 / portTICK_PERIOD_MS);
     }
 
+    ESP_LOGI(log_tag, "Verifying complete");
     return ESP_OK;
 }
 
@@ -528,21 +521,19 @@ void Drone::drone_task(void *args)
     esp_err_t status = 0;
 
     constexpr uint8_t minStepSize{2};
+    constexpr float radToDegree = (180.0 / M_PI);
 
     uint64_t yprCounter = 0;
     uint64_t radioCounter = 0;
     uint64_t loopCounter = 0;
-
-
-    constexpr float radToDegree = (180.0 / M_PI);
+    bool prevIsArmed{};
 
     auto start = std::chrono::system_clock::now();
     auto start_telemetry = std::chrono::system_clock::now();
 
+
     /* await valid controller & gyro */
-    ESP_LOGI(log_tag, "Verifying IMU and Radio");
     verify_components_process();
-    ESP_LOGI(log_tag, "Verifying complete");
 
     // redo arming until successfull
     while(true){
@@ -552,9 +543,16 @@ void Drone::drone_task(void *args)
         }
     }
     
-    bool prevIsArmed{};
+
     while (true)
     {
+
+        Dshot::DshotMessage msg{};
+        Channel channelNew{};
+        RadioStatistics radioStatisticsNew{};
+
+        bool newTelemetryReq{};
+        bool newSpeedValues{};
 
         status = get_imu_data(ypr, 0);
         if (status == ESP_OK)
@@ -566,7 +564,6 @@ void Drone::drone_task(void *args)
             m_state.currRoll = ypr.roll * radToDegree;
         }
 
-        Channel channelNew{};
         status = get_radio_data(channelNew, 0);
         if (status == ESP_OK)
         {
@@ -575,10 +572,17 @@ void Drone::drone_task(void *args)
             radioCounter++;
         }
 
+        status = get_radio_statistics(radioStatisticsNew, 0);
+        if (status == ESP_OK)
+        {
+            this->radio_statistics = radioStatisticsNew;
+        }
+
+
+        /* calculate and set the frequenzy of received data */
         auto end = std::chrono::system_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
 
-        // calculate and set the frequenzy of received data
         if (elapsed >= 1000)
         {
             m_state.dmpFreq = yprCounter;
@@ -590,33 +594,29 @@ void Drone::drone_task(void *args)
             start = std::chrono::system_clock::now();
         }
 
-        Dshot::DshotMessage msg{};
-  
-        bool newTelemetryReq{};
+
+        /* send dshot telemetry command */
         ESP_ERROR_CHECK_WITHOUT_ABORT(signal_telemetry_request(msg, newTelemetryReq));
         startTel = std::chrono::steady_clock::now();
 
-
-        bool newSpeedValues{};
+        /*  PID for new throttle values*/
         get_new_speed(msg, newSpeedValues);
 
+        /*  send telemetry and state data */
         #ifdef TELEMETRY_TASK
         auto end_telemetry = std::chrono::system_clock::now();
         auto elapsed_telemetry = std::chrono::duration_cast<std::chrono::milliseconds>(end_telemetry - start_telemetry).count();
-        if (elapsed_telemetry >= 10)
+        if (elapsed_telemetry >= 100)
         {
-
-            //m_state.motorRlSpeed = msg.speed[m_motorLaneMapping.rearLeftlane];
-            //m_state.motorRrSpeed = msg.speed[m_motorLaneMapping.rearRightlane];
-            //m_state.motorFlSpeed = msg.speed[m_motorLaneMapping.frontLeftlane];
-            //m_state.motorFrSpeed = msg.speed[m_motorLaneMapping.frontRightlane];
-
             ESP_ERROR_CHECK_WITHOUT_ABORT(measure_current());
             ESP_ERROR_CHECK_WITHOUT_ABORT(send_telemetry());
             start_telemetry = std::chrono::system_clock::now();
         }
         #endif
 
+        loopCounter++;
+
+        /* avoid dshot messages if unarmed*/
         if(!m_state.isArmed){
             vTaskDelay(pdMS_TO_TICKS(20));
             prevIsArmed = true;
@@ -627,6 +627,7 @@ void Drone::drone_task(void *args)
             ramp_up_motors();
         }
 
+
         if(!newSpeedValues && !newTelemetryReq){
             vTaskDelay(pdMS_TO_TICKS(1));
             continue;
@@ -635,8 +636,7 @@ void Drone::drone_task(void *args)
 
         ESP_ERROR_CHECK_WITHOUT_ABORT(send_dshot_message(msg));
 
-        loopCounter++;
-        vTaskDelay(pdMS_TO_TICKS(1));
+        taskYIELD();
     }
 }
 
@@ -871,7 +871,7 @@ esp_err_t Drone::measure_current() {
         init = true;
     }
 
-    const uint8_t samples = 1000;
+    const uint8_t samples = 100;
     std::vector<uint32_t> voltageSamples;
     
     for (int i = 0; i < samples; i++) {
@@ -974,6 +974,7 @@ esp_err_t Drone::send_telemetry(){
     TelemetryData telemetry{};
     telemetry.ypr = this->ypr;
     telemetry.channel = this->channel;
+    telemetry.radioStatistics = radio_statistics;
 
     telemetry.drone.isArmed = m_state.isArmed;
     telemetry.drone.mode = m_state.mode;
@@ -1266,4 +1267,10 @@ uint8_t Drone::calculateCrc8(const uint8_t *Buf, const uint8_t BufLen){
     }
 
     return crc;
+}
+
+esp_err_t Drone::handle_signal_lost(){
+
+
+ return 0;
 }
