@@ -47,7 +47,7 @@ esp_err_t I2cHandler::init(){
     status = i2c_driver_install(I2C_MASTER_NUM, I2C_MODE_MASTER,
                              I2C_MASTER_RX_BUF_DISABLE,
                              I2C_MASTER_TX_BUF_DISABLE, 0);
-    ESP_RETURN_ON_ERROR(status, log_tag, "FFailed to install I2C driver");
+    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to install I2C driver");
 
     initiated = true;
 
@@ -58,6 +58,9 @@ esp_err_t I2cHandler::init(){
 
 
 void I2cHandler::i2c_scanner() {
+
+    // const std::lock_guard<std::mutex> lock(busLock);
+
     uint64_t elapsed{};
     for (uint8_t addr = 1; addr < 127; addr++) {
         auto start = std::chrono::steady_clock::now();
@@ -93,13 +96,14 @@ esp_err_t I2cHandler::write(uint8_t devAddress, uint8_t startRegisterAddress, ui
     }
     print_debug(DEBUG_I2C, DEBUG_LOWLEVEL, "\n");
 
-    //swap_endian(data, dataLength);
+    std::lock_guard<std::mutex> lock(busLock);
 
     for(int i=0;i<3;i++){
         status = i2c_master_write_to_device(I2C_MASTER_NUM, devAddress, buffer, dataLength + 1, 1000);
         if (status == ESP_OK)
             break;
     }
+
     ESP_RETURN_ON_ERROR(status, log_tag, "Failed i2c write data: addr 0x%x reg 0x%x len %u", devAddress, startRegisterAddress, dataLength);
     
     return status;
@@ -110,6 +114,8 @@ esp_err_t I2cHandler::write(uint8_t devAddress, uint8_t startRegisterAddress, ui
 
 esp_err_t I2cHandler::read(uint8_t devAddress, uint8_t startRegisterAddress, uint8_t* data, uint8_t dataLength){
     print_debug(DEBUG_I2C, DEBUG_LOWLEVEL, "%-33s: addr 0x%x starAddr 0x%x %-25s dataLength %-2u data:", __func__, devAddress, startRegisterAddress, regMapX[(enum MpuReg)startRegisterAddress].c_str(), dataLength);
+
+    std::lock_guard<std::mutex> lock(busLock);
 
     esp_err_t status = i2c_master_write_to_device(I2C_MASTER_NUM, devAddress, &startRegisterAddress, 1, 1000);
     ESP_RETURN_ON_ERROR(status, log_tag, "Failed i2c write addr 0x%.2x reg 0x%.2x len %-2u", devAddress, startRegisterAddress, dataLength);
@@ -132,7 +138,7 @@ esp_err_t I2cHandler::read(uint8_t devAddress, uint8_t startRegisterAddress, uin
 }
 
 esp_err_t I2cHandler::write_bit(uint8_t devAddress, uint8_t startRegisterAddress, uint8_t data, uint8_t mask){
-    print_debug(DEBUG_I2C, DEBUG_ARGS, "%-33s: reg  0x%x data 0x%x mask 0x%x\n", __func__, startRegisterAddress, data, mask);
+    print_debug(DEBUG_I2C, DEBUG_ARGS, "%-33s: devAddress: 0x%x reg  0x%x data 0x%x mask 0x%x\n", __func__, devAddress, startRegisterAddress, data, mask);
     esp_err_t status = 0;
     uint8_t buffer = 0;
 

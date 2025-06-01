@@ -2,6 +2,7 @@
 
 
 #include <iostream>
+#include <mutex>
 
 
 #include "esp_check.h"
@@ -13,6 +14,8 @@ class I2cHandler{
     uint8_t sclPin{};
     uint32_t freq{};
     bool initiated{};
+
+    std::mutex busLock{};
 
     public:
     I2cHandler(uint8_t sdaPin, uint8_t sclPin, uint32_t freq);

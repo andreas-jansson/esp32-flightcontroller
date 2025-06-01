@@ -36,8 +36,8 @@ namespace radio{
 
 RadioController::RadioController(){
 
-    constexpr int txPin = 32;
-    constexpr int rxPin = 33;
+    constexpr int txPin = 32; // white
+    constexpr int rxPin = 33; // green
     constexpr int rtsPin = UART_PIN_NO_CHANGE;
     constexpr int ctsPin = UART_PIN_NO_CHANGE;
     constexpr int uart_buffer_size = (512);
@@ -265,6 +265,7 @@ esp_err_t RadioController::send_channel_to_queue(void* newChannel){
     esp_err_t status = ESP_OK;
     static uint32_t bootCounter{};
 
+    // send data regardless to allow hw check in drone task
     if(bootCounter < 10000){
         bootCounter++;
     }
@@ -276,6 +277,7 @@ esp_err_t RadioController::send_channel_to_queue(void* newChannel){
 
     CircularBufEnqueue(radio_queue_handle, newChannel + 3);
     memcpy(&this->channel, newChannel + 3, 22);
+
 
     return ESP_OK;
 

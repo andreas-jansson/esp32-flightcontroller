@@ -12,33 +12,30 @@
 #include "freertos/semphr.h"
 #include "driver/gpio.h"
 
-#include "mpu6050.h"
+#include "mpu6050_stub.h"
 #include "debug.h"
 #include "i2c.h"
 
+
+#define I2C_DMP_DATA_PIN   27
 
 #define RAD_TO_DEG (180.0/M_PI)
 
 #define log_tag "mpu6050"
 
 
-//Mpu6050* Mpu6050::mpu = nullptr;
-SemaphoreHandle_t Mpu6050::dmp_avail_sem1 = nullptr;  
-SemaphoreHandle_t Mpu6050::dmp_avail_sem2 = nullptr;  
-//RingbufHandle_t Mpu6050::dmp_buf_handle = nullptr;
-//RingbufHandle_t Mpu6050::web_buf_handle = nullptr;
+Mpu6050_stub* Mpu6050_stub::mpu = nullptr;
+SemaphoreHandle_t Mpu6050_stub::dmp_avail_sem = nullptr;  
+RingbufHandle_t Mpu6050_stub::dmp_buf_handle = nullptr;
+RingbufHandle_t Mpu6050_stub::web_buf_handle = nullptr;
 
 
 
 using namespace mpu6050Value;
 
 
-void IRAM_ATTR Mpu6050::dmp_data_handler_1(void *args){
-    xSemaphoreGive(Mpu6050::dmp_avail_sem1);
-}
-
-void IRAM_ATTR Mpu6050::dmp_data_handler_2(void *args){
-    xSemaphoreGive(Mpu6050::dmp_avail_sem2);
+void IRAM_ATTR Mpu6050_stub::dmp_data_handler(void *args){
+    xSemaphoreGive(Mpu6050_stub::dmp_avail_sem);
 }
 
 static esp_err_t set_bits_8(uint8_t& data, uint8_t value, uint8_t lsb){
@@ -49,328 +46,64 @@ static esp_err_t set_bits_8(uint8_t& data, uint8_t value, uint8_t lsb){
     return ESP_OK;
 }
 
-Mpu6050::Mpu6050(enum Mpu6050Addr devAddress, I2cHandler* i2c, int interruptPin){
-    print_debug(DEBUG_MPU6050, DEBUG_ARGS, "mpu addr 0x%x i2x ptr: %p interrupt pin: %d\n", devAddress, i2c, interruptPin);
+Mpu6050_stub::Mpu6050_stub(enum Mpu6050Addr address, I2cHandler* i2c){
+    print_debug(DEBUG_MPU6050, DEBUG_ARGS, "addr 0x%x\n", this->address);
 
-    if(!i2c->is_initiated()){
-        printf("ERROR i2c dependency not initiated before passing to Mpu6050");
-    }
-
-    m_interruptPin = interruptPin;
-    address = devAddress;
-
+    // multiple of dmpPacketsize 
     dmp_buf_handle = xRingbufferCreate(sizeof(YawPitchRoll)*5, RINGBUF_TYPE_NOSPLIT);
     if (dmp_buf_handle == NULL) {
         printf("Failed to create DMP ring buffer\n");
     }
 
-    //web_buf_handle = xRingbufferCreate(1024, RINGBUF_TYPE_NOSPLIT);
-    //if (web_buf_handle == NULL) {
-    //    printf("Failed to create DMP ring buffer\n");
-    //}
+    web_buf_handle = xRingbufferCreate(1024, RINGBUF_TYPE_NOSPLIT);
+    if (web_buf_handle == NULL) {
+        printf("Failed to create DMP ring buffer\n");
+    }
 }
 
-esp_err_t Mpu6050::mpu6050_init(){
+esp_err_t Mpu6050_stub::mpu6050_init(){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s:\n", __func__);
     esp_err_t status = 0;
-
-    status = set_clk_source(1);
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to set clock source: 0x%x", 0);
-
-    //status = set_sample_rate(4);
-    //ESP_RETURN_ON_ERROR(status, log_tag, "Failed to set sample rate: 0x%x", 0);
-
-    status = set_full_scale_gyro_range(0);
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to set gyro scale range: 0x%x", 0);
-
-    status = set_full_scale_accel_range(0);
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to set accel scale range: 0x%x", 0);
-
-    status = set_sleep_mode(false);
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to set sleep mode: %u", false);
 
     return status;
 }
 
-esp_err_t Mpu6050::dmp_init(){
+esp_err_t Mpu6050_stub::dmp_init(){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s:\n", __func__);
     esp_err_t status = 0;
-
-    /************** DMP INIT *****************/
-    // reset
-    status = reset();
-
-    // disable sleep mode
-    status = set_sleep_mode(false);
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to set sleep mode: %u", false);
-
-    /******* get MPU hardware revision *******/
-
-    //     setMemoryBank(0x10, true, true);
-    status = set_mem_bank(0x10, true, true);
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to set mem bank 0x%x prefetch %u user bank %u", 0x10, true, true);
-    //     setMemoryStartAddress(0x06);
-
-    status = set_mem_start_addr(0x6);
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to set mem start addr 0x%x", 0x6);
-
-    // 	DEBUG_PRINTLN(readMemoryByte());
-    uint8_t rev = 0;
-    status = read_mem_byte(rev);
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to get re bank %u", 0x6);
-    print_debug(DEBUG_MPU6050, DEBUG_DATA, "rev: 0x%x\n", rev);
-
-    // 	setMemoryBank(0, false, false);
-    status = set_mem_bank(0x0, false, false);
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to set mem bank 0x%x prefetch %u user bank %u", 0x9, false, false);
-
-	///// check OTP bank valid //////
-    // getOTPBankValid()
-    uint8_t valid = 0;
-    status = get_opt_bank_valid(valid);
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to validate opt bank %u", status);
-    ESP_RETURN_ON_ERROR(!valid, log_tag, "Failed to validate opt bank %u", valid);
-
-    /******* setup weird slave stuff (?) *******/
-
-    // 	setSlaveAddress(0, 0x7F);
-    status = set_slave_addr(0, 0x7F);
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to set slave num 0x%x addr 0x%x", 0, 0x7F);
-
-    // 	setI2CMasterModeEnabled(false);
-    status = setI2CMasterModeEnabled(false);
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to set i2c master enable: %u", false);
-
-	// setSlaveAddress(0, 0x68);
-    status = set_slave_addr(0, address);
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to set slave num 0x%x addr 0x%x", 0, address);
-
-    // resetI2CMaster();
-    status = resetI2CMaster();
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to reset i2c master");
-
-    vTaskDelay(pdMS_TO_TICKS(20));
-
-    // setClockSource(MPU6050_CLOCK_PLL_ZGYRO);
-    status = set_clk_source(0x3);
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to set clk source 0x%x", 0x3);
-
-    // setIntEnabled(1<<MPU6050_INTERRUPT_FIFO_OFLOW_BIT|1<<MPU6050_INTERRUPT_DMP_INT_BIT);
-    status = set_int_enabled((1<<INT_ENABLE_FIFO_OFLOW_EN_LSB) | (1<< INT_ENABLE_DMP_INT_EN_LSB));
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to set int enable  0x%x", (1<<INT_ENABLE_FIFO_OFLOW_EN_LSB) | (1<< INT_ENABLE_DMP_INT_EN_LSB));
-
-    // 	setRate(4); // 1khz / (1 + 4) = 200 Hz
-    status = set_sample_rate(4);
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to set sample rate  0x%x", 4u);
-
-    //setExternalFrameSync(MPU6050_EXT_SYNC_TEMP_OUT_L);
-    status = set_external_frame_sync(1u); //TEMP_OUT_L 
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to set ext frame sync 0x%x", 1u);
-
-	//setDLPFMode(MPU6050_DLPF_BW_42);
-    status = set_dlpf_mode(0x3);
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to set DLPF 0x%x", 0x3);
-
-    //setFullScaleGyroRange(MPU6050_GYRO_FS_2000);
-    status = set_full_scale_gyro_range(0x3);
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to set full scale gyro 0x%x", 0x3);
-
-    // load DMP code into memory banks
-	//if (!i2c->writeProgMemoryBlock(dmpMemory, MPU6050_DMP_CODE_SIZE)) return 1; // Failed
-    status = writeProgMemoryBlock(dmpMemory, dmp_code_size);
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed load DMP fw");
-
-	// Set the FIFO Rate Divisor int the DMP Firmware Memory
-	//unsigned char dmpUpdate[] = {0x00, MPU6050_DMP_FIFO_RATE_DIVISOR};
-	//i2c->writeMemoryBlock(dmpUpdate, 0x02, 0x02, 0x16); // Lets i2c->write the dmpUpdate data to the Firmware image, we have 2 bytes to i2c->write in bank 0x02 with the Offset 0x16
-   	unsigned char dmpUpdate[] = {0x00, MPU6050_DMP_FIFO_RATE_DIVISOR};
-    status = writeMemoryBlock(dmpUpdate, 0x02, 0x02, 0x16);
-
-	//i2c->write start address MSB into register
-	//setDMPConfig1(0x03);
-	//i2c->write start address LSB into register
-	//setDMPConfig2(0x00);
-    status = set_dmp_config1(0x3);
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed set DMP config 1");
-
-    status = set_dmp_config2(0x0);
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed set DMP config 2");
-
-    //setOTPBankValid(false);
-    status = set_opt_bank_valid(false);
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed set OPT bank: %u", false);
-
-	//setMotionDetectionThreshold(2);
-    status = set_motion_detection_thld(2);
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed set OPT bank: %u", false);
-
-	//setZeroMotionDetectionThreshold(156);
-    status = set_zero_motion_detection_thld(156);
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed set zero motion detection thld: %u", 156);
-
-    //setMotionDetectionDuration(80);
-    status = set_moion_dection_duration(80);
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed set motion detecion duration: %u", 80);
-
-    //setZeroMotionDetectionDuration(0);
-    status = set_zero_moion_dection_duration(0);
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed set zero motion detecion duration: %u", 0);
-
-	// setFIFOEnabled(true);
-    status = set_fifo_enable(true);
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed set enabled fifo: %u", true);
-
-    // 	resetDMP();
-    status = reset_dmp();
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed reset DMP");
-
-    //setDMPEnabled(false);
-    status = set_dmp_enabled(false);
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed set enabled DMP: %u", false);
-
-    // 	DEBUG_PRINTLN(F("Setting up internal 42-byte (default) DMP packet buffer..."));
-	dmpPacketSize = 42;
-    dmpBuffer = std::make_unique<uint8_t[]>(dmpPacketSize);
-
-    // 	resetFIFO();
-    status = reset_fifo();
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed reset fifo");
-
-    // 	getIntStatus();
-    uint8_t intStatus = 0;
-    status = get_int_satus(intStatus);
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed get interrupt status");
-    print_debug(DEBUG_MPU6050, DEBUG_DATA, "Interrupt status 0x%x\n", intStatus);
-
-    print_debug(DEBUG_MPU6050, DEBUG_DATA, "DMP initiated successfully\n");
     return status;
 }
 
-/*
-Mpu6050* Mpu6050::GetInstance(enum Mpu6050Addr address, I2cHandler* i2c){
+Mpu6050_stub* Mpu6050_stub::GetInstance(enum Mpu6050Addr address, I2cHandler* i2c){
   if(mpu==nullptr){
-        mpu = new Mpu6050(address, i2c);
+        mpu = new Mpu6050_stub(address, i2c);
     }
     return mpu;
 }
 
-
-Mpu6050* Mpu6050::GetInstance(){
+Mpu6050_stub* Mpu6050_stub::GetInstance(){
     return mpu;
 }
-*/
 
-void Mpu6050::dmp_task(void* args){
+
+void Mpu6050_stub::dmp_task(void* args){
     esp_err_t status = 0;
-    YawPitchRoll ypr{};
-    YawPitchRoll yprPrev{};
-
-    constexpr TickType_t xDelay = 2 / portTICK_PERIOD_MS;
-
-    /////// MPU setup /////////
-
-    status = this->mpu6050_init();
-    ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-
-    status = this->dmp_init();
-    ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-
-    // old
-    //getXAccelOffset: -4991
-    //getYAccelOffset: 1534
-    //getZAccelOffset: 476
-    //getXGyroOffset: -61
-    //getYGyroOffset: 32
-    //getZGyroOffset: 3
-
-    // new
-    // getXAccelOffset: -5071
-    // getYAccelOffset: 1514
-    // getZAccelOffset: 514
-    // getXGyroOffset: -63
-    // getYGyroOffset: 27
-    // getZGyroOffset: -2
-
-    status = set_x_accel_offset(-5071);
-    ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-	status = set_y_accel_offset(1580);
-    ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-	status = set_z_accel_offset(514);
-    ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-	status = set_x_gyro_offset(-63);
-    ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-    status = set_y_gyro_offset(27);
-    ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-	status = set_z_gyro_offset(-2);
-    ESP_ERROR_CHECK_WITHOUT_ABORT(status);
- 
-
-    status = this->set_chip_rotation(ROTATE_0);
-    ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-    
-    /////// ISR setup /////////
-    if(address == ADDR_68){
-        vSemaphoreCreateBinary(dmp_avail_sem1);
-    }
-    else if(address == ADDR_69){
-        vSemaphoreCreateBinary(dmp_avail_sem2);
-    }
-
-    ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-    
-    gpio_config_t ioConf{};
-
-    ioConf.intr_type = GPIO_INTR_POSEDGE;
-    ioConf.mode = GPIO_MODE_INPUT;
-    ioConf.pin_bit_mask = 1ULL<<m_interruptPin;
-    ioConf.pull_down_en = GPIO_PULLDOWN_ENABLE;
-    gpio_config(&ioConf);
-
-
-
-    if(address == ADDR_68)
-        status = gpio_isr_handler_add(static_cast<gpio_num_t>(m_interruptPin), dmp_data_handler_1, (void *)m_interruptPin);
-    else if(address == ADDR_69)
-        status = gpio_isr_handler_add(static_cast<gpio_num_t>(m_interruptPin), dmp_data_handler_2, (void *)m_interruptPin);
-
-    ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-
-    status = this->set_dmp_enabled(true);
-    ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-
-    BaseType_t semStatus{};
 
     while (true)
     {
-        if(address == ADDR_68)
-            semStatus = xSemaphoreTake(this->dmp_avail_sem1, portMAX_DELAY);
-        else if(address == ADDR_69)
-            semStatus = xSemaphoreTake(this->dmp_avail_sem2, portMAX_DELAY);
 
-        status = get_dmp_packet();
-        if(status != ESP_OK){
-            continue;
-        }
-
-        Quaternion quaternion{};
-        VectorFloat vec{};
         YawPitchRoll ypr{};
 
-        this->get_quaternion(quaternion);
-        this->get_gravity(vec, quaternion);
-        this->get_yaw_pitch_roll(quaternion,vec, ypr);
+        ypr.yaw = 0.1;
+        ypr.pitch = 0.2;
+        ypr.roll = 0.3;
 
-        if(ypr != yprPrev){ 
-            BaseType_t res = xRingbufferSend(dmp_buf_handle, &ypr, sizeof(YawPitchRoll), 1);
-
-        if (res != pdTRUE) {
-                //printf("Failed to send dmp item: handle %p size %u\n", web_buf_handle, sizeof(ypr));
-            } 
-        }
+        BaseType_t res = xRingbufferSend(dmp_buf_handle, &ypr, sizeof(YawPitchRoll), 1);
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
 
-void Mpu6050::raw_task(void* args){
+void Mpu6050_stub::raw_task(void* args){
     esp_err_t status = 0;
     YawPitchRoll ypr{};
     YawPitchRoll yprPrev{};
@@ -434,21 +167,21 @@ void Mpu6050::raw_task(void* args){
     ESP_ERROR_CHECK_WITHOUT_ABORT(status);
     
     /////// ISR setup /////////
-    vSemaphoreCreateBinary(dmp_avail_sem1);
+    vSemaphoreCreateBinary(dmp_avail_sem);
     ESP_ERROR_CHECK_WITHOUT_ABORT(status);
     
     gpio_config_t ioConf{};
 
     ioConf.intr_type = GPIO_INTR_POSEDGE;
     ioConf.mode = GPIO_MODE_INPUT;
-    ioConf.pin_bit_mask = 1ULL<<m_interruptPin;
+    ioConf.pin_bit_mask = 1ULL<<I2C_DMP_DATA_PIN;
     ioConf.pull_down_en = GPIO_PULLDOWN_ENABLE;
     gpio_config(&ioConf);
 
     status = gpio_install_isr_service(0);
     ESP_ERROR_CHECK_WITHOUT_ABORT(status);
 
-    status = gpio_isr_handler_add(static_cast<gpio_num_t>(m_interruptPin), dmp_data_handler_1, (void *)m_interruptPin);
+    status = gpio_isr_handler_add(static_cast<gpio_num_t>(I2C_DMP_DATA_PIN), dmp_data_handler, (void *)I2C_DMP_DATA_PIN);
     ESP_ERROR_CHECK_WITHOUT_ABORT(status);
 
     status = this->set_fifo_enable(true);
@@ -462,7 +195,7 @@ void Mpu6050::raw_task(void* args){
     while (true)
     {
 
-        BaseType_t semStatus = xSemaphoreTake(this->dmp_avail_sem1, portMAX_DELAY);
+        BaseType_t semStatus = xSemaphoreTake(this->dmp_avail_sem, portMAX_DELAY);
         get_6axis_motion(ypr.x_accel, ypr.y_accel, ypr.z_accel, ypr.x_gyro, ypr.y_gyro, ypr.z_gyro);
 
 
@@ -519,7 +252,7 @@ void Mpu6050::raw_task(void* args){
     }
 }
 
-esp_err_t Mpu6050::comp_filter(double dt, float tau, YawPitchRoll& ypr){
+esp_err_t Mpu6050_stub::comp_filter(double dt, float tau, YawPitchRoll& ypr){
     static Kalman kalmanRoll{}, kalmanPitch{};
     //readCalData();
     // Convert accelerometer values to g's
@@ -550,8 +283,7 @@ esp_err_t Mpu6050::comp_filter(double dt, float tau, YawPitchRoll& ypr){
     return ESP_OK;
 }
 
-esp_err_t Mpu6050::set_sleep_mode(bool sleep){
-
+esp_err_t Mpu6050_stub::set_sleep_mode(bool sleep){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s: sleep: %s\n", __func__, sleep? "true" : "false");
     esp_err_t status = 0;
     uint8_t data = 0;
@@ -561,7 +293,7 @@ esp_err_t Mpu6050::set_sleep_mode(bool sleep){
     return status;
 }
 
-esp_err_t Mpu6050::reset(){
+esp_err_t Mpu6050_stub::reset(){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s:\n", __func__);
     esp_err_t status = 0;
     uint8_t data = 0;
@@ -574,7 +306,7 @@ esp_err_t Mpu6050::reset(){
     return status;
 }
 
-esp_err_t Mpu6050::set_mem_bank(uint8_t bank, bool prefetchEnabled, bool userBank){
+esp_err_t Mpu6050_stub::set_mem_bank(uint8_t bank, bool prefetchEnabled, bool userBank){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s: bank %0x prefetchEnabled: %s userBank: %s\n", __func__, bank, prefetchEnabled? "true" : "false", userBank? "true" : "false");
     esp_err_t status = 0;
     uint8_t data = 0;
@@ -588,7 +320,7 @@ esp_err_t Mpu6050::set_mem_bank(uint8_t bank, bool prefetchEnabled, bool userBan
     return status;
 }
 
-esp_err_t Mpu6050::set_mem_start_addr(uint8_t addr){
+esp_err_t Mpu6050_stub::set_mem_start_addr(uint8_t addr){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s: addr 0x%x\n", __func__, addr);
     esp_err_t status = 0;
 
@@ -597,7 +329,7 @@ esp_err_t Mpu6050::set_mem_start_addr(uint8_t addr){
     return status;
 }
 
-esp_err_t Mpu6050::read_mem_byte(uint8_t& data){
+esp_err_t Mpu6050_stub::read_mem_byte(uint8_t& data){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s: data 0x%x\n", __func__, data);
     esp_err_t status = 0;
 
@@ -607,7 +339,7 @@ esp_err_t Mpu6050::read_mem_byte(uint8_t& data){
     return status;
 }
 
-esp_err_t Mpu6050::get_opt_bank_valid(uint8_t& data){
+esp_err_t Mpu6050_stub::get_opt_bank_valid(uint8_t& data){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s: data 0x%x\n", __func__, data);
     esp_err_t status = 0;
 
@@ -619,7 +351,7 @@ esp_err_t Mpu6050::get_opt_bank_valid(uint8_t& data){
     return status;
 }
 
-esp_err_t Mpu6050::set_opt_bank_valid(uint8_t data){
+esp_err_t Mpu6050_stub::set_opt_bank_valid(uint8_t data){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s: data 0x%x\n", __func__, data);
     esp_err_t status = 0;
 
@@ -629,7 +361,7 @@ esp_err_t Mpu6050::set_opt_bank_valid(uint8_t data){
     return status;
 }
 
-esp_err_t Mpu6050::set_slave_addr(uint8_t num, uint8_t addr){
+esp_err_t Mpu6050_stub::set_slave_addr(uint8_t num, uint8_t addr){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s: i2c num: %u addr 0x%x\n", __func__, num, addr);
     esp_err_t status = 0;
     ESP_RETURN_ON_ERROR((num > 3), log_tag, "Bad num: %u", num);
@@ -640,7 +372,7 @@ esp_err_t Mpu6050::set_slave_addr(uint8_t num, uint8_t addr){
     return status; 
 }
 
-esp_err_t Mpu6050::setI2CMasterModeEnabled(bool enable){
+esp_err_t Mpu6050_stub::setI2CMasterModeEnabled(bool enable){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s: enable: %s\n", __func__, enable? "true" : "false");
     esp_err_t status = 0;
     uint8_t data = enable? 1u : 0u;
@@ -651,7 +383,7 @@ esp_err_t Mpu6050::setI2CMasterModeEnabled(bool enable){
     return status; 
 }
 
-esp_err_t Mpu6050::resetI2CMaster(){
+esp_err_t Mpu6050_stub::resetI2CMaster(){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s:\n", __func__);
     esp_err_t status = 0;
 
@@ -661,7 +393,7 @@ esp_err_t Mpu6050::resetI2CMaster(){
     return status; 
 }
 
-esp_err_t Mpu6050::set_clk_source(uint8_t src){
+esp_err_t Mpu6050_stub::set_clk_source(uint8_t src){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s: src 0x%x\n", __func__, src);
     esp_err_t status = 0;
     uint8_t mask = 0x7;
@@ -672,7 +404,7 @@ esp_err_t Mpu6050::set_clk_source(uint8_t src){
     return status; 
 }
 
-esp_err_t Mpu6050::set_int_enabled(uint8_t data){
+esp_err_t Mpu6050_stub::set_int_enabled(uint8_t data){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s: data 0x%x\n", __func__, data);
     esp_err_t status = 0;
     status = i2c->write(address, INT_ENABLE_REG, &data, 1); 
@@ -681,7 +413,7 @@ esp_err_t Mpu6050::set_int_enabled(uint8_t data){
     return status; 
 }
 
-esp_err_t Mpu6050::set_sample_rate(uint8_t data){
+esp_err_t Mpu6050_stub::set_sample_rate(uint8_t data){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s: data 0x%x\n", __func__, data);
     esp_err_t status = 0;
     status = i2c->write(address, SMPLRT_DIV_REG, &data, 1); 
@@ -690,7 +422,7 @@ esp_err_t Mpu6050::set_sample_rate(uint8_t data){
     return status; 
 }
 
-esp_err_t Mpu6050::set_external_frame_sync(uint8_t data){
+esp_err_t Mpu6050_stub::set_external_frame_sync(uint8_t data){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s: data 0x%x\n", __func__, data);
     esp_err_t status = 0;
     uint8_t mask = 0b0001'1000;
@@ -701,7 +433,7 @@ esp_err_t Mpu6050::set_external_frame_sync(uint8_t data){
     return status; 
 }
 
-esp_err_t Mpu6050::set_dlpf_mode(uint8_t data){
+esp_err_t Mpu6050_stub::set_dlpf_mode(uint8_t data){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s: data 0x%x\n", __func__, data);
     esp_err_t status = 0;
     uint8_t mask = 0x7;
@@ -713,7 +445,7 @@ esp_err_t Mpu6050::set_dlpf_mode(uint8_t data){
 
 }
 
-esp_err_t Mpu6050::set_full_scale_gyro_range(uint8_t data){
+esp_err_t Mpu6050_stub::set_full_scale_gyro_range(uint8_t data){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s: data 0x%x\n", __func__, data);
     esp_err_t status = 0;
     uint8_t mask = 0b0001'1000;
@@ -724,7 +456,7 @@ esp_err_t Mpu6050::set_full_scale_gyro_range(uint8_t data){
     return status; 
 }
 
-esp_err_t Mpu6050::set_full_scale_accel_range(uint8_t data){
+esp_err_t Mpu6050_stub::set_full_scale_accel_range(uint8_t data){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s: data 0x%x\n", __func__, data);
     esp_err_t status = 0;
     uint8_t mask = 0b0001'1000;
@@ -735,7 +467,7 @@ esp_err_t Mpu6050::set_full_scale_accel_range(uint8_t data){
     return status; 
 }
 
-esp_err_t Mpu6050:: set_dmp_config1(uint8_t data){
+esp_err_t Mpu6050_stub:: set_dmp_config1(uint8_t data){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s: data 0x%x\n", __func__, data);
     esp_err_t status = 0;
 
@@ -745,7 +477,7 @@ esp_err_t Mpu6050:: set_dmp_config1(uint8_t data){
     return status; 
 }
 
-esp_err_t Mpu6050::set_dmp_config2(uint8_t data){
+esp_err_t Mpu6050_stub::set_dmp_config2(uint8_t data){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s: data 0x%x\n", __func__, data);
     esp_err_t status = 0;
 
@@ -755,7 +487,7 @@ esp_err_t Mpu6050::set_dmp_config2(uint8_t data){
     return status; 
 }
 
-esp_err_t Mpu6050::set_motion_detection_thld(uint8_t data){
+esp_err_t Mpu6050_stub::set_motion_detection_thld(uint8_t data){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s: data 0x%x\n", __func__, data);
     esp_err_t status = 0;
 
@@ -765,7 +497,7 @@ esp_err_t Mpu6050::set_motion_detection_thld(uint8_t data){
     return status; 
 }
 
-esp_err_t Mpu6050::set_zero_motion_detection_thld(uint8_t data){
+esp_err_t Mpu6050_stub::set_zero_motion_detection_thld(uint8_t data){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s: data 0x%x\n", __func__, data);
     esp_err_t status = 0;
 
@@ -775,7 +507,7 @@ esp_err_t Mpu6050::set_zero_motion_detection_thld(uint8_t data){
     return status; 
 }
 
-esp_err_t Mpu6050::set_moion_dection_duration(uint8_t data){
+esp_err_t Mpu6050_stub::set_moion_dection_duration(uint8_t data){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s: data 0x%x\n", __func__, data);
     esp_err_t status = 0;
 
@@ -785,7 +517,7 @@ esp_err_t Mpu6050::set_moion_dection_duration(uint8_t data){
     return status; 
 }
 
-esp_err_t Mpu6050::set_zero_moion_dection_duration(uint8_t data){
+esp_err_t Mpu6050_stub::set_zero_moion_dection_duration(uint8_t data){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s: data 0x%x\n", __func__, data);
     esp_err_t status = 0;
 
@@ -796,7 +528,7 @@ esp_err_t Mpu6050::set_zero_moion_dection_duration(uint8_t data){
 
 }
 
-esp_err_t Mpu6050::set_fifo_enable(bool enable){
+esp_err_t Mpu6050_stub::set_fifo_enable(bool enable){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s: enable: %s\n", __func__, enable? "true" : "false");
     esp_err_t status = 0;
     uint8_t mask = 1<<USER_CTRL_FIFO_EN_LSB;
@@ -808,7 +540,7 @@ esp_err_t Mpu6050::set_fifo_enable(bool enable){
     return status; 
 }
 
-esp_err_t Mpu6050::set_dmp_enabled(bool enable){
+esp_err_t Mpu6050_stub::set_dmp_enabled(bool enable){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s: enable: %s\n", __func__, enable? "true" : "false");
     esp_err_t status = 0;
     uint8_t mask = 1<<USER_CTRL_DMP_EN_LSB;
@@ -820,7 +552,7 @@ esp_err_t Mpu6050::set_dmp_enabled(bool enable){
     return status; 
 }
 
-esp_err_t Mpu6050::reset_dmp(){
+esp_err_t Mpu6050_stub::reset_dmp(){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s:\n", __func__);
     esp_err_t status = 0;
     uint8_t mask = 1<< USER_CTRL_DMP_RESET_LSB;
@@ -832,7 +564,7 @@ esp_err_t Mpu6050::reset_dmp(){
     return status; 
 }
 
-esp_err_t Mpu6050::reset_fifo(){
+esp_err_t Mpu6050_stub::reset_fifo(){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s:\n", __func__);
     esp_err_t status = 0;
     uint8_t mask = 1<< USER_CTRL_FIFO_RESET_LSB;
@@ -844,7 +576,7 @@ esp_err_t Mpu6050::reset_fifo(){
     return status; 
 }
 
-esp_err_t Mpu6050::get_int_satus(uint8_t& data){
+esp_err_t Mpu6050_stub::get_int_satus(uint8_t& data){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s:\n", __func__);
     esp_err_t status = 0;
 
@@ -854,7 +586,7 @@ esp_err_t Mpu6050::get_int_satus(uint8_t& data){
     return status; 
 }
 
-esp_err_t Mpu6050::calibrate_gyro(){
+esp_err_t Mpu6050_stub::calibrate_gyro(){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s:\n", __func__);
     esp_err_t status = 0;
 
@@ -862,7 +594,7 @@ esp_err_t Mpu6050::calibrate_gyro(){
     return status;
 }
 
-esp_err_t Mpu6050::get_6axis_motion(int16_t& ax, int16_t& ay, int16_t& az, int16_t& gx, int16_t& gy, int16_t& gz){
+esp_err_t Mpu6050_stub::get_6axis_motion(int16_t& ax, int16_t& ay, int16_t& az, int16_t& gx, int16_t& gy, int16_t& gz){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s:\n", __func__);
     esp_err_t status = 0;
     uint8_t data[14] = {};
@@ -890,7 +622,7 @@ esp_err_t Mpu6050::get_6axis_motion(int16_t& ax, int16_t& ay, int16_t& az, int16
     return status;
 }
 
-esp_err_t Mpu6050::get_6axis_motion2(int16_t& ax, int16_t& ay, int16_t& az, int16_t& gx, int16_t& gy, int16_t& gz){
+esp_err_t Mpu6050_stub::get_6axis_motion2(int16_t& ax, int16_t& ay, int16_t& az, int16_t& gx, int16_t& gy, int16_t& gz){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s:\n", __func__);
     esp_err_t status = 0;
     uint8_t data[14] = {};
@@ -925,7 +657,7 @@ esp_err_t Mpu6050::get_6axis_motion2(int16_t& ax, int16_t& ay, int16_t& az, int1
  * 
  */
 //esp_err_t Mpu6050::get_curr_fifo_packet(uint8_t* buffer, uint8_t length, enum DmpFifoStatus& dmpStatus){
-esp_err_t Mpu6050::get_curr_fifo_packet(){
+esp_err_t Mpu6050_stub::get_curr_fifo_packet(){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s:\n", __func__);
     esp_err_t status = 0;
     uint16_t fifoCount = 0;
@@ -998,7 +730,7 @@ esp_err_t Mpu6050::get_curr_fifo_packet(){
     return ESP_OK;
 }
 
-esp_err_t Mpu6050::get_curr_fifo_packet2(){
+esp_err_t Mpu6050_stub::get_curr_fifo_packet2(){
     esp_err_t status = 0;
     uint16_t fifoCount = 0;
     uint16_t fifoCountPrev = 0;
@@ -1060,7 +792,7 @@ esp_err_t Mpu6050::get_curr_fifo_packet2(){
     return status;
 }
 
-esp_err_t Mpu6050::get_dmp_packet() { // overflow proof    
+esp_err_t Mpu6050_stub::get_dmp_packet() { // overflow proof    
 
     esp_err_t status = 0;
     uint16_t count = 0;
@@ -1073,7 +805,7 @@ esp_err_t Mpu6050::get_dmp_packet() { // overflow proof
     return status;
 }
 
-esp_err_t Mpu6050::get_fifo_count(uint16_t& count){
+esp_err_t Mpu6050_stub::get_fifo_count(uint16_t& count){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s:\n", __func__);
     esp_err_t status = 0;
     uint8_t data[2] = {};
@@ -1090,12 +822,12 @@ esp_err_t Mpu6050::get_fifo_count(uint16_t& count){
 
 /////// borrowed functions ////////////
 
-esp_err_t Mpu6050::writeProgMemoryBlock(const uint8_t *data, uint16_t dataSize, uint8_t bank, uint8_t address, bool verify){
+esp_err_t Mpu6050_stub::writeProgMemoryBlock(const uint8_t *data, uint16_t dataSize, uint8_t bank, uint8_t address, bool verify){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s: dataSize %u bank 0x%x address 0x%x verify: %s\n", __func__, dataSize, bank, address, verify? "true" : "false");
     return writeMemoryBlock(data, dataSize, bank, address, verify, true);
 }
 
-esp_err_t Mpu6050::writeMemoryBlock(const uint8_t *data, uint16_t dataSize, uint8_t bank, uint8_t address, bool verify, bool useProgMem) {
+esp_err_t Mpu6050_stub::writeMemoryBlock(const uint8_t *data, uint16_t dataSize, uint8_t bank, uint8_t address, bool verify, bool useProgMem) {
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s: dataSize %u bank 0x%x address 0x%x verify: %s useProgMem: %s\n", __func__, dataSize, bank, address, verify? "true" : "false", useProgMem? "true" : "false");
     uint8_t chunkSize;
     uint8_t *verifyBuffer=0;
@@ -1204,7 +936,7 @@ esp_err_t Mpu6050::writeMemoryBlock(const uint8_t *data, uint16_t dataSize, uint
 }
 
 
-esp_err_t Mpu6050::dump_registers(){
+esp_err_t Mpu6050_stub::dump_registers(){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s:\n", __func__);
     esp_err_t status = 0;
     print_debug(DEBUG_MPU6050, DEBUG_DATA, "*****************************\n");
@@ -1227,7 +959,7 @@ esp_err_t Mpu6050::dump_registers(){
     return status;
 }
 
-esp_err_t Mpu6050::set_x_accel_offset(int16_t offset){
+esp_err_t Mpu6050_stub::set_x_accel_offset(int16_t offset){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s: offset %d\n", __func__, offset);
     esp_err_t status = 0;
     uint8_t data[2] = { (uint8_t)(offset >> 8), (uint8_t)(offset & 0xff)};
@@ -1238,7 +970,7 @@ esp_err_t Mpu6050::set_x_accel_offset(int16_t offset){
     return status;
 }
 
-esp_err_t Mpu6050::set_y_accel_offset(int16_t offset){
+esp_err_t Mpu6050_stub::set_y_accel_offset(int16_t offset){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s: offset %d\n", __func__, offset);
     esp_err_t status = 0;
     uint8_t data[2] = { (uint8_t)(offset >> 8), (uint8_t)(offset & 0xff)};
@@ -1249,7 +981,7 @@ esp_err_t Mpu6050::set_y_accel_offset(int16_t offset){
     return status;
 }
 
-esp_err_t Mpu6050::set_z_accel_offset(int16_t offset){
+esp_err_t Mpu6050_stub::set_z_accel_offset(int16_t offset){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s: offset %d\n", __func__, offset);
     esp_err_t status = 0;
     uint8_t data[2] = { (uint8_t)(offset >> 8), (uint8_t)(offset & 0xff)};
@@ -1260,7 +992,7 @@ esp_err_t Mpu6050::set_z_accel_offset(int16_t offset){
     return status;
 }
 
-esp_err_t Mpu6050::set_x_gyro_offset(int16_t offset){
+esp_err_t Mpu6050_stub::set_x_gyro_offset(int16_t offset){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s: offset %d\n", __func__, offset);
     esp_err_t status = 0;
     uint8_t data[2] = { (uint8_t)(offset >> 8), (uint8_t)(offset & 0xff)};
@@ -1271,7 +1003,7 @@ esp_err_t Mpu6050::set_x_gyro_offset(int16_t offset){
     return status;
 }
 
-esp_err_t Mpu6050::set_y_gyro_offset(int16_t offset){
+esp_err_t Mpu6050_stub::set_y_gyro_offset(int16_t offset){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s: offset %d\n", __func__, offset);
     esp_err_t status = 0;
     uint8_t data[2] = { (uint8_t)(offset >> 8), (uint8_t)(offset & 0xff)};
@@ -1282,7 +1014,7 @@ esp_err_t Mpu6050::set_y_gyro_offset(int16_t offset){
     return status;
 }
 
-esp_err_t Mpu6050::set_z_gyro_offset(int16_t offset){
+esp_err_t Mpu6050_stub::set_z_gyro_offset(int16_t offset){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s: offset %d\n", __func__, offset);
     esp_err_t status = 0;
     uint8_t data[2] = { (uint8_t)(offset >> 8), (uint8_t)(offset & 0xff)};
@@ -1293,7 +1025,7 @@ esp_err_t Mpu6050::set_z_gyro_offset(int16_t offset){
     return status;
 }
 
-esp_err_t Mpu6050::calibrate_accel(uint8_t loops){
+esp_err_t Mpu6050_stub::calibrate_accel(uint8_t loops){
     print_debug(DEBUG_MPU6050, DEBUG_ARGS, "%-33s: loops %u\n", __func__, loops);
     
     esp_err_t status = 0;
@@ -1315,14 +1047,14 @@ esp_err_t Mpu6050::calibrate_accel(uint8_t loops){
     return status;
 }
 
-esp_err_t Mpu6050::calibrate_gyro(uint8_t loops){
+esp_err_t Mpu6050_stub::calibrate_gyro(uint8_t loops){
     esp_err_t status = 0;
 
 
     return status;
 }
 
-esp_err_t Mpu6050::get_quaternion(Quaternion& quaternion){
+esp_err_t Mpu6050_stub::get_quaternion(Quaternion& quaternion){
 
     
     ESP_RETURN_ON_ERROR(!new_data_exists(), log_tag, "No new data exists\n");
@@ -1341,7 +1073,7 @@ esp_err_t Mpu6050::get_quaternion(Quaternion& quaternion){
     return ESP_OK;
 }
 
-esp_err_t Mpu6050::get_gravity(VectorFloat& vector, Quaternion quaternion){
+esp_err_t Mpu6050_stub::get_gravity(VectorFloat& vector, Quaternion quaternion){
 
     //v -> x = 2 * (q -> x*q -> z - q -> w*q -> y);
     //v -> y = 2 * (q -> w*q -> x + q -> y*q -> z);
@@ -1354,7 +1086,7 @@ esp_err_t Mpu6050::get_gravity(VectorFloat& vector, Quaternion quaternion){
     return ESP_OK;
 }
 
-esp_err_t Mpu6050::get_yaw_pitch_roll(Quaternion& q, VectorFloat& gravity, YawPitchRoll& r_yawPitchRoll) {
+esp_err_t Mpu6050_stub::get_yaw_pitch_roll(Quaternion& q, VectorFloat& gravity, YawPitchRoll& r_yawPitchRoll) {
 
     // yaw: (about Z axis)
     ypr.yaw   = atan2(2*q.x*q.y - 2*q.w*q.z, 2*q.w*q.w + 2*q.x*q.x - 1);
@@ -1383,7 +1115,7 @@ esp_err_t Mpu6050::get_yaw_pitch_roll(Quaternion& q, VectorFloat& gravity, YawPi
         case ROTATE_180:
             //not testeed
             ypr.roll *= -1;
-            ypr.pitch *= 1;
+            ypr.pitch *= -1;
             ypr.yaw *= -1;
             break;
         case ROTATE_270:
@@ -1403,7 +1135,7 @@ esp_err_t Mpu6050::get_yaw_pitch_roll(Quaternion& q, VectorFloat& gravity, YawPi
 }
 
 
-void Mpu6050::delay(const uint8_t milli){
+void Mpu6050_stub::delay(const uint8_t milli){
 
     TickType_t xDelay  = milli / portTICK_PERIOD_MS;
     vTaskDelay(xDelay);
@@ -1411,7 +1143,7 @@ void Mpu6050::delay(const uint8_t milli){
 }
 
 //counter clockwise
-esp_err_t Mpu6050::set_chip_rotation(enum MpuRotation rotation){
+esp_err_t Mpu6050_stub::set_chip_rotation(enum MpuRotation rotation){
 
     this->rotation = rotation;
 
@@ -1419,7 +1151,7 @@ esp_err_t Mpu6050::set_chip_rotation(enum MpuRotation rotation){
 }
 
 
-esp_err_t Mpu6050::pid_calibrate(float target, float curr, float roll, int nrLoops){
+esp_err_t Mpu6050_stub::pid_calibrate(float target, float curr, float roll, int nrLoops){
   esp_err_t status = 0;
 
     float kP{0.1};
@@ -1461,7 +1193,7 @@ esp_err_t Mpu6050::pid_calibrate(float target, float curr, float roll, int nrLoo
 }
 
 
-void Mpu6050::pid(float target, float current, Pid& pid){
+void Mpu6050_stub::pid(float target, float current, Pid& pid){
 
     float kPOut{};
     float kIOut{};

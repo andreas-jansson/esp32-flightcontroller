@@ -12,6 +12,7 @@
 #include "esp_adc_cal.h"
 #include "driver/gpio.h"
 #include "driver/adc_types_legacy.h"
+
 #include "drone.h"
 #include "debug.h"
 #include "display.h"
@@ -28,25 +29,27 @@ static auto startTel = std::chrono::steady_clock::now();
 static auto endTel = std::chrono::steady_clock::now();
 
 
-Drone::Drone(RingbufHandle_t dshot_queue_handle, RingbufHandle_t dmp_queue_handle, CircularHandle_t radio_queue_handle, CircularHandle_t radio_statistics_queue_handle){
-    ESP_ERROR_CHECK_WITHOUT_ABORT((dmp_queue_handle              == nullptr));
+Drone::Drone(RingbufHandle_t dshot_queue_handle, RingbufHandle_t dmp_queue_handle1, RingbufHandle_t dmp_queue_handle2, CircularHandle_t radio_queue_handle, CircularHandle_t radio_statistics_queue_handle){
+    ESP_ERROR_CHECK_WITHOUT_ABORT((dmp_queue_handle1             == nullptr));
+    ESP_ERROR_CHECK_WITHOUT_ABORT((dmp_queue_handle2             == nullptr));
     ESP_ERROR_CHECK_WITHOUT_ABORT((radio_queue_handle            == nullptr));
     ESP_ERROR_CHECK_WITHOUT_ABORT((radio_statistics_queue_handle == nullptr));
     ESP_ERROR_CHECK_WITHOUT_ABORT((dshot_queue_handle            == nullptr));
 
     //this->telemetry_queue_handle = xRingbufferCreate(sizeof(TelemetryData) * 20, RINGBUF_TYPE_NOSPLIT);
-    this->telemetry_queue_handle = CircularBufCreate(10, sizeof(TelemetryData), "telemetry");
-    if (this->telemetry_queue_handle == nullptr)
+    this->m_telemetry_queue_handle = CircularBufCreate(10, sizeof(TelemetryData), "telemetry");
+    if (this->m_telemetry_queue_handle == nullptr)
     {
         printf("Failed to create drone ring buffer\n");
     }
 
-    printf("telemetry_queue_handle: %p m_data: %p\n", telemetry_queue_handle, telemetry_queue_handle->m_data);
+    printf("telemetry_queue_handle: %p m_data: %p\n", m_telemetry_queue_handle, m_telemetry_queue_handle->m_data);
 
 
-    this->dmp_queue_handle = dmp_queue_handle;
-    this->radio_queue_handle = radio_queue_handle;
-    this->radio_statistics_queue_handle = radio_statistics_queue_handle;
+    this->m_dmp_queue_handle1 = dmp_queue_handle1;
+    this->m_dmp_queue_handle2 = dmp_queue_handle2;
+    this->m_radio_queue_handle = radio_queue_handle;
+    this->m_radio_statistics_queue_handle = radio_statistics_queue_handle;
     this->m_dshot_queue_handle = dshot_queue_handle;
 
 
@@ -74,12 +77,13 @@ esp_err_t Drone::set_motor_lane_mapping(const MotorLaneMapping motorMapping){
 }
 
 Drone *Drone::GetInstance(RingbufHandle_t dshot_queue_handle, 
-    RingbufHandle_t dmp_queue_handle, 
+    RingbufHandle_t dmp_queue_handle1,
+    RingbufHandle_t dmp_queue_handle2,  
     CircularHandle_t radio_queue_handle, 
     CircularHandle_t radio_statistics_queue_handle){
     if (drone == nullptr)
     {
-        drone = new Drone(dshot_queue_handle, dmp_queue_handle, radio_queue_handle, radio_statistics_queue_handle);
+        drone = new Drone(dshot_queue_handle, dmp_queue_handle1, dmp_queue_handle2, radio_queue_handle, radio_statistics_queue_handle);
     }
     return drone;
 }
@@ -187,7 +191,7 @@ esp_err_t Drone::arming_process()
     ESP_LOGI(log_tag, "Arming process started");
     while (true)
     {
-        get_imu_data(ypr, 0); // just to prevent queue from filling up
+        get_imu_data(1, ypr, 0); // just to prevent queue from filling up
         status = get_radio_data(channel, pdMS_TO_TICKS(2));
         if (status == ESP_OK)
         {
@@ -212,7 +216,7 @@ esp_err_t Drone::arming_process()
     ESP_LOGI(log_tag, "Awaiting arm signal");
     while (true)
     {
-        get_imu_data(ypr, 0); // just to prevent queue from filling up
+        get_imu_data(1, ypr, 0); // just to prevent queue from filling up
         status = get_radio_data(channel, pdMS_TO_TICKS(2));
         if (status == ESP_OK)
         {
@@ -244,16 +248,18 @@ esp_err_t Drone::arming_process()
     return ESP_OK;
 }
 
-esp_err_t Drone::get_imu_data(YawPitchRoll &newData, TickType_t ticks)
+esp_err_t Drone::get_imu_data(int imuNr, YawPitchRoll &newData, TickType_t ticks)
 {
 
     size_t item_size = sizeof(YawPitchRoll);
 
-    YawPitchRoll *data = (YawPitchRoll *)xRingbufferReceive(dmp_queue_handle, &item_size, ticks);
+    RingbufHandle_t handle = imuNr == 1? m_dmp_queue_handle1 : m_dmp_queue_handle2;
+
+    YawPitchRoll *data = (YawPitchRoll *)xRingbufferReceive(handle, &item_size, ticks);
     if (data != nullptr)
     {
         newData = *data;
-        vRingbufferReturnItem(dmp_queue_handle, (void *)data);
+        vRingbufferReturnItem(handle, (void *)data);
         return ESP_OK;
     }
     return ESP_FAIL;
@@ -263,7 +269,7 @@ esp_err_t Drone::get_radio_data(Channel &newData, TickType_t ticks){
 
     size_t item_size = sizeof(Channel);
     
-    esp_err_t status = CircularBufDequeue(radio_queue_handle, &newData, 0);
+    esp_err_t status = CircularBufDequeue(m_radio_queue_handle, &newData, 0);
 
     return status;
 }
@@ -272,7 +278,7 @@ esp_err_t Drone::get_radio_statistics(RadioStatistics &newData, TickType_t ticks
 
     size_t item_size = sizeof(radio_statistics);
     
-    esp_err_t status = CircularBufDequeue(radio_statistics_queue_handle, &newData, 0);
+    esp_err_t status = CircularBufDequeue(m_radio_statistics_queue_handle, &newData, 0);
 
     return status;
 }
@@ -305,7 +311,7 @@ esp_err_t Drone::verify_components_process()
         YawPitchRoll ypr{};
 
         /* get new data */
-        status = get_imu_data(ypr, pdMS_TO_TICKS(1));
+        status = get_imu_data(1, ypr, pdMS_TO_TICKS(1));
         if (status == ESP_OK)
         {
             yprCounter++;
@@ -553,16 +559,32 @@ void Drone::drone_task(void *args)
 
         bool newTelemetryReq{};
         bool newSpeedValues{};
+        bool newImuData1{};
+        bool newImuData2{};
 
-        status = get_imu_data(ypr, 0);
+        status = get_imu_data(1, ypr1, 0);
         if (status == ESP_OK)
         {
-            this->ypr = ypr;
+            this->ypr1 = ypr1;
             yprCounter++;
-            m_state.currPitch = ypr.pitch * radToDegree;
-            m_state.currYaw = ypr.yaw * radToDegree;
-            m_state.currRoll = ypr.roll * radToDegree;
+            m_state.currPitch = ypr1.pitch * radToDegree;
+            m_state.currYaw = ypr1.yaw * radToDegree;
+            m_state.currRoll = ypr1.roll * radToDegree;
+            newImuData1 = true;
         }
+
+        status = get_imu_data(2, ypr2, 0);
+        if (status == ESP_OK)
+        {
+            this->ypr2 = ypr2;
+            yprCounter++;
+            m_state.currPitch = ypr2.pitch * radToDegree;
+            m_state.currYaw = ypr2.yaw * radToDegree;
+            m_state.currRoll = ypr2.roll * radToDegree;
+            newImuData2 = true;
+        }
+
+
 
         status = get_radio_data(channelNew, 0);
         if (status == ESP_OK)
@@ -576,6 +598,8 @@ void Drone::drone_task(void *args)
         if (status == ESP_OK)
         {
             this->radio_statistics = radioStatisticsNew;
+            handle_signal_lost();
+
         }
 
 
@@ -972,7 +996,7 @@ esp_err_t Drone::ramp_up_motors(){
 
 esp_err_t Drone::send_telemetry(){
     TelemetryData telemetry{};
-    telemetry.ypr = this->ypr;
+    telemetry.ypr = this->ypr1;
     telemetry.channel = this->channel;
     telemetry.radioStatistics = radio_statistics;
 
@@ -1085,7 +1109,7 @@ esp_err_t Drone::send_dshot_message(Dshot::DshotMessage &msg)
 esp_err_t Drone::send_telemetry_message(TelemetryData &msg)
 {
 
-    esp_err_t status = CircularBufEnqueue(telemetry_queue_handle, &msg);
+    esp_err_t status = CircularBufEnqueue(m_telemetry_queue_handle, &msg);
 
     //BaseType_t res = xRingbufferSend(telemetry_queue_handle, &msg, sizeof(TelemetryData), 1);
     //if (res != pdTRUE)
@@ -1270,6 +1294,21 @@ uint8_t Drone::calculateCrc8(const uint8_t *Buf, const uint8_t BufLen){
 }
 
 esp_err_t Drone::handle_signal_lost(){
+
+    static uint32_t counter{};
+
+    if(counter >= 10){
+        // cut power
+    }
+
+    if(radio_statistics.upplink_quality == 0){
+
+        counter++;
+    }
+    else{
+        counter = 0;
+    }
+
 
 
  return 0;

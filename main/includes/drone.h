@@ -42,6 +42,16 @@ struct MotorLaneMapping{
 class Drone{
 
     static Drone* drone;
+    DroneState m_state{};
+    MotorLaneMapping m_motorLaneMapping{};
+
+    Channel channel{};
+    YawPitchRoll ypr1{};
+    YawPitchRoll ypr2{};
+    RadioStatistics radio_statistics{};
+
+    Pid m_pid[3]{};
+
 
     const float m_maxPitch{45};
     const float m_minPitch{-45};
@@ -50,42 +60,29 @@ class Drone{
     const float m_maxRoll{45};
     const float m_minRoll{-45};
 
-    const uint16_t c_minThrottleValue{100}; //sending lower may cause strange motor behaviour
-    const bool c_saftyParams{true}; //limists various values while testing
+    bool m_motor1DirectionNormal{true};
+    bool m_motor2DirectionNormal{true};
+    bool m_motor3DirectionNormal{true};
+    bool m_motor4DirectionNormal{true};
 
-    DroneState m_state{};
-    MotorLaneMapping m_motorLaneMapping{};
+    const uint16_t c_minThrottleValue{100}; //sending lower may cause strange motor behaviour
+    const bool c_saftyParams{true}; //limits various values while testing
+
 
     std::mutex m_escTelemetryLock;
-
     std::atomic<uint8_t> m_telemetryReqIdx{};
-   
+    bool m_motorTelemetryRequest[Dshot::maxChannels];
 
-    Channel channel{};
-    YawPitchRoll ypr{};
-    RadioStatistics radio_statistics{};
-
-    Pid m_pid[3]{};
-
-    RingbufHandle_t dmp_queue_handle{};
-    CircularHandle_t radio_queue_handle{};
-    CircularHandle_t radio_statistics_queue_handle{};
-    CircularHandle_t telemetry_queue_handle{};
+    RingbufHandle_t m_dmp_queue_handle1{};
+    RingbufHandle_t m_dmp_queue_handle2{};
+    CircularHandle_t m_radio_queue_handle{};
+    CircularHandle_t m_radio_statistics_queue_handle{};
+    CircularHandle_t m_telemetry_queue_handle{};
     RingbufHandle_t m_dshot_queue_handle{};
 
-    bool motor1DirectionNormal{true};
-    bool motor2DirectionNormal{true};
-    bool motor3DirectionNormal{true};
-    bool motor4DirectionNormal{true};
-
-    bool motorTelemetryRequest[Dshot::maxChannels];
-
-    float m_amperageLevel{};
-    float m_radioSignalStr{};
-
-    uint32_t dmpFreq{};
-    uint32_t radioFreq{};
-    uint32_t loopFreq{};
+    uint32_t m_dmpFreq{};
+    uint32_t m_radioFreq{};
+    uint32_t m_loopFreq{};
 
     uart_port_t uartNum{1};
     QueueHandle_t uart_queue{};
@@ -93,7 +90,8 @@ class Drone{
 
     Drone(
         RingbufHandle_t dshot, 
-        RingbufHandle_t dmp_queue_handle, 
+        RingbufHandle_t dmp_queue_handle1,
+        RingbufHandle_t dmp_queue_handle2,  
         CircularHandle_t radio_queue_handle,
         CircularHandle_t radio_statistics_queue_handle);
 
@@ -104,15 +102,15 @@ class Drone{
     esp_err_t start_dissarm_process();
 
     esp_err_t send_dshot_message(Dshot::DshotMessage& msg);
+
     esp_err_t send_telemetry_message(TelemetryData& msg);
     esp_err_t send_telemetry();
     esp_err_t signal_telemetry_request(Dshot::DshotMessage& msg, bool& newTelemetryReq);
-
+    void set_esc_telemetry_data(uint8_t temperature, uint16_t voltage, uint16_t current, uint16_t consumption, uint16_t rpm, uint8_t motorPos);
 
 
     esp_err_t set_flight_mode(int value);
 
-    void set_esc_telemetry_data(uint8_t temperature, uint16_t voltage, uint16_t current, uint16_t consumption, uint16_t rpm, uint8_t motorPos);
 
     esp_err_t verify_components_process();
     esp_err_t arming_process();
@@ -122,10 +120,9 @@ class Drone{
 
     esp_err_t send_beep();
     esp_err_t toggle_motor_direction(); //not working 
-
     esp_err_t blink_led(uint16_t newChannelValue); //not working, no led?
 
-    esp_err_t get_imu_data(YawPitchRoll& newData, TickType_t ticks);
+    esp_err_t get_imu_data(int imuNr, YawPitchRoll& newData, TickType_t ticks);
     esp_err_t get_radio_data(Channel& newData, TickType_t ticks);
     esp_err_t get_radio_statistics(RadioStatistics &newData, TickType_t ticks);
 
@@ -155,7 +152,8 @@ class Drone{
     void operator=(const Drone &) = delete;
     static Drone *GetInstance(
         RingbufHandle_t dshot, 
-        RingbufHandle_t dmp_queue_handle, 
+        RingbufHandle_t dmp_queue_handle1, 
+        RingbufHandle_t dmp_queue_handle2, 
         CircularHandle_t radio_queue_handle,
         CircularHandle_t radio_statistics_queue_handle
     );
@@ -169,16 +167,10 @@ class Drone{
     esp_err_t init_uart(int rxPin, int txPin, int baudrate);
 
 
-    CircularHandle_t get_telemetry_handle(){return telemetry_queue_handle;}
+    CircularHandle_t get_telemetry_handle(){return m_telemetry_queue_handle;}
 
     //manage state
-    esp_err_t set_armed(uint32_t value);    // works
-
-
-    // readings
-    esp_err_t get_radio_pairing();          // TODO       
-    esp_err_t get_battery_voltage();        // TODO
-    esp_err_t get_battery_amperage();       // TODO
+    esp_err_t set_armed(uint32_t value);   
 
     esp_err_t set_motor_direction(enum Motor motorNum, enum MotorDirection direction);  // TODO
     esp_err_t get_motor_direction(enum Motor motorNum, enum MotorDirection& direction); // TODO

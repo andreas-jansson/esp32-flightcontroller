@@ -63,10 +63,12 @@ enum MpuRotation{
 
 class Mpu6050{
 
-    static Mpu6050* mpu;
-	static SemaphoreHandle_t dmp_avail_sem;
-	static RingbufHandle_t dmp_buf_handle;
+	static SemaphoreHandle_t dmp_avail_sem1;
+	static SemaphoreHandle_t dmp_avail_sem2;
+	RingbufHandle_t dmp_buf_handle;
 	static RingbufHandle_t web_buf_handle;
+
+	int m_interruptPin{};
 
     //enum Mpu6050Addr address;
 	enum MpuRotation rotation{ROTATE_0};
@@ -85,18 +87,19 @@ class Mpu6050{
 
 	/*** methods ***/
     esp_err_t i2c_write();
-	static void IRAM_ATTR dmp_data_handler(void *args);
-    Mpu6050(enum Mpu6050Addr addr, I2cHandler* i2c);
-
-
+	static void IRAM_ATTR dmp_data_handler_1(void *args);
+	static void IRAM_ATTR dmp_data_handler_2(void *args);
     public:
 
     enum Mpu6050Addr address;
 
-	Mpu6050(Mpu6050 &other) = delete;
-    void operator=(const Mpu6050 &) = delete;
-    static Mpu6050 *GetInstance(enum Mpu6050Addr address, I2cHandler* i2c);
-	static Mpu6050 *GetInstance();
+
+	Mpu6050(enum Mpu6050Addr addr, I2cHandler* i2c, int interruptPin);
+
+	//Mpu6050(Mpu6050 &other) = delete;
+    //void operator=(const Mpu6050 &) = delete;
+    //static Mpu6050 *GetInstance(enum Mpu6050Addr address, I2cHandler* i2c);
+	//static Mpu6050 *GetInstance();
 
     esp_err_t mpu6050_init();
     esp_err_t dmp_init();
