@@ -77,6 +77,10 @@ void web_task(void *args)
     std::string wpa{"#SupderDuper66!"};
     std::string ip{"192.168.1.246"};
 
+    //std::string ssid{"Wavy"};
+    //std::string wpa{"##SnabbtSkit555!!"};
+    //std::string ip{"192.168.104.183"};
+
     WebClient *client = WebClient::GetInstance(ssid, wpa, ip, 6669);
     client->init(ringBuffer_dmp, nullptr);
 
@@ -306,11 +310,12 @@ void main_task(void *args)
    ringBuffer_dmp2 = mpu2->get_queue_handle();
 
 
+
     /******* wifi *******/
     #ifdef WEB_TASK
     std::string ssid{"Ubiquity 2"};
-    std::string wpa{"#SupderDuper66!"};
-    std::string ip{"192.168.1.246"};
+    std::string wpa{"#SuperDuper66!"};
+    std::string ip{"192.168.1.245"};
 
     init_telemetry_buffer();
     ringBuffer_web = get_telemetry_handle();
@@ -320,10 +325,10 @@ void main_task(void *args)
 
     /******* Dshot600 *******/
     gpio_num_t motorPin[Radio::maxChannels]{};
-    motorPin[MOTOR1] = static_cast<gpio_num_t>(15);
-    motorPin[MOTOR2] = static_cast<gpio_num_t>(2);
-    motorPin[MOTOR3] = static_cast<gpio_num_t>(12);
-    motorPin[MOTOR4] = static_cast<gpio_num_t>(13);
+    motorPin[MOTOR1] = static_cast<gpio_num_t>(12); // rear right   0
+    motorPin[MOTOR2] = static_cast<gpio_num_t>(13); // front right  1
+    motorPin[MOTOR3] = static_cast<gpio_num_t>(15); // rear left    2
+    motorPin[MOTOR4] = static_cast<gpio_num_t>(2);  // front left   3
 
     Dshot600* dshot = Dshot600::GetInstance(motorPin);
     ringBuffer_dshot = dshot->get_queue_handle();
@@ -336,10 +341,10 @@ void main_task(void *args)
         .frontRightlane = MOTOR2
     };
 
+
     Drone* drone = Drone::GetInstance(ringBuffer_dshot, ringBuffer_dmp1, ringBuffer_dmp2, ringBuffer_radio, ringBuffer_radio_statistics);
     drone->init_uart(UART_ESC_RX_IO, UART_ESC_TX_IO, UART_ESC_BAUDRATE);
     drone->set_motor_lane_mapping(motorLanes);
-    //ringBuffer_telemetry = drone->get_telemetry_handle();
 
     esp_err_t status = gpio_install_isr_service(0);
     ESP_ERROR_CHECK_WITHOUT_ABORT(status);
@@ -373,8 +378,8 @@ void main_task(void *args)
 void app_main(void)
 {
     TaskHandle_t main_handle{};
-    uint32_t files = DEBUG_MAIN | DEBUG_TELEMETRY; // | DEBUG_TELEMETRY | DEBUG_DSHOT  | DEBUG_RADIO | DEBUG_DRONE | DEBUG_MPU6050 | DEBUG_I2C; | DEBUG_BMP ;
-    uint32_t prio = DEBUG_DATA;// | DEBUG_LOGIC;  // | DEBUG_ARGS;// | DEBUG_LOGIC;
+    uint32_t files = DEBUG_MAIN | DEBUG_TELEMETRY; //  | DEBUG_RADIO | DEBUG_DRONE | DEBUG_MPU6050 | DEBUG_I2C; | DEBUG_BMP ;
+    uint32_t prio = DEBUG_DATA; // | DEBUG_ARGS; // DEBUG_LOGIC | DEBUG_LOWLEVEL |
 
     set_loglevel(files, prio);
 

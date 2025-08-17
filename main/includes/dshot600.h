@@ -49,7 +49,7 @@ namespace Dshot{
         uint8_t cmd[Dshot::maxChannels]{};
     
         bool telemetryReq[Dshot::maxChannels]{};
-        bool writeTo[Dshot::maxChannels]{};
+        //bool writeTo[Dshot::maxChannels]{};
     };
 
 

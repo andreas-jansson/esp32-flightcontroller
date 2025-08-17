@@ -12,8 +12,12 @@
 
 #define log_tag "mpu6050"
 
-#define CONFIG_ESP_WIFI_SSID "Ubiquity 2"
-#define CONFIG_ESP_WIFI_PASSWORD "#SuperDuper66!"
+//#define CONFIG_ESP_WIFI_SSID "Ubiquity 2"
+//#define CONFIG_ESP_WIFI_PASSWORD "#SuperDuper66!"
+
+
+//#define CONFIG_ESP_WIFI_SSID "Wavy"
+//#define CONFIG_ESP_WIFI_PASSWORD "##SnabbtSkit555!!"
 
 static const char *TAG = "scan";
 
@@ -143,8 +147,6 @@ esp_err_t WebClient::init(RingbufHandle_t dmp_buf_handle, RingbufHandle_t web_bu
 
     wifi_config_t wifi_config = {
         .sta = {
-            .ssid = CONFIG_ESP_WIFI_SSID,
-            .password = CONFIG_ESP_WIFI_PASSWORD,
             .scan_method = WIFI_FAST_SCAN,
             .sort_method = WIFI_CONNECT_AP_BY_SIGNAL,
             .threshold = { .rssi = -127,
@@ -152,7 +154,12 @@ esp_err_t WebClient::init(RingbufHandle_t dmp_buf_handle, RingbufHandle_t web_bu
                             }
         },
     };
-        
+
+    strncpy((char*)wifi_config.sta.ssid, this->wifiName.c_str(), sizeof(wifi_config.sta.ssid));
+    strncpy((char*)wifi_config.sta.password, this->wifiPassword.c_str(), sizeof(wifi_config.sta.password));
+
+    printf("<<<<<< %s %s >>>>>>>>\n", wifi_config.sta.ssid, wifi_config.sta.password);
+
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_ERROR_CHECK(nvs_flash_erase());
@@ -217,7 +224,8 @@ void WebClient::web_task2(void* args){
 
     while(true){
 
-        std::vector<std::string> ypr_messages;
+        std::vector<std::string> ypr_messages1;
+        std::vector<std::string> ypr_messages2;
         std::vector<std::string> fl_messages;
         std::vector<std::string> fr_messages;
         std::vector<std::string> rl_messages;
@@ -232,7 +240,8 @@ void WebClient::web_task2(void* args){
         for (int i = 0; i < 1; i++) {
             TelemetryData* received_data = (TelemetryData*)xRingbufferReceive(this->web_buf_handle, &item_size, pdMS_TO_TICKS(2000));
             if (received_data != nullptr) {
-                ypr_messages.insert(ypr_messages.begin(), received_data->ypr.to_str());
+                ypr_messages1.insert(ypr_messages1.begin(), received_data->ypr1.to_str());
+                ypr_messages2.insert(ypr_messages2.begin(), received_data->ypr2.to_str());
 
                 fl_messages.insert(fl_messages.begin(), received_data->drone.throttle_fl_to_str());
                 fr_messages.insert(fr_messages.begin(), received_data->drone.throttle_fr_to_str());
@@ -256,8 +265,11 @@ void WebClient::web_task2(void* args){
         }   
 
         /* ypr json */
-        std::string ypr_key{"ypr"};
-        std::string ypr_item = construct_json_item(ypr_key, ypr_messages);
+        std::string ypr_key1{"ypr1"};
+        std::string ypr_item1 = construct_json_item(ypr_key1, ypr_messages1);
+
+        std::string ypr_key2{"ypr2"};
+        std::string ypr_item2 = construct_json_item(ypr_key2, ypr_messages2);
 
         /* throttle json */
         std::string fl_key{"fl"};
@@ -295,7 +307,8 @@ void WebClient::web_task2(void* args){
 
         std::vector<std::string> jsonItems;
 
-        jsonItems.emplace_back(ypr_item);
+        jsonItems.emplace_back(ypr_item1);
+        jsonItems.emplace_back(ypr_item2);
         jsonItems.emplace_back(fl_item);
         jsonItems.emplace_back(fr_item);
         jsonItems.emplace_back(rl_item);

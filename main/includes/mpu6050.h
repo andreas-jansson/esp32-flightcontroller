@@ -82,7 +82,7 @@ class Mpu6050{
 
 	bool newData{};
 
-    I2cHandler* i2c;
+    I2cHandler* m_i2c;
 	YawPitchRoll ypr{};
 
 	/*** methods ***/
@@ -163,6 +163,13 @@ class Mpu6050{
     esp_err_t dump_registers();
     esp_err_t dump_dmp_fw();
 
+	esp_err_t get_x_accel_offset(int16_t& offset);
+    esp_err_t get_y_accel_offset(int16_t& offset);
+    esp_err_t get_z_accel_offset(int16_t& offset);
+    esp_err_t get_x_gyro_offset(int16_t& offset);
+    esp_err_t get_y_gyro_offset(int16_t& offset);
+    esp_err_t get_z_gyro_offset(int16_t& offset);
+
     esp_err_t set_x_accel_offset(int16_t offset);
     esp_err_t set_y_accel_offset(int16_t offset);
     esp_err_t set_z_accel_offset(int16_t offset);
@@ -189,7 +196,7 @@ class Mpu6050{
 
     void delay(const uint8_t milli);
 
-	esp_err_t pid_calibrate(float yaw, float pitch, float roll, int nrLoops);
+	esp_err_t pid_calibrate(int nrLoops);
 	void pid(float target, float current, Pid& pid);
 
 

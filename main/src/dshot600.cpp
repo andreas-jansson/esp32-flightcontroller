@@ -15,7 +15,7 @@
 
 
 
-#define DSHOT_ESC_RESOLUTION_HZ 40000000 
+#define DSHOT_ESC_RESOLUTION_HZ 80000000 
 static const char *TAG = "dshot_encoder";
 
 
@@ -174,37 +174,67 @@ Dshot600::Dshot600(gpio_num_t motorPin[Dshot::maxChannels]){
     for(int i=0;i<Dshot::maxChannels;i++){
         tx_chan_config.gpio_num = motorPin[i];
         ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_new_tx_channel(&tx_chan_config, &this->esc_motor_chan[i]));
-        printf("motor chan %d: %p\n", i, this->esc_motor_chan[i]);
+        printf("motor chan %d: %p pin %d\n", i, this->esc_motor_chan[i], tx_chan_config.gpio_num);
     }
 
     for(int i=0;i<Dshot::maxChannels;i++){
         ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_enable(this->esc_motor_chan[i]));
     }
 
-    this->m_dshot_queue_handle = xRingbufferCreate(sizeof(DshotMessage) * 100, RINGBUF_TYPE_NOSPLIT);
+    this->m_dshot_queue_handle = xRingbufferCreate(sizeof(DshotMessage) * 10, RINGBUF_TYPE_NOSPLIT);
     if (this->m_dshot_queue_handle == NULL) {
         printf("Failed to create drone ring buffer\n");
     }
-/*
-    DshotMessage msgArm{};
-
-    msgArm.msgType = COMMAND;
-    msgArm.writeTo[0] = true;
-    msgArm.cmd[0] = 0;
-    msgArm.loops[0] = -1;
-
-    write_command(msgArm);
-    vTaskDelay(pdMS_TO_TICKS(3500));
 
 
+    ////////// DEBUGGING ///////////
 
-    msgArm.loops[0] = 0;
-    msgArm.telemetryReq[0] = true;
-    while(true){
-        write_command(msgArm);
-        vTaskDelay(pdMS_TO_TICKS(35)); 00000010000000000
+    /*
+    auto start = std::chrono::steady_clock::now();
+    DshotMessage msg;
+    msg.msgType = Dshot::COMMAND;
+
+    printf("Arming....\n");
+    for(int i=0;i<Dshot::maxChannels;i++){
+        msg.writeTo[i] = true;
+        msg.loops[i] = 0;
+        msg.cmd[i] = DSHOT_CMD_MOTOR_STOP;
+        msg.telemetryReq[i] = false;
+
     }
-*/
+
+
+    while(true){
+        write_command(msg);
+
+        auto now = std::chrono::steady_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now-start).count();
+
+        if(elapsed >= 5000){
+            break;
+        }
+        vTaskDelay(1);
+    }
+
+    msg.msgType = Dshot::THROTTLE;
+    printf("Ramping up....\n");
+
+    for(int i=48;i<1000;i++){
+
+        for(int j=0;j<Dshot::maxChannels;j++){
+            msg.writeTo[j] = true;
+            msg.loops[j] = 0;
+            msg.telemetryReq[j] = false;
+            msg.speed[j] = i;
+        }   
+        write_speed(msg);
+        vTaskDelay(pdMS_TO_TICKS(10));
+
+    }
+
+    printf("Ramping up complete\n");
+    */
+
 }
 
 Dshot600* Dshot600::GetInstance(gpio_num_t motorPin[Dshot::maxChannels]){
@@ -225,12 +255,26 @@ void Dshot600::dshot_task(void* args){
     TickType_t lastSleep = xTaskGetTickCount();
     TickType_t sleepThld = pdMS_TO_TICKS(100);
     TickType_t sleepDur = pdMS_TO_TICKS(1);
+    TickType_t waitMs{portMAX_DELAY};
+    bool firstMsg{true};
+
 
     while(true){
 
         DshotMessage msg{};
-        status = get_message(msg, portMAX_DELAY);
-        ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+
+        if(firstMsg){
+            waitMs = firstMsg? portMAX_DELAY : pdMS_TO_TICKS(50);
+            firstMsg = false;
+
+            status = get_message(msg, waitMs);
+            ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+        }
+        else{
+            status = get_message(msg, waitMs);
+            ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+        }
+
    
         if(status == ESP_OK){
             status = parse_dshot_message(msg);
@@ -246,8 +290,6 @@ void Dshot600::dshot_task(void* args){
             }
             else if(msg.msgType == THROTTLE){
                 ESP_ERROR_CHECK_WITHOUT_ABORT(set_speed(msg));
-
-                
             }
         }
         else{
@@ -256,7 +298,8 @@ void Dshot600::dshot_task(void* args){
 
         TickType_t now = xTaskGetTickCount();
         if ((now - lastSleep) >= sleepThld) {
-            vTaskDelay(sleepDur);
+            //vTaskDelay(sleepDur);
+            taskYIELD();
             lastSleep = now;
         }
 
@@ -264,6 +307,9 @@ void Dshot600::dshot_task(void* args){
 }
 
 esp_err_t Dshot600::get_message(struct Dshot::DshotMessage& msg, TickType_t ticks){
+
+    print_debug(DEBUG_DSHOT, DEBUG_ARGS, "%s %d: ticks %lu", __FILE__, __LINE__, ticks);
+
     esp_err_t status = 0;
 
     size_t itemSize = sizeof(Dshot::DshotMessage);
@@ -271,6 +317,7 @@ esp_err_t Dshot600::get_message(struct Dshot::DshotMessage& msg, TickType_t tick
     if(data != nullptr){
         msg = *data;
         vRingbufferReturnItem(this->m_dshot_queue_handle, (void*)data);
+
     }
     else{
         return ESP_ERR_NOT_FOUND;
@@ -285,6 +332,9 @@ esp_err_t Dshot600::write_speed(struct Dshot::DshotMessage& msg){
     dshot_esc_throttle_t throttle[Dshot::maxChannels]{};
     rmt_transmit_config_t tx_config[Dshot::maxChannels]{};
 
+    static DshotMessage prev_msg;
+
+
     for(int i=0;i<Dshot::maxChannels;i++){
         throttle[i] = {
             .throttle = msg.speed[i],
@@ -294,35 +344,21 @@ esp_err_t Dshot600::write_speed(struct Dshot::DshotMessage& msg){
         tx_config[i] = {
             .loop_count = msg.loops[i] == -1? -1 : 0,
         };    
+
     }
+    prev_msg = msg;
 
 
 
     for(int i=0;i<Dshot::maxChannels;i++){
 
-        if(msg.writeTo[i]){
-            print_debug(DEBUG_DSHOT, DEBUG_DATA, "m%d throttle: %u telemetry: %d  ", i, throttle[i].throttle, throttle[i].telemetry_req);
-
-            /* write telemetry req only once*/
-            if(throttle[i].telemetry_req == true){
-                tx_config[i].loop_count = 0; //ensures this is only written once
-                ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_disable(this->esc_motor_chan[i]));
-                ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_enable(this->esc_motor_chan[i]));
-                ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_transmit(this->esc_motor_chan[i], this->dshot_encoder, &throttle[i], sizeof(throttle[i]), &tx_config[i]));   
-                ets_delay_us(200);
-                /* remove telemetry flag and loop forever*/
-                throttle[i].telemetry_req = false;
-                tx_config[i].loop_count = -1;
-            }
-            
-            ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_disable(this->esc_motor_chan[i]));
-            ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_enable(this->esc_motor_chan[i]));
-            ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_transmit(this->esc_motor_chan[i], this->dshot_encoder, &throttle[i], sizeof(throttle[i]), &tx_config[i]));   
-            ets_delay_us(100);
-        }
+            print_debug(DEBUG_DSHOT, DEBUG_DATA, "m%d throttle: %u telemetry: %d channel: 0x%x", i, throttle[i].throttle, throttle[i].telemetry_req, this->esc_motor_chan[i]);
+  
+            ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_transmit(this->esc_motor_chan[i], this->dshot_encoder, &throttle[i], sizeof(throttle[i]), &tx_config[i])); 
+            ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_tx_wait_all_done(this->esc_motor_chan[i], pdMS_TO_TICKS(20)));
     }
-    print_debug(DEBUG_DSHOT, DEBUG_DATA, "\n");
 
+    print_debug(DEBUG_DSHOT, DEBUG_DATA, "\n");
 
     return status;
 }
@@ -346,20 +382,17 @@ esp_err_t Dshot600::write_command(struct Dshot::DshotMessage& msg){
 
     for(int i=0;i<Dshot::maxChannels;i++){
 
-        if(msg.writeTo[i]){
-            for(uint16_t j=0;j<dshotLoopsLookup[msg.cmd[i]];j++){
-                print_debug(DEBUG_DSHOT, DEBUG_DATA, "m%d command: %u   ", i, throttle[i].throttle);
-                ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_disable(this->esc_motor_chan[i]));
-                ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_enable(this->esc_motor_chan[i]));
-                ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_transmit(this->esc_motor_chan[i], this->dshot_encoder, &throttle[i], sizeof(throttle[i]), &tx_config[i]));
-                ets_delay_us(30);
-
-                if(dshotWaitLookup[msg.cmd[i]] > 0) 
-                    vTaskDelay(dshotWaitLookup[msg.cmd[i]]);
-            }
+        for(uint16_t j=0;j<dshotLoopsLookup[msg.cmd[i]];j++){
+            print_debug(DEBUG_DSHOT, DEBUG_DATA, "m%d command: %u  channel: 0x%x ", i, throttle[i].throttle, this->esc_motor_chan[i]);
+            ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_transmit(this->esc_motor_chan[i], this->dshot_encoder, &throttle[i], sizeof(throttle[i]), &tx_config[i]));
+            if(dshotWaitLookup[msg.cmd[i]] > 0) 
+                vTaskDelay(dshotWaitLookup[msg.cmd[i]]);
         }
+
     }
     print_debug(DEBUG_DSHOT, DEBUG_DATA, "\n");
+
+
     return status;
 }
 
@@ -370,7 +403,7 @@ esp_err_t Dshot600::set_idle(){
         .msgType = COMMAND,
         .loops = {-1, -1, -1, -1},
         .cmd = {0, 0, 0, 0},
-        .writeTo = {true, true, true, true},
+        //.writeTo = {true, true, true, true},
     };
 
     status = parse_dshot_message(msg);
@@ -400,21 +433,25 @@ esp_err_t Dshot600::set_speed(struct Dshot::DshotMessage& msg){
 }
 
 esp_err_t Dshot600::parse_dshot_message(struct Dshot::DshotMessage& msg) {
+
+    print_debug(DEBUG_DSHOT, DEBUG_ARGS, "%s %d:", __FILE__, __LINE__);
+
     bool badMsg = false;
-    uint8_t writeToCheck{};
+    //uint8_t writeToCheck{};
 
-    for(int i=0;i<Dshot::maxChannels;i++){
-        writeToCheck += msg.writeTo[i];
-    }
-    badMsg = writeToCheck == 0? true : false;
+    //for(int i=0;i<Dshot::maxChannels;i++){
+    //    writeToCheck += msg.writeTo[i];
+    //}
 
-    if (writeToCheck == 0) {
-        ESP_LOGE(TAG, "Invalid: No motor write request");
-        for(int i=0;i<Dshot::maxChannels;i++){
-            printf("m%d writeTo: %d speed: %d cmd: %d\n", i, msg.writeTo[i], msg.speed[i], msg.cmd[i]);
-        }
-        return ESP_FAIL;
-    }
+   //badMsg = writeToCheck == 0? true : false;
+
+    //if (writeToCheck == 0) {
+    //    ESP_LOGE(TAG, "Invalid: No motor write request");
+    //    for(int i=0;i<Dshot::maxChannels;i++){
+    //        printf("m%d writeTo: %d speed: %d cmd: %d\n", i, msg.writeTo[i], msg.speed[i], msg.cmd[i]);
+    //    }
+    //    return ESP_FAIL;
+    //}
 
     // Validate motor speed and loop count
     auto validate_motor = [](uint16_t speed, uint8_t loops) {
@@ -423,8 +460,8 @@ esp_err_t Dshot600::parse_dshot_message(struct Dshot::DshotMessage& msg) {
 
     for(int i=0;i<Dshot::maxChannels;i++){
         if(msg.speed[i] != 0)
-            if (msg.writeTo[i] && !validate_motor(msg.speed[i], msg.loops[i])) {
-                printf("bad msg: %d writeTo %d cmd %u speed %u\n", i, msg.writeTo[i], msg.cmd[i], msg.speed[i]);
+            if (!validate_motor(msg.speed[i], msg.loops[i])) {
+                printf("bad msg: %d cmd %u speed %u\n", i, msg.cmd[i], msg.speed[i]);
                 badMsg = true;
             }
     }
@@ -452,7 +489,7 @@ esp_err_t Dshot600::set_motor_spin_cmd(enum Motor motorNum, enum MotorDirection 
     esp_err_t status = 0;
     DshotMessage msg{};
 
-    msg.writeTo[motorNum] = true;
+    //msg.writeTo[motorNum] = true;
     msg.cmd[motorNum] = NORMAL? DSHOT_CMD_SPIN_DIRECTION_NORMAL : DSHOT_CMD_SPIN_DIRECTION_REVERSED;
 
     status = parse_dshot_message(msg);
@@ -470,7 +507,7 @@ esp_err_t Dshot600::beep_cmd(enum Dshot::BeepNum num){
     DshotMessage msg{};
     
     msg.msgType = COMMAND;
-    msg.writeTo[0] = true;
+    //msg.writeTo[0] = true;
     msg.cmd[0] = DSHOT_CMD_BEEP1 + num;
     msg.loops[0] = 1;
 
@@ -491,7 +528,7 @@ esp_err_t Dshot600::blink_led_cmd(){
     DshotMessage msg{};
     
     msg.msgType = COMMAND;
-    msg.writeTo[0] = true;
+    //msg.writeTo[0] = true;
     msg.cmd[0] = DSHOT_CMD_LED0_ON;
     msg.loops[0] = 1;
 
@@ -519,9 +556,9 @@ esp_err_t Dshot600::arm_esc_cmd(){
     
     for(int i=0;i<1/*Dshot::maxChannels*/;i++){
         msg.msgType = COMMAND;
-        msg.writeTo[i] = i == 0? true : false;
+        //msg.writeTo[i] = i == 0? true : false;
         msg.cmd[i] = DSHOT_CMD_MOTOR_STOP;
-        msg.loops[i] = 10000;
+        msg.loops[i] = 0;
 
         status = parse_dshot_message(msg);
         ESP_RETURN_ON_ERROR(status, TAG, "Failed to parse msg");

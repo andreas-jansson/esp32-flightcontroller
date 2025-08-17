@@ -272,17 +272,19 @@ struct YawPitchRoll{
 struct TelemetryData{
     Channel channel{};
     RadioStatistics radioStatistics{};
-    YawPitchRoll ypr{};
+    YawPitchRoll ypr1{};
+    YawPitchRoll ypr2{};
     DroneState drone{};
 };
 
 struct Pid{
-    const float kP{.5};
-    const float kI{0.1};
-    const float kD{0.1};
-	const float dt{1};
+    float kP{.5};
+    float kI{0.1};
+    float kD{0.1};
+	float dt{1};
     float c{};
     float prevErr{0};
+    float integral{};
 };
 
 

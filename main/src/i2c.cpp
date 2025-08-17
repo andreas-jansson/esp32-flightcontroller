@@ -27,6 +27,7 @@ I2cHandler::I2cHandler(uint8_t sdaPin, uint8_t sclPin, uint32_t freq){
 
 
 esp_err_t I2cHandler::init(){
+
     esp_err_t status = 0;
     i2c_config_t conf = {};
 
@@ -51,6 +52,7 @@ esp_err_t I2cHandler::init(){
 
     initiated = true;
 
+
     i2c_scanner();
 
     return status;
@@ -59,7 +61,7 @@ esp_err_t I2cHandler::init(){
 
 void I2cHandler::i2c_scanner() {
 
-    // const std::lock_guard<std::mutex> lock(busLock);
+    std::unique_lock<std::mutex> lock(busLock);
 
     uint64_t elapsed{};
     for (uint8_t addr = 1; addr < 127; addr++) {
@@ -68,7 +70,7 @@ void I2cHandler::i2c_scanner() {
         auto end = std::chrono::steady_clock::now();
         elapsed += std::chrono::duration_cast<std::chrono::microseconds>(end-start).count();
         if (status == ESP_OK) {
-            print_debug(DEBUG_I2C, DEBUG_DATA, "I2C device found at address 0x%02X\n", addr);
+            printf("I2C device found at address 0x%02X\n", addr);
         }
     }
     printf("i2c avg write bytes too %llu us\n", elapsed / 126);
@@ -77,7 +79,6 @@ void I2cHandler::i2c_scanner() {
 
 
 esp_err_t I2cHandler::write(uint8_t devAddress, uint8_t startRegisterAddress, uint8_t* data, uint8_t dataLength){
-
 
     ESP_RETURN_ON_ERROR((dataLength>20), log_tag, "Failed i2c write data: addr 0x%x reg 0x%x len %u", devAddress, startRegisterAddress, dataLength);
     esp_err_t status = 0;
@@ -96,7 +97,7 @@ esp_err_t I2cHandler::write(uint8_t devAddress, uint8_t startRegisterAddress, ui
     }
     print_debug(DEBUG_I2C, DEBUG_LOWLEVEL, "\n");
 
-    std::lock_guard<std::mutex> lock(busLock);
+    std::unique_lock<std::mutex> lock(busLock);
 
     for(int i=0;i<3;i++){
         status = i2c_master_write_to_device(I2C_MASTER_NUM, devAddress, buffer, dataLength + 1, 1000);
@@ -113,9 +114,10 @@ esp_err_t I2cHandler::write(uint8_t devAddress, uint8_t startRegisterAddress, ui
 
 
 esp_err_t I2cHandler::read(uint8_t devAddress, uint8_t startRegisterAddress, uint8_t* data, uint8_t dataLength){
+
     print_debug(DEBUG_I2C, DEBUG_LOWLEVEL, "%-33s: addr 0x%x starAddr 0x%x %-25s dataLength %-2u data:", __func__, devAddress, startRegisterAddress, regMapX[(enum MpuReg)startRegisterAddress].c_str(), dataLength);
 
-    std::lock_guard<std::mutex> lock(busLock);
+    std::unique_lock<std::mutex> guard(busLock);
 
     esp_err_t status = i2c_master_write_to_device(I2C_MASTER_NUM, devAddress, &startRegisterAddress, 1, 1000);
     ESP_RETURN_ON_ERROR(status, log_tag, "Failed i2c write addr 0x%.2x reg 0x%.2x len %-2u", devAddress, startRegisterAddress, dataLength);
@@ -144,6 +146,7 @@ esp_err_t I2cHandler::write_bit(uint8_t devAddress, uint8_t startRegisterAddress
 
     status = read(devAddress, startRegisterAddress, &buffer, 1);
     ESP_RETURN_ON_ERROR(status, log_tag, "Failed to read address 0x%x reg 0x%x", devAddress, startRegisterAddress);
+
 
     //shift data by index of lowest 1 value in mask 
     uint8_t shiftAmount = __builtin_ctz(mask);

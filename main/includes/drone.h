@@ -29,10 +29,10 @@ typedef enum MotorPosition{
 
 struct MotorLaneMapping{
     
-    motor_type_t rearLeftlane{MOTOR1};
-    motor_type_t rearRightlane{MOTOR2};
-    motor_type_t frontLeftlane{MOTOR3};
-    motor_type_t frontRightlane{MOTOR4};
+    motor_type_t rearLeftlane{MOTOR3};
+    motor_type_t rearRightlane{MOTOR1};
+    motor_type_t frontLeftlane{MOTOR4};
+    motor_type_t frontRightlane{MOTOR2};
 
 };
 
@@ -59,13 +59,14 @@ class Drone{
     const float m_minYaw{-45};
     const float m_maxRoll{45};
     const float m_minRoll{-45};
+    const float m_deadzone{295 * 1.10}; // min throttle raw value: 295
 
     bool m_motor1DirectionNormal{true};
     bool m_motor2DirectionNormal{true};
     bool m_motor3DirectionNormal{true};
     bool m_motor4DirectionNormal{true};
 
-    const uint16_t c_minThrottleValue{100}; //sending lower may cause strange motor behaviour
+    const uint16_t c_minThrottleValue{48}; //sending lower may cause strange motor behaviour
     const bool c_saftyParams{true}; //limits various values while testing
 
 
@@ -170,7 +171,7 @@ class Drone{
     CircularHandle_t get_telemetry_handle(){return m_telemetry_queue_handle;}
 
     //manage state
-    esp_err_t set_armed(uint32_t value);   
+    esp_err_t arm_drone(uint32_t value);   
 
     esp_err_t set_motor_direction(enum Motor motorNum, enum MotorDirection direction);  // TODO
     esp_err_t get_motor_direction(enum Motor motorNum, enum MotorDirection& direction); // TODO

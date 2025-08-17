@@ -3,8 +3,8 @@
 #include "stdarg.h"
 
 
-static uint32_t logFile = 0;
-static uint32_t logPrio = 0;
+static volatile uint32_t logFile = 0;
+static volatile uint32_t logPrio = 0;
 
 
 void set_loglevel(uint32_t a_file, uint32_t a_prio){

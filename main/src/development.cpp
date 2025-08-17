@@ -129,13 +129,19 @@ void telemetry_task(void* args){
             firstPrint = false;
         }
         else{
-            print_debug(DEBUG_TELEMETRY, DEBUG_DATA,"[24A"); //24
+
+            print_debug(DEBUG_TELEMETRY, DEBUG_DATA,"[25A"); //25
         }
         print_debug(DEBUG_TELEMETRY, DEBUG_DATA,"[K  Roll    Pitch     Yaw\n");
         print_debug(DEBUG_TELEMETRY, DEBUG_DATA,"[K%6.3f °C %6.3f °C %6.3f °C\n", 
-            telemetry.ypr.roll * radToDegree, 
-            telemetry.ypr.pitch * radToDegree, 
-            telemetry.ypr.yaw * radToDegree);
+            telemetry.ypr1.roll * radToDegree, 
+            telemetry.ypr1.pitch * radToDegree, 
+            telemetry.ypr1.yaw * radToDegree);
+
+        print_debug(DEBUG_TELEMETRY, DEBUG_DATA,"[K%6.3f °C %6.3f °C %6.3f °C\n", 
+            telemetry.ypr2.roll * radToDegree, 
+            telemetry.ypr2.pitch * radToDegree, 
+            telemetry.ypr2.yaw * radToDegree);
 
 
         draw_channels("1", telemetry.channel.ch1,  chPrev.ch1,  counter);
@@ -168,32 +174,32 @@ void telemetry_task(void* args){
         print_debug(DEBUG_TELEMETRY, DEBUG_DATA, "[Krl: %4u rr: %4u\n", telemetry.drone.motorRlSpeed, telemetry.drone.motorRrSpeed);
         
         print_debug(DEBUG_TELEMETRY, DEBUG_DATA, "[K[Rear   Left] %4u °C     %4.2f V     %4.2f A     %4.2f mA    %6u rpm\n", 
-            telemetry.drone.escState[MOTOR1].temperature, 
-            telemetry.drone.escState[MOTOR1].voltage * 0.01, 
-            telemetry.drone.escState[MOTOR1].current * 0.01, 
-            telemetry.drone.escState[MOTOR1].consumption * 0.01, 
-            telemetry.drone.escState[MOTOR1].rpm * 100 / 7);
-
-        print_debug(DEBUG_TELEMETRY, DEBUG_DATA, "[K[Rear  Right] %4u °C     %4.2f V     %4.2f A     %4.2f mA    %6u rpm\n", 
-            telemetry.drone.escState[MOTOR2].temperature, 
-            telemetry.drone.escState[MOTOR2].voltage * 0.01, 
-            telemetry.drone.escState[MOTOR2].current * 0.01, 
-            telemetry.drone.escState[MOTOR2].consumption * 0.01, 
-            telemetry.drone.escState[MOTOR2].rpm * 100 / 7);
-
-        print_debug(DEBUG_TELEMETRY, DEBUG_DATA, "[K[Front  Left] %4u °C     %4.2f V     %4.2f A     %4.2f mA    %6u rpm\n", 
             telemetry.drone.escState[MOTOR3].temperature, 
             telemetry.drone.escState[MOTOR3].voltage * 0.01, 
             telemetry.drone.escState[MOTOR3].current * 0.01, 
             telemetry.drone.escState[MOTOR3].consumption * 0.01, 
             telemetry.drone.escState[MOTOR3].rpm * 100 / 7);
 
-        print_debug(DEBUG_TELEMETRY, DEBUG_DATA, "[K[Front Right] %4u °C     %4.2f V     %4.2f A     %4.2f mA    %6u rpm\n", 
+        print_debug(DEBUG_TELEMETRY, DEBUG_DATA, "[K[Rear  Right] %4u °C     %4.2f V     %4.2f A     %4.2f mA    %6u rpm\n", 
+            telemetry.drone.escState[MOTOR1].temperature, 
+            telemetry.drone.escState[MOTOR1].voltage * 0.01, 
+            telemetry.drone.escState[MOTOR1].current * 0.01, 
+            telemetry.drone.escState[MOTOR1].consumption * 0.01, 
+            telemetry.drone.escState[MOTOR1].rpm * 100 / 7);
+
+        print_debug(DEBUG_TELEMETRY, DEBUG_DATA, "[K[Front  Left] %4u °C     %4.2f V     %4.2f A     %4.2f mA    %6u rpm\n", 
             telemetry.drone.escState[MOTOR4].temperature, 
             telemetry.drone.escState[MOTOR4].voltage * 0.01, 
             telemetry.drone.escState[MOTOR4].current * 0.01, 
             telemetry.drone.escState[MOTOR4].consumption * 0.01, 
             telemetry.drone.escState[MOTOR4].rpm * 100 / 7);
+
+        print_debug(DEBUG_TELEMETRY, DEBUG_DATA, "[K[Front Right] %4u °C     %4.2f V     %4.2f A     %4.2f mA    %6u rpm\n", 
+            telemetry.drone.escState[MOTOR2].temperature, 
+            telemetry.drone.escState[MOTOR2].voltage * 0.01, 
+            telemetry.drone.escState[MOTOR2].current * 0.01, 
+            telemetry.drone.escState[MOTOR2].consumption * 0.01, 
+            telemetry.drone.escState[MOTOR2].rpm * 100 / 7);
 
         print_debug(DEBUG_TELEMETRY, DEBUG_DATA, "[Kcurrent: %.2f A\n", telemetry.drone.currentDraw);  
 
