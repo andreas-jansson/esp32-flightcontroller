@@ -46,9 +46,11 @@
 #define I2C_MASTER_FREQ_HZ 400000 // Frequency of the I2C bus
 #define I2C_DMP_DATA_PIN 27
 
-#define UART_ESC_RX_IO 37
-#define UART_ESC_TX_IO 17   // not used
+#define UART_ESC_RX_IO 37   
 #define UART_ESC_BAUDRATE 115200
+
+#define ESC_CURRENT_PIN 17   // FIXME current reading adc not supported! resolder tx and rx and maybe remove from uart setup
+
 
 #define log_tag "main"
 
@@ -223,12 +225,6 @@ void dispatch_dmp(void *args)
     mpu->dmp_task(nullptr);
 }
 
-void dispatch_raw(void *args)
-{
-    //Mpu6050 *mpu = Mpu6050::GetInstance();
-    //mpu->raw_task(nullptr);
-}
-
 void dispatch_webClient(void *args)
 {
     WebClient *client = WebClient::GetInstance();
@@ -343,7 +339,7 @@ void main_task(void *args)
 
 
     Drone* drone = Drone::GetInstance(ringBuffer_dshot, ringBuffer_dmp1, ringBuffer_dmp2, ringBuffer_radio, ringBuffer_radio_statistics);
-    drone->init_uart(UART_ESC_RX_IO, UART_ESC_TX_IO, UART_ESC_BAUDRATE);
+    drone->init_uart(UART_ESC_RX_IO, ESC_CURRENT_PIN, UART_ESC_BAUDRATE);
     drone->set_motor_lane_mapping(motorLanes);
 
     esp_err_t status = gpio_install_isr_service(0);
@@ -367,7 +363,6 @@ void main_task(void *args)
     xTaskCreatePinnedToCore(dispatch_dmp, "dmp_task2", 4048, mpu2,  24, &dmp_handle2, 1);
     xTaskCreatePinnedToCore(dispatch_dshot, "dshot_task", 4048, nullptr,  24, &dshot_handle, 0);
     xTaskCreatePinnedToCore(dispatch_esc_telemetry, "esc_telemetry_task", 4048, nullptr,  23, &esc_telemetry_handle, 1);
-    //xTaskCreatePinnedToCore(dispatch_raw, "raw_task", 4048, nullptr,  23, &dmp_handle, 1);
 
     while (true)
     {

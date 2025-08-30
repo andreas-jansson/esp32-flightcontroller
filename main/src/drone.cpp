@@ -671,7 +671,7 @@ void Drone::drone_task(void *args)
         auto elapsed_telemetry = std::chrono::duration_cast<std::chrono::milliseconds>(end_telemetry - start_telemetry).count();
         if (elapsed_telemetry >= 100)
         {
-            ESP_ERROR_CHECK_WITHOUT_ABORT(measure_current());
+            //ESP_ERROR_CHECK_WITHOUT_ABORT(measure_current());
             ESP_ERROR_CHECK_WITHOUT_ABORT(send_telemetry());
             start_telemetry = std::chrono::system_clock::now();
         }
@@ -931,6 +931,7 @@ void Drone::get_new_speed(Dshot::DshotMessage& msg, bool& didChange){
 
 #define DEFAULT_VREF     1100  // in mV
 #define ESC_MV_PER_AMP   50    // ESC outputs 50mV per Amp
+static esp_adc_cal_characteristics_t adc_chars;
 
 esp_err_t Drone::measure_current() {
     static bool init = false;
@@ -938,15 +939,46 @@ esp_err_t Drone::measure_current() {
         gpio_config_t io_conf = {};
         io_conf.intr_type = GPIO_INTR_DISABLE;
         io_conf.mode = GPIO_MODE_INPUT;
-        io_conf.pin_bit_mask = 1 << 36;
+        io_conf.pin_bit_mask = 1 << 17;
         io_conf.pull_down_en = GPIO_PULLDOWN_ENABLE;
         io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
         gpio_config(&io_conf);
 
         adc1_config_width(ADC_WIDTH_BIT_12);
-        adc1_config_channel_atten(ADC1_CHANNEL_0, ADC_ATTEN_DB_11);  // up to ~3.3V
+        adc1_config_channel_atten(ADC1_CHANNEL_0, ADC_ATTEN_DB_0);  // up to ~3.3V
+
+        esp_adc_cal_value_t cal = esp_adc_cal_characterize(
+        ADC_UNIT_1, ADC_ATTEN_DB_0, ADC_WIDTH_BIT_12, DEFAULT_VREF, &adc_chars);
+
         init = true;
     }
+
+    static bool initialized = false;
+    static uint32_t v_offset_mv = 0; // save to NVS after calibration
+    static float k_mv_per_A = 50.0f; // placeholder; replace after calibration
+
+
+    (void)adc1_get_raw(ADC1_CHANNEL_0);
+
+    uint64_t acc = 0;
+    const int N = 256;
+    for (int i = 0; i < N; ++i) acc += adc1_get_raw(ADC1_CHANNEL_0);
+    uint32_t avg = acc / N;
+
+    uint32_t mv = esp_adc_cal_raw_to_voltage(avg, &adc_chars); // mV
+
+    // Zero-offset subtraction (ensure v_offset_mv is set via a calibration routine)
+    int32_t mv_net = (int32_t)mv - (int32_t)v_offset_mv;
+    if (mv_net < 0) mv_net = 0;
+
+    float current_A = (k_mv_per_A > 1e-3f) ? (mv_net / k_mv_per_A) : 0.0f;
+    m_state.currentDraw = current_A;
+
+    return ESP_OK;
+
+
+    ////////// old logic //////////////
+
 
     const uint8_t samples = 100;
     std::vector<uint32_t> voltageSamples;
@@ -956,6 +988,7 @@ esp_err_t Drone::measure_current() {
         //printf("raw: %lu\n", raw);
         voltageSamples.push_back(raw);
     }
+
 
     std::sort(voltageSamples.begin(), voltageSamples.end());
     uint32_t medianRaw = voltageSamples[samples / 2];
