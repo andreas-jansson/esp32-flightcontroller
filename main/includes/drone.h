@@ -79,7 +79,7 @@ class Drone{
     CircularHandle_t m_radio_queue_handle{};
     CircularHandle_t m_radio_statistics_queue_handle{};
     CircularHandle_t m_telemetry_queue_handle{};
-    RingbufHandle_t m_dshot_queue_handle{};
+    CircularHandle_t m_dshot_queue_handle{};
 
     uint32_t m_dmpFreq{};
     uint32_t m_radioFreq{};
@@ -90,7 +90,7 @@ class Drone{
 
 
     Drone(
-        RingbufHandle_t dshot, 
+        CircularHandle_t dshot, 
         RingbufHandle_t dmp_queue_handle1,
         RingbufHandle_t dmp_queue_handle2,  
         CircularHandle_t radio_queue_handle,
@@ -152,7 +152,7 @@ class Drone{
     Drone(Drone &other) = delete;
     void operator=(const Drone &) = delete;
     static Drone *GetInstance(
-        RingbufHandle_t dshot, 
+        CircularHandle_t dshot_queue_handle, 
         RingbufHandle_t dmp_queue_handle1, 
         RingbufHandle_t dmp_queue_handle2, 
         CircularHandle_t radio_queue_handle,

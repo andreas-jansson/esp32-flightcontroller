@@ -15,6 +15,7 @@
 
 
 
+
 #define DSHOT_ESC_RESOLUTION_HZ 80000000 
 static const char *TAG = "dshot_encoder";
 
@@ -181,9 +182,15 @@ Dshot600::Dshot600(gpio_num_t motorPin[Dshot::maxChannels]){
         ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_enable(this->esc_motor_chan[i]));
     }
 
-    this->m_dshot_queue_handle = xRingbufferCreate(sizeof(DshotMessage) * 10, RINGBUF_TYPE_NOSPLIT);
-    if (this->m_dshot_queue_handle == NULL) {
-        printf("Failed to create drone ring buffer\n");
+    //this->m_dshot_queue_handle = xRingbufferCreate(sizeof(DshotMessage) * 10, RINGBUF_TYPE_NOSPLIT);
+    //if (this->m_dshot_queue_handle == NULL) {
+    //    printf("Failed to create drone ring buffer\n");
+    //}
+
+    this->m_dshot_queue_handle = CircularBufCreate(10, sizeof(DshotMessage), "dshot600");
+    if (this->m_dshot_queue_handle == nullptr)
+    {
+        printf("Failed to create dshot600 ring buffer\n");
     }
 
 
@@ -310,18 +317,19 @@ esp_err_t Dshot600::get_message(struct Dshot::DshotMessage& msg, TickType_t tick
 
     print_debug(DEBUG_DSHOT, DEBUG_ARGS, "%s %d: ticks %lu", __FILE__, __LINE__, ticks);
 
-    esp_err_t status = 0;
 
-    size_t itemSize = sizeof(Dshot::DshotMessage);
-    DshotMessage* data = (Dshot::DshotMessage*)xRingbufferReceive(this->m_dshot_queue_handle, &itemSize, ticks);
-    if(data != nullptr){
-        msg = *data;
-        vRingbufferReturnItem(this->m_dshot_queue_handle, (void*)data);
+    //size_t itemSize = sizeof(Dshot::DshotMessage);
+    //DshotMessage* data = (Dshot::DshotMessage*)xRingbufferReceive(this->m_dshot_queue_handle, &itemSize, ticks);
+    esp_err_t status = CircularBufDequeue(m_dshot_queue_handle, &msg, portMAX_DELAY);
 
-    }
-    else{
-        return ESP_ERR_NOT_FOUND;
-    }
+    //if(data != nullptr){
+    //    msg = *data;
+    //    vRingbufferReturnItem(this->m_dshot_queue_handle, (void*)data);
+//
+    //}
+    //else{
+    //    return ESP_ERR_NOT_FOUND;
+    //}
 
     return status;
 }

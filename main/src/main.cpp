@@ -51,6 +51,8 @@
 
 #define ESC_CURRENT_PIN 17   // FIXME current reading adc not supported! resolder tx and rx and maybe remove from uart setup
 
+#define HIGH_PRIO 15
+#define LOW_PRIO  14
 
 #define log_tag "main"
 
@@ -273,7 +275,7 @@ void main_task(void *args)
     CircularHandle_t ringBuffer_radio{};
     CircularHandle_t ringBuffer_radio_statistics{};
     RingbufHandle_t  ringBuffer_web{};
-    RingbufHandle_t  ringBuffer_dshot{};
+    CircularHandle_t  ringBuffer_dshot{};
 
     /******* I2C setup *******/
     I2cHandler *i2c = new I2cHandler(I2C_MASTER_SDA_IO, I2C_MASTER_SCL_IO, I2C_MASTER_FREQ_HZ);
@@ -348,21 +350,21 @@ void main_task(void *args)
 
     /* start tasks */
     print_debug(DEBUG_MAIN, DEBUG_LOGIC, "starting tasks\n");
-    xTaskCreatePinnedToCore(dispatch_display, "display_task", 6144, nullptr,  23, &display_handle, 1);
-    xTaskCreatePinnedToCore(dispatch_drone, "drone_task", 4048, nullptr,  23, &drone_handle, 1);
+    xTaskCreatePinnedToCore(dispatch_display, "display_task", 6144, nullptr,  LOW_PRIO, &display_handle, 0);
+    xTaskCreatePinnedToCore(dispatch_drone, "drone_task", 4048, nullptr,  LOW_PRIO, &drone_handle, 0);
 
     #ifdef WEB_TASK
-    xTaskCreatePinnedToCore(dispatch_webClient, "web_task", 4048, nullptr, 22, &web_handle, 0);
+    xTaskCreatePinnedToCore(dispatch_webClient, "web_task", 4048, nullptr, LOW_PRIO, &web_handle, 0);
     #endif
     #ifdef TELEMETRY_TASK
-    xTaskCreatePinnedToCore(telemetry_task, "telemetry_task", 4048, nullptr, 22, &telemetry_handle, 0);
+    xTaskCreatePinnedToCore(telemetry_task, "telemetry_task", 4048, nullptr, LOW_PRIO, &telemetry_handle, 0);
     #endif
 
-    xTaskCreatePinnedToCore(dispatch_radio, "radio_task", 4048, nullptr,  24, &radio_handle, 0);
-    xTaskCreatePinnedToCore(dispatch_dmp, "dmp_task1", 4048, mpu1,  24, &dmp_handle1, 1);
-    xTaskCreatePinnedToCore(dispatch_dmp, "dmp_task2", 4048, mpu2,  24, &dmp_handle2, 1);
-    xTaskCreatePinnedToCore(dispatch_dshot, "dshot_task", 4048, nullptr,  24, &dshot_handle, 0);
-    xTaskCreatePinnedToCore(dispatch_esc_telemetry, "esc_telemetry_task", 4048, nullptr,  23, &esc_telemetry_handle, 1);
+    xTaskCreatePinnedToCore(dispatch_radio, "radio_task", 4048, nullptr,  HIGH_PRIO, &radio_handle, 1);
+    xTaskCreatePinnedToCore(dispatch_dmp, "dmp_task1", 4048, mpu1,  HIGH_PRIO, &dmp_handle1, 1);
+    xTaskCreatePinnedToCore(dispatch_dmp, "dmp_task2", 4048, mpu2,  HIGH_PRIO, &dmp_handle2, 1);
+    xTaskCreatePinnedToCore(dispatch_dshot, "dshot_task", 4048, nullptr,  HIGH_PRIO, &dshot_handle, 1);
+    xTaskCreatePinnedToCore(dispatch_esc_telemetry, "esc_telemetry_task", 4048, nullptr,  LOW_PRIO, &esc_telemetry_handle, 0);
 
     while (true)
     {
@@ -373,7 +375,7 @@ void main_task(void *args)
 void app_main(void)
 {
     TaskHandle_t main_handle{};
-    uint32_t files = DEBUG_MAIN | DEBUG_TELEMETRY; //  | DEBUG_RADIO | DEBUG_DRONE | DEBUG_MPU6050 | DEBUG_I2C; | DEBUG_BMP ;
+    uint32_t files = DEBUG_MAIN; //  | DEBUG_RADIO | DEBUG_DRONE | DEBUG_MPU6050 | DEBUG_I2C; | DEBUG_BMP ;
     uint32_t prio = DEBUG_DATA; // | DEBUG_ARGS; // DEBUG_LOGIC | DEBUG_LOWLEVEL |
 
     set_loglevel(files, prio);

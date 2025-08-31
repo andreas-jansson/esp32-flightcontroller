@@ -16,7 +16,8 @@
 #include "dshot600.h"
 #include "common_data.h"
 #include "i2c.h"
- 
+#include "ringbuffer.h"
+
 
 
 namespace Dshot{
@@ -144,7 +145,7 @@ enum DSHOTCODES{
 
 class Dshot600{
 
-    RingbufHandle_t m_dshot_queue_handle{};
+    CircularHandle_t m_dshot_queue_handle{};
     static Dshot600* dshot;
 
     rmt_sync_manager_handle_t synchro{};
@@ -183,7 +184,7 @@ class Dshot600{
 
     void dshot_task(void* args);
 
-    RingbufHandle_t get_queue_handle(){return m_dshot_queue_handle;}
+    CircularHandle_t get_queue_handle(){return m_dshot_queue_handle;}
 
 
 
