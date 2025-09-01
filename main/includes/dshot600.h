@@ -145,7 +145,7 @@ enum DSHOTCODES{
 
 class Dshot600{
 
-    CircularHandle_t m_dshot_queue_handle{};
+    //CircularHandle_t m_dshot_queue_handle{};
     static Dshot600* dshot;
 
     rmt_sync_manager_handle_t synchro{};
@@ -171,7 +171,6 @@ class Dshot600{
 
     esp_err_t get_message(struct Dshot::DshotMessage& msg, TickType_t ticks);
 
-    esp_err_t set_speed(struct Dshot::DshotMessage& msg);
 
     esp_err_t set_idle();
 
@@ -182,9 +181,11 @@ class Dshot600{
     static Dshot600 *GetInstance(gpio_num_t motorPin[Dshot::maxChannels]);
     static Dshot600 *GetInstance();
 
+    esp_err_t set_speed(struct Dshot::DshotMessage& msg);
+
     void dshot_task(void* args);
 
-    CircularHandle_t get_queue_handle(){return m_dshot_queue_handle;}
+    //CircularHandle_t get_queue_handle(){return m_dshot_queue_handle;}
 
 
 

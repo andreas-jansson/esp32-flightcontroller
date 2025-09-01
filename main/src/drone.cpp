@@ -29,12 +29,12 @@ static auto startTel = std::chrono::steady_clock::now();
 static auto endTel = std::chrono::steady_clock::now();
 
 
-Drone::Drone(CircularHandle_t dshot_queue_handle, RingbufHandle_t dmp_queue_handle1, RingbufHandle_t dmp_queue_handle2, CircularHandle_t radio_queue_handle, CircularHandle_t radio_statistics_queue_handle){
+Drone::Drone(Dshot600* dshotObj, RingbufHandle_t dmp_queue_handle1, RingbufHandle_t dmp_queue_handle2, CircularHandle_t radio_queue_handle, CircularHandle_t radio_statistics_queue_handle){
     ESP_ERROR_CHECK_WITHOUT_ABORT((dmp_queue_handle1             == nullptr));
     ESP_ERROR_CHECK_WITHOUT_ABORT((dmp_queue_handle2             == nullptr));
     ESP_ERROR_CHECK_WITHOUT_ABORT((radio_queue_handle            == nullptr));
     ESP_ERROR_CHECK_WITHOUT_ABORT((radio_statistics_queue_handle == nullptr));
-    ESP_ERROR_CHECK_WITHOUT_ABORT((dshot_queue_handle            == nullptr));
+    ESP_ERROR_CHECK_WITHOUT_ABORT((dshotObj            == nullptr));
 
     //this->telemetry_queue_handle = xRingbufferCreate(sizeof(TelemetryData) * 20, RINGBUF_TYPE_NOSPLIT);
     this->m_telemetry_queue_handle = CircularBufCreate(10, sizeof(TelemetryData), "telemetry");
@@ -50,7 +50,7 @@ Drone::Drone(CircularHandle_t dshot_queue_handle, RingbufHandle_t dmp_queue_hand
     this->m_dmp_queue_handle2 = dmp_queue_handle2;
     this->m_radio_queue_handle = radio_queue_handle;
     this->m_radio_statistics_queue_handle = radio_statistics_queue_handle;
-    this->m_dshot_queue_handle = dshot_queue_handle;
+    this->m_dshotObj = dshotObj;
 
 
 }
@@ -76,14 +76,14 @@ esp_err_t Drone::set_motor_lane_mapping(const MotorLaneMapping motorMapping){
     return status;
 }
 
-Drone *Drone::GetInstance(CircularHandle_t dshot_queue_handle, 
+Drone *Drone::GetInstance(Dshot600* dshotObj, 
     RingbufHandle_t dmp_queue_handle1,
     RingbufHandle_t dmp_queue_handle2,  
     CircularHandle_t radio_queue_handle, 
     CircularHandle_t radio_statistics_queue_handle){
     if (drone == nullptr)
     {
-        drone = new Drone(dshot_queue_handle, dmp_queue_handle1, dmp_queue_handle2, radio_queue_handle, radio_statistics_queue_handle);
+        drone = new Drone(dshotObj, dmp_queue_handle1, dmp_queue_handle2, radio_queue_handle, radio_statistics_queue_handle);
     }
     return drone;
 }
@@ -563,7 +563,7 @@ void Drone::drone_task(void *args)
 
     uint64_t yprCounter = 0;
     uint64_t radioCounter = 0;
-    uint64_t loopCounter = 0;
+    volatile uint64_t loopCounter = 0;
     bool prevIsArmed{};
 
     auto start = std::chrono::system_clock::now();
@@ -629,28 +629,12 @@ void Drone::drone_task(void *args)
         }
 
 
-        /* calculate and set the frequenzy of received data */
-        auto end = std::chrono::system_clock::now();
-        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
 
-        if (elapsed >= 10000)
-        {
-            printf("drone_task freq: %llu\n", loopCounter / 10);
-            m_state.dmpFreq = yprCounter;
-            m_state.radioFreq = radioCounter;
-            m_state.loopFreq = loopCounter;
-            yprCounter = 0;
-            radioCounter = 0;
-            loopCounter = 0;
-            start = std::chrono::system_clock::now();
-
-        }
-        loopCounter++;
 
 
         /* send dshot telemetry command */
-        //ESP_ERROR_CHECK_WITHOUT_ABORT(signal_telemetry_request(msg, newTelemetryReq));
-        //startTel = std::chrono::steady_clock::now();
+        ESP_ERROR_CHECK_WITHOUT_ABORT(signal_telemetry_request(msg, newTelemetryReq));
+        startTel = std::chrono::steady_clock::now();
 
         if(channel.ch3 >= m_deadzone){
             /*  PID for new throttle values */
@@ -669,16 +653,16 @@ void Drone::drone_task(void *args)
 
 
         /*  send telemetry and state data */
-        //#ifdef TELEMETRY_TASK
-        //auto end_telemetry = std::chrono::system_clock::now();
-        //auto elapsed_telemetry = std::chrono::duration_cast<std::chrono::milliseconds>(end_telemetry - start_telemetry).count();
-        //if (elapsed_telemetry >= 100)
-        //{
-        //    //ESP_ERROR_CHECK_WITHOUT_ABORT(measure_current());
-        //    ESP_ERROR_CHECK_WITHOUT_ABORT(send_telemetry());
-        //    start_telemetry = std::chrono::system_clock::now();
-        //}
-        //#endif
+        #ifdef TELEMETRY_TASK
+        auto end_telemetry = std::chrono::system_clock::now();
+        auto elapsed_telemetry = std::chrono::duration_cast<std::chrono::milliseconds>(end_telemetry - start_telemetry).count();
+        if (elapsed_telemetry >= 100)
+        {
+            //ESP_ERROR_CHECK_WITHOUT_ABORT(measure_current());
+            ESP_ERROR_CHECK_WITHOUT_ABORT(send_telemetry());
+            start_telemetry = std::chrono::system_clock::now();
+        }
+        #endif
 
 
         
@@ -699,6 +683,28 @@ void Drone::drone_task(void *args)
         else{
             ESP_ERROR_CHECK_WITHOUT_ABORT(send_dshot_message(msg));
         }
+
+        /* calculate and set the frequenzy of received data */
+        auto end = std::chrono::system_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+
+        if (elapsed >= 10000)
+        {
+            printf("drone_task freq: %llu\n", loopCounter / 10);
+            m_state.dmpFreq = yprCounter;
+            m_state.radioFreq = radioCounter;
+            m_state.loopFreq = loopCounter;
+            yprCounter = 0;
+            radioCounter = 0;
+            loopCounter = 0;
+            start = std::chrono::system_clock::now();
+
+        }
+        loopCounter++;
+
+        TickType_t xLastWakeTime;
+        const TickType_t xFrequency = 1;
+        vTaskDelayUntil( &xLastWakeTime, xFrequency );
 
         //vTaskDelay(pdMS_TO_TICKS(1));
         //taskYIELD();
@@ -1145,15 +1151,8 @@ esp_err_t Drone::send_dshot_message(Dshot::DshotMessage &msg)
     }
     print_debug(DEBUG_DRONE, DEBUG_ARGS, "\n");
 
+    esp_err_t status = m_dshotObj->set_speed(msg);
 
-    //BaseType_t res = xRingbufferSend(m_dshot_queue_handle, &msg, sizeof(Dshot::DshotMessage), 1);
-    esp_err_t status = CircularBufEnqueue(m_dshot_queue_handle, &msg);
-
-    if (status != ESP_OK)
-    {
-        printf("Failed to send dshot item: handle %p size %u\n", m_dshot_queue_handle, sizeof(Dshot::DshotMessage));
-        return ESP_FAIL;
-    }
     return status;
 }
 

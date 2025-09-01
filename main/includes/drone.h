@@ -52,6 +52,7 @@ class Drone{
 
     Pid m_pid[3]{};
 
+    Dshot600* m_dshotObj;
 
     const float m_maxPitch{45};
     const float m_minPitch{-45};
@@ -90,7 +91,7 @@ class Drone{
 
 
     Drone(
-        CircularHandle_t dshot, 
+        Dshot600* dshot_obj, 
         RingbufHandle_t dmp_queue_handle1,
         RingbufHandle_t dmp_queue_handle2,  
         CircularHandle_t radio_queue_handle,
@@ -152,7 +153,7 @@ class Drone{
     Drone(Drone &other) = delete;
     void operator=(const Drone &) = delete;
     static Drone *GetInstance(
-        CircularHandle_t dshot_queue_handle, 
+        Dshot600* dshot_obj, 
         RingbufHandle_t dmp_queue_handle1, 
         RingbufHandle_t dmp_queue_handle2, 
         CircularHandle_t radio_queue_handle,

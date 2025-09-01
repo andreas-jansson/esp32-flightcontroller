@@ -162,13 +162,12 @@ Dshot600::Dshot600(gpio_num_t motorPin[Dshot::maxChannels]){
     tx_chan_config.clk_src = RMT_CLK_SRC_DEFAULT;               // select source clock
     tx_chan_config.mem_block_symbols = 128;                     // memory block size, 64 * 4 = 256Bytes
     tx_chan_config.resolution_hz = DSHOT_ESC_RESOLUTION_HZ;     // 1MHz tick resolution, i.e. 1 tick = 1us
-    tx_chan_config.trans_queue_depth = 1;                       // set the number of transactions that can pend in the background
-
+    tx_chan_config.trans_queue_depth = 2;                       // set the number of transactions that can pend in the background
 
     dshot_esc_encoder_config_t encoder_config = {
         .resolution = DSHOT_ESC_RESOLUTION_HZ,
         .baud_rate = 600000, 
-        .post_delay_us = 20, // extra delay between each frame
+        .post_delay_us = 26, // extra delay between each frame
     };
     ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_new_dshot_esc_encoder(&encoder_config, &this->dshot_encoder));
 
@@ -187,11 +186,11 @@ Dshot600::Dshot600(gpio_num_t motorPin[Dshot::maxChannels]){
     //    printf("Failed to create drone ring buffer\n");
     //}
 
-    this->m_dshot_queue_handle = CircularBufCreate(10, sizeof(DshotMessage), "dshot600");
-    if (this->m_dshot_queue_handle == nullptr)
-    {
-        printf("Failed to create dshot600 ring buffer\n");
-    }
+    //this->m_dshot_queue_handle = CircularBufCreate(10, sizeof(DshotMessage), "dshot600");
+    //if (this->m_dshot_queue_handle == nullptr)
+    //{
+    //    printf("Failed to create dshot600 ring buffer\n");
+    //}
 
 
     ////////// DEBUGGING ///////////
@@ -320,7 +319,7 @@ esp_err_t Dshot600::get_message(struct Dshot::DshotMessage& msg, TickType_t tick
 
     //size_t itemSize = sizeof(Dshot::DshotMessage);
     //DshotMessage* data = (Dshot::DshotMessage*)xRingbufferReceive(this->m_dshot_queue_handle, &itemSize, ticks);
-    esp_err_t status = CircularBufDequeue(m_dshot_queue_handle, &msg, portMAX_DELAY);
+    //esp_err_t status = CircularBufDequeue(m_dshot_queue_handle, &msg, portMAX_DELAY);
 
     //if(data != nullptr){
     //    msg = *data;
@@ -331,7 +330,8 @@ esp_err_t Dshot600::get_message(struct Dshot::DshotMessage& msg, TickType_t tick
     //    return ESP_ERR_NOT_FOUND;
     //}
 
-    return status;
+    //return status;
+    return ESP_FAIL;
 }
 
 esp_err_t Dshot600::write_speed(struct Dshot::DshotMessage& msg){
@@ -356,15 +356,15 @@ esp_err_t Dshot600::write_speed(struct Dshot::DshotMessage& msg){
     }
     prev_msg = msg;
 
-
+ 
 
     for(int i=0;i<Dshot::maxChannels;i++){
 
             print_debug(DEBUG_DSHOT, DEBUG_DATA, "m%d throttle: %u telemetry: %d channel: 0x%x", i, throttle[i].throttle, throttle[i].telemetry_req, this->esc_motor_chan[i]);
-  
             ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_transmit(this->esc_motor_chan[i], this->dshot_encoder, &throttle[i], sizeof(throttle[i]), &tx_config[i])); 
             ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_tx_wait_all_done(this->esc_motor_chan[i], pdMS_TO_TICKS(20)));
     }
+    //ets_delay_us(1300);
 
     print_debug(DEBUG_DSHOT, DEBUG_DATA, "\n");
 
