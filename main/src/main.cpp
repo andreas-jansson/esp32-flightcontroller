@@ -275,7 +275,6 @@ void main_task(void *args)
     CircularHandle_t ringBuffer_radio{};
     CircularHandle_t ringBuffer_radio_statistics{};
     RingbufHandle_t  ringBuffer_web{};
-    //CircularHandle_t ringBuffer_dshot{};
 
     /******* I2C setup *******/
     I2cHandler *i2c = new I2cHandler(I2C_MASTER_SDA_IO, I2C_MASTER_SCL_IO, I2C_MASTER_FREQ_HZ);
@@ -321,6 +320,7 @@ void main_task(void *args)
     client->init(ringBuffer_dmp1, ringBuffer_web);
     #endif
 
+
     /******* Dshot600 *******/
     gpio_num_t motorPin[Radio::maxChannels]{};
     motorPin[MOTOR1] = static_cast<gpio_num_t>(12); // rear right   0
@@ -329,7 +329,7 @@ void main_task(void *args)
     motorPin[MOTOR4] = static_cast<gpio_num_t>(2);  // front left   3
 
     Dshot600* dshot = Dshot600::GetInstance(motorPin);
-    //ringBuffer_dshot = dshot->get_queue_handle();
+
 
     /*******  Drone *******/
     MotorLaneMapping motorLanes{
@@ -340,7 +340,7 @@ void main_task(void *args)
     };
 
 
-    Drone* drone = Drone::GetInstance(/* ringBuffer_dshot*/ dshot, ringBuffer_dmp1, ringBuffer_dmp2, ringBuffer_radio, ringBuffer_radio_statistics);
+    Drone* drone = Drone::GetInstance(dshot, ringBuffer_dmp1, ringBuffer_dmp2, ringBuffer_radio, ringBuffer_radio_statistics);
     drone->init_uart(UART_ESC_RX_IO, ESC_CURRENT_PIN, UART_ESC_BAUDRATE);
     drone->set_motor_lane_mapping(motorLanes);
 
@@ -351,6 +351,7 @@ void main_task(void *args)
     /* start tasks */
     print_debug(DEBUG_MAIN, DEBUG_LOGIC, "starting tasks\n");
     xTaskCreatePinnedToCore(dispatch_display, "display_task", 6144, nullptr,  LOW_PRIO, &display_handle, 0);
+    vTaskDelay(pdMS_TO_TICKS(100));
     xTaskCreatePinnedToCore(dispatch_drone, "drone_task", 4048, nullptr,  LOW_PRIO, &drone_handle, 1);
 
     #ifdef WEB_TASK
@@ -360,14 +361,19 @@ void main_task(void *args)
     xTaskCreatePinnedToCore(telemetry_task, "telemetry_task", 4048, nullptr, LOW_PRIO, &telemetry_handle, 0);
     #endif
 
+    vTaskDelay(pdMS_TO_TICKS(200));
     xTaskCreatePinnedToCore(dispatch_radio, "radio_task", 4048, nullptr,  HIGH_PRIO, &radio_handle, 1);
     xTaskCreatePinnedToCore(dispatch_dmp, "dmp_task1", 4048, mpu1,  HIGH_PRIO, &dmp_handle1, 1);
     xTaskCreatePinnedToCore(dispatch_dmp, "dmp_task2", 4048, mpu2,  HIGH_PRIO, &dmp_handle2, 1);
     xTaskCreatePinnedToCore(dispatch_esc_telemetry, "esc_telemetry_task", 4048, nullptr,  LOW_PRIO, &esc_telemetry_handle, 0);
 
+    char buffer[500]{};
     while (true)
     {
-        vTaskDelay(10000000 / portTICK_PERIOD_MS);
+        // enable CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=y
+        vTaskDelay(pdMS_TO_TICKS(5000));
+        //vTaskGetRunTimeStats(buffer);
+        printf("%s", buffer);
     }
 }
 

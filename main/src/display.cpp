@@ -7,6 +7,7 @@ SemaphoreHandle_t Display::s_newData = nullptr;
 
 
 bool Display::m_isArmed{};
+bool Display::m_isBooting{true};
 bool Display::m_isArmed_bad_state{};
 bool Display::m_radioActive{};
 bool Display::m_wifiConnected{};
@@ -69,8 +70,15 @@ void Display::display_task(void* args){
             m_sensorConIcon.pushImage(0, 0, 48, 48, icons::sensorConIcon);
             m_sensorConIcon.pushSprite(centerPos, 90);
         }
+        printf("m_radioActive[%d]\n", m_radioActive);
 
-        if(m_isArmed_bad_state){
+        if(m_isBooting){
+            draw_border(TFT_CYAN);
+            recolor_icon(icons::flightIcon, 0x20ff);
+            m_flightIcon.pushImage(0, 0, 48, 48, icons::flightIcon);
+            m_flightIcon.pushSprite(centerPos, 140);
+        }
+        else if(m_isArmed_bad_state){
             draw_border(0xff20);
             recolor_icon(icons::flightIcon, 0x20ff);
             m_flightIcon.pushImage(0, 0, 48, 48, icons::flightIcon);
@@ -90,8 +98,7 @@ void Display::display_task(void* args){
         }
 
 
-
-        xSemaphoreTake(s_newData, portMAX_DELAY);
+        xSemaphoreTake(s_newData, pdMS_TO_TICKS(1000));
     }
 
 }

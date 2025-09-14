@@ -342,7 +342,6 @@ esp_err_t Dshot600::write_speed(struct Dshot::DshotMessage& msg){
 
     static DshotMessage prev_msg;
 
-
     for(int i=0;i<Dshot::maxChannels;i++){
         throttle[i] = {
             .throttle = msg.speed[i],
@@ -356,15 +355,12 @@ esp_err_t Dshot600::write_speed(struct Dshot::DshotMessage& msg){
     }
     prev_msg = msg;
 
- 
-
     for(int i=0;i<Dshot::maxChannels;i++){
 
             print_debug(DEBUG_DSHOT, DEBUG_DATA, "m%d throttle: %u telemetry: %d channel: 0x%x", i, throttle[i].throttle, throttle[i].telemetry_req, this->esc_motor_chan[i]);
             ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_transmit(this->esc_motor_chan[i], this->dshot_encoder, &throttle[i], sizeof(throttle[i]), &tx_config[i])); 
             ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_tx_wait_all_done(this->esc_motor_chan[i], pdMS_TO_TICKS(20)));
     }
-    //ets_delay_us(1300);
 
     print_debug(DEBUG_DSHOT, DEBUG_DATA, "\n");
 

@@ -26,7 +26,10 @@ namespace radio{
         UPPLINK_SNR,
         UPPLINK_ACTIVE_ANTENNA,
         RF_MODE,
-        UPPLINK_TX_POWER
+        UPPLINK_TX_POWER,
+        DOWNLINK_RSSI ,
+        DOWNLINK_QUALITY,
+        DOWNLINK_SNR
     };
 
 }
@@ -135,6 +138,7 @@ void RadioController::radio_task(void* args){
 
     constexpr uint8_t c_frameTypeChannels{0x16};
     constexpr uint8_t c_frameTypeLinkStatistics{0x14};
+    bool alertDisplayActive{};
 
 
     while(true){
@@ -144,10 +148,9 @@ void RadioController::radio_task(void* args){
         TickType_t lastSleep = xTaskGetTickCount();
         TickType_t sleepThld = pdMS_TO_TICKS(100);
         TickType_t sleepDur = pdMS_TO_TICKS(1); 
-        bool alertDisplayActive{};
 
         uart_event_t event;
-        if (xQueueReceive(uart_queue, (void *)&event, (TickType_t)portMAX_DELAY)){
+        if (xQueueReceive(uart_queue, (void *)&event, pdMS_TO_TICKS(100))){
             if (event.type == UART_DATA) {
                 memset(data, 0, 512);
                 dataLength = 0;
@@ -161,31 +164,31 @@ void RadioController::radio_task(void* args){
                     uint8_t frameLen = data[c_frameLenIdx];
                     uint8_t type = data[c_dataIdx];
 
+                    if(!alertDisplayActive){
+                        alertDisplayActive = true;
+                        Display::set_radio_status(alertDisplayActive);
+                    }
+
                     if(type == c_frameTypeChannels){
                         send_channel_to_queue((Channel*)data);
 
-                        if(!alertDisplayActive){
-                            Display::set_radio_status(true);
-                            alertDisplayActive = true;
-                        }
                     }
                     else if(type == c_frameTypeLinkStatistics){
-                        //printf("stats: uplink_RSSI_1: 0x%x uplink_RSSI_2: 0x%x uplink_Link_quality: 0x%x uplink_SNR: 0x%x active_antenna: 0x%x rf_Mode: 0x%x uplink_TX_Power: 0x%x\n",
-                        //data[UPPLINK_RSSI_1], 
-                        //data[UPPLINK_RSSI_2], 
-                        //data[UPPLINK_QUALITY], 
-                        //data[UPPLINK_SNR], 
-                        //data[UPPLINK_ACTIVE_ANTENNA], 
-                        //data[RF_MODE], 
-                        //data[UPPLINK_TX_POWER]);
+                        /*printf("stats: up_RSSI_1: %-2udb up_RSSI_2: %-2udb up_quality: %u %% up_SNR: %-2ddb" \
+                            "active_antenna_nr: %-2u rf_Mode: %-2x up_TX_Power: %-2x down_rssi: %-2udb down_quality: %-2udb down_snr: %-2ddb\n",
+                        data[UPPLINK_RSSI_1], 
+                        data[UPPLINK_RSSI_2], 
+                        data[UPPLINK_QUALITY], 
+                        data[UPPLINK_SNR], 
+                        data[UPPLINK_ACTIVE_ANTENNA], 
+                        data[RF_MODE], 
+                        data[UPPLINK_TX_POWER],
+                        data[DOWNLINK_RSSI],
+                        data[DOWNLINK_QUALITY],
+                        data[DOWNLINK_SNR]);*/
 
                         send_statistics(data);
-                        
-                        if(data[5] == 0){
-                            print_debug(DEBUG_RADIO, DEBUG_DATA, "%-33s: Radio lost connection\n", __func__);
-                            Display::set_radio_status(false);
-                            alertDisplayActive = false;
-                        }
+                    
    
  
                         // TODO send a specific channel message so that drone attempts to land safely.
@@ -198,11 +201,11 @@ void RadioController::radio_task(void* args){
                 }
             }
         }
-        
-        TickType_t now = xTaskGetTickCount();
-        if ((now - lastSleep) >= sleepThld) {
-            vTaskDelay(sleepDur);
-            lastSleep = now;
+        else{
+            if(alertDisplayActive){
+                alertDisplayActive = false;
+                Display::set_radio_status(alertDisplayActive);
+            }
         }
     }
 }

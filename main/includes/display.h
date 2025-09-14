@@ -33,6 +33,7 @@ class Display{
 	static SemaphoreHandle_t s_newData;
 
     static bool m_isArmed;
+    static bool m_isBooting;
     static bool m_isArmed_bad_state;
     static bool m_radioActive;
     static bool m_wifiConnected;
@@ -52,6 +53,7 @@ public:
 
 
     static void set_armed_status(bool isArmed);
+    static void set_booting_status(bool isBooting){m_isBooting = isBooting; xSemaphoreGive(s_newData);}
     static void set_armed_bad_state_status(bool is_bad){m_isArmed_bad_state = is_bad; xSemaphoreGive(s_newData);}
     static void set_bad_arm_status(bool isArmed){m_isArmed = isArmed; xSemaphoreGive(s_newData);}
     static void set_radio_status(bool radioActive){m_radioActive = radioActive; xSemaphoreGive(s_newData); }

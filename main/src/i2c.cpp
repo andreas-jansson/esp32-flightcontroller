@@ -38,8 +38,6 @@ esp_err_t I2cHandler::init(){
     conf.scl_pullup_en = GPIO_PULLUP_ENABLE;
     conf.master.clk_speed = this->freq;
     
-    //     uart_config.source_clk = UART_SCLK_APB;  
-
     // Apply the configuration
     status = i2c_param_config(I2C_MASTER_NUM, &conf);
     ESP_RETURN_ON_ERROR(status, log_tag, "Failed to configure I2C");

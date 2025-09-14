@@ -196,13 +196,16 @@ class Mpu6050{
 
     void delay(const uint8_t milli);
 
-	esp_err_t pid_calibrate(int nrLoops);
 	void pid(float target, float current, Pid& pid);
 
 
     // borrowed
     esp_err_t writeProgMemoryBlock(const uint8_t *data, uint16_t dataSize, uint8_t bank=0, uint8_t address=0, bool verify=true);
     esp_err_t writeMemoryBlock(const uint8_t *data, uint16_t dataSize, uint8_t bank=0, uint8_t address=0, bool verify=true, bool useProgMem=false);
+
+public:
+	esp_err_t pid_calibrate(int nrLoops);
+
 
 };
 

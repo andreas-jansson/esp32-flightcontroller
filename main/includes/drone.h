@@ -130,6 +130,8 @@ class Drone{
 
     esp_err_t measure_current();
 
+    esp_err_t calibrate_gyro();
+
     ToggleState did_channel_state_switch(uint16_t newChannelValue, uint8_t channelNr);
 
     uint16_t mapValue(uint16_t x, uint16_t in_min, uint16_t in_max, uint16_t out_min, uint16_t out_max);

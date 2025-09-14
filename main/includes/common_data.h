@@ -165,6 +165,7 @@ struct DroneState{
     bool isPaired{};
     bool isArmed{};
     bool isGrounded{};
+    bool calibrateGyro{};
 
     float currentDraw{};
 
