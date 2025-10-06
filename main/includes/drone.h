@@ -53,6 +53,8 @@ class Drone{
     Pid m_pid[3]{};
 
     Dshot600* m_dshotObj;
+    Mpu6050* m_mpuObj1;
+    Mpu6050* m_mpuObj2;
 
     const float m_maxPitch{45};
     const float m_minPitch{-45};
@@ -92,8 +94,8 @@ class Drone{
 
     Drone(
         Dshot600* dshot_obj, 
-        RingbufHandle_t dmp_queue_handle1,
-        RingbufHandle_t dmp_queue_handle2,  
+        Mpu6050* mpu1,
+        Mpu6050* mpu2,
         CircularHandle_t radio_queue_handle,
         CircularHandle_t radio_statistics_queue_handle);
 
@@ -112,7 +114,7 @@ class Drone{
 
 
     esp_err_t set_flight_mode(int value);
-
+    esp_err_t set_mpu_calibration_mode(int value);
 
     esp_err_t verify_components_process();
     esp_err_t arming_process();
@@ -156,8 +158,8 @@ class Drone{
     void operator=(const Drone &) = delete;
     static Drone *GetInstance(
         Dshot600* dshot_obj, 
-        RingbufHandle_t dmp_queue_handle1, 
-        RingbufHandle_t dmp_queue_handle2, 
+        Mpu6050* mpu1, 
+        Mpu6050* mpu2,
         CircularHandle_t radio_queue_handle,
         CircularHandle_t radio_statistics_queue_handle
     );

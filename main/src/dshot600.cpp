@@ -6,6 +6,7 @@
 #include "common_data.h"
 #include "debug.h"
 
+#include "esp_timer.h"
 #include "esp_err.h"
 #include "esp_log.h"
 #include "esp_check.h"
@@ -18,7 +19,6 @@
 
 #define DSHOT_ESC_RESOLUTION_HZ 80000000 
 static const char *TAG = "dshot_encoder";
-
 
 using namespace Dshot;
 
@@ -359,8 +359,22 @@ esp_err_t Dshot600::write_speed(struct Dshot::DshotMessage& msg){
 
             print_debug(DEBUG_DSHOT, DEBUG_DATA, "m%d throttle: %u telemetry: %d channel: 0x%x", i, throttle[i].throttle, throttle[i].telemetry_req, this->esc_motor_chan[i]);
             ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_transmit(this->esc_motor_chan[i], this->dshot_encoder, &throttle[i], sizeof(throttle[i]), &tx_config[i])); 
-            ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_tx_wait_all_done(this->esc_motor_chan[i], pdMS_TO_TICKS(20)));
+            //ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_tx_wait_all_done(this->esc_motor_chan[i], pdMS_TO_TICKS(1)));
+
     }
+
+    int64_t start[4]{};
+    int64_t end[4]{};
+
+    for(int i=0;i<Dshot::maxChannels;i++){
+        //start[i] = esp_timer_get_time();
+        ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_tx_wait_all_done(this->esc_motor_chan[i], pdMS_TO_TICKS(20)));
+        //end[i] = esp_timer_get_time();
+    }
+    
+    //printf("rmt_tx_wait_all_done took [%llu] [%llu] [%llu] [%llu] us\n", end[0]-start[0], end[1]-start[1], end[2]-start[2], end[3]-start[3]);
+
+
 
     print_debug(DEBUG_DSHOT, DEBUG_DATA, "\n");
 

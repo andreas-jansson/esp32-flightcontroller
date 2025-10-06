@@ -65,6 +65,8 @@ class Mpu6050{
 
 	static SemaphoreHandle_t dmp_avail_sem1;
 	static SemaphoreHandle_t dmp_avail_sem2;
+	SemaphoreHandle_t calibrate_sem;
+
 	RingbufHandle_t dmp_buf_handle;
 	static RingbufHandle_t web_buf_handle;
 
@@ -145,7 +147,6 @@ class Mpu6050{
 
     esp_err_t set_int_enabled(uint8_t data);
     esp_err_t set_fifo_enable(bool enable);
-    esp_err_t set_dmp_enabled(bool enable);
 
     esp_err_t reset();
     esp_err_t reset_dmp();
@@ -205,6 +206,9 @@ class Mpu6050{
 
 public:
 	esp_err_t pid_calibrate(int nrLoops);
+    esp_err_t set_dmp_enabled(bool enable);
+
+	void calibrate_mpu(){xSemaphoreGive(calibrate_sem);}
 
 
 };

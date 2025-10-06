@@ -22,11 +22,9 @@
 #define log_tag "mpu6050"
 
 
-//Mpu6050* Mpu6050::mpu = nullptr;
 SemaphoreHandle_t Mpu6050::dmp_avail_sem1 = nullptr;  
 SemaphoreHandle_t Mpu6050::dmp_avail_sem2 = nullptr;  
-//RingbufHandle_t Mpu6050::dmp_buf_handle = nullptr;
-//RingbufHandle_t Mpu6050::web_buf_handle = nullptr;
+
 
 
 inline int custom_round(float x) {
@@ -370,7 +368,9 @@ void Mpu6050::dmp_task(void* args){
         vSemaphoreCreateBinary(dmp_avail_sem2);
     }
 
-    ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+    vSemaphoreCreateBinary(calibrate_sem);
+    xSemaphoreTake(this->calibrate_sem, 0);
+
     
     gpio_config_t ioConf{};
 
@@ -389,7 +389,8 @@ void Mpu6050::dmp_task(void* args){
 
     ESP_ERROR_CHECK_WITHOUT_ABORT(status);
 
-    pid_calibrate(100);
+    // calibrating if pressing bottom left button on ctrl l2?
+    //pid_calibrate(100);
 
     status = this->set_dmp_enabled(true);
     ESP_ERROR_CHECK_WITHOUT_ABORT(status);
@@ -398,6 +399,33 @@ void Mpu6050::dmp_task(void* args){
 
     while (true)
     {
+
+        semStatus = xSemaphoreTake(this->calibrate_sem, 0);
+        if(semStatus == pdTRUE){
+            
+            auto start = std::chrono::steady_clock::now();
+
+            status = set_dmp_enabled(false);
+            ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+
+            pid_calibrate(100);
+
+            status = reset_dmp();
+            ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+
+            status = reset_fifo();
+            ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+
+            status = set_dmp_enabled(true);
+            ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+
+            auto end = std::chrono::steady_clock::now();
+
+            auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end-start).count();
+            printf("gyro calibration took %lld us\n", elapsed);
+        }
+
+
         if(address == ADDR_68)
             semStatus = xSemaphoreTake(this->dmp_avail_sem1, portMAX_DELAY);
         else if(address == ADDR_69)

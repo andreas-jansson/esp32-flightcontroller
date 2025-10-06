@@ -7,6 +7,7 @@
 #include <algorithm>
 
 #include "esp_check.h"
+#include "esp_timer.h"
 #include "hal/gpio_hal.h"
 #include "driver/adc.h"
 #include "esp_adc_cal.h"
@@ -23,18 +24,25 @@
 
 Drone *Drone::drone = nullptr;
 
-
-
 static auto startTel = std::chrono::steady_clock::now();
 static auto endTel = std::chrono::steady_clock::now();
 
 
-Drone::Drone(Dshot600* dshotObj, RingbufHandle_t dmp_queue_handle1, RingbufHandle_t dmp_queue_handle2, CircularHandle_t radio_queue_handle, CircularHandle_t radio_statistics_queue_handle){
-    ESP_ERROR_CHECK_WITHOUT_ABORT((dmp_queue_handle1             == nullptr));
-    ESP_ERROR_CHECK_WITHOUT_ABORT((dmp_queue_handle2             == nullptr));
+SemaphoreHandle_t timer_sem = nullptr;
+static esp_timer_handle_t oneshot_timer;
+
+static void oneshot_timer_callback(void* arg)
+{
+    xSemaphoreGive(timer_sem);
+}
+
+
+Drone::Drone(Dshot600* dshotObj, Mpu6050* mpu1, Mpu6050* mpu2, CircularHandle_t radio_queue_handle, CircularHandle_t radio_statistics_queue_handle){
+    ESP_ERROR_CHECK_WITHOUT_ABORT((mpu1                          == nullptr));
+    ESP_ERROR_CHECK_WITHOUT_ABORT((mpu2                          == nullptr));
     ESP_ERROR_CHECK_WITHOUT_ABORT((radio_queue_handle            == nullptr));
     ESP_ERROR_CHECK_WITHOUT_ABORT((radio_statistics_queue_handle == nullptr));
-    ESP_ERROR_CHECK_WITHOUT_ABORT((dshotObj            == nullptr));
+    ESP_ERROR_CHECK_WITHOUT_ABORT((dshotObj                      == nullptr));
 
     //this->telemetry_queue_handle = xRingbufferCreate(sizeof(TelemetryData) * 20, RINGBUF_TYPE_NOSPLIT);
     this->m_telemetry_queue_handle = CircularBufCreate(10, sizeof(TelemetryData), "telemetry");
@@ -45,13 +53,35 @@ Drone::Drone(Dshot600* dshotObj, RingbufHandle_t dmp_queue_handle1, RingbufHandl
 
     printf("telemetry_queue_handle: %p m_data: %p\n", m_telemetry_queue_handle, m_telemetry_queue_handle->m_data);
 
-
-    this->m_dmp_queue_handle1 = dmp_queue_handle1;
-    this->m_dmp_queue_handle2 = dmp_queue_handle2;
+    this->m_mpuObj1 = mpu1;
+    this->m_mpuObj2 = mpu2;
+    this->m_dmp_queue_handle1 = mpu1->get_queue_handle();
+    this->m_dmp_queue_handle2 = mpu2->get_queue_handle();
     this->m_radio_queue_handle = radio_queue_handle;
     this->m_radio_statistics_queue_handle = radio_statistics_queue_handle;
     this->m_dshotObj = dshotObj;
 
+    vSemaphoreCreateBinary(timer_sem);
+    ESP_ERROR_CHECK_WITHOUT_ABORT((timer_sem == nullptr));
+    xSemaphoreTake(timer_sem, 0);
+
+    const esp_timer_create_args_t oneshot_timer_args = {
+            .callback = &oneshot_timer_callback,
+            /* argument specified here will be passed to timer callback function */
+            .arg = nullptr,
+            .name = "one-shot"
+    };
+
+    ESP_ERROR_CHECK(esp_timer_create(&oneshot_timer_args, &oneshot_timer));
+
+    ///* Start the timers */
+    //int64_t start = esp_timer_get_time();
+    //ESP_ERROR_CHECK(esp_timer_start_once(oneshot_timer, 50));
+//
+    //xSemaphoreTake(timer_sem, portMAX_DELAY);
+    //int64_t end = esp_timer_get_time();
+//
+    //printf("xsemtook: %lld us\n", end-start);
 
 }
 
@@ -77,13 +107,13 @@ esp_err_t Drone::set_motor_lane_mapping(const MotorLaneMapping motorMapping){
 }
 
 Drone *Drone::GetInstance(Dshot600* dshotObj, 
-    RingbufHandle_t dmp_queue_handle1,
-    RingbufHandle_t dmp_queue_handle2,  
+    Mpu6050* mpu1,
+    Mpu6050* mpu2,  
     CircularHandle_t radio_queue_handle, 
     CircularHandle_t radio_statistics_queue_handle){
     if (drone == nullptr)
     {
-        drone = new Drone(dshotObj, dmp_queue_handle1, dmp_queue_handle2, radio_queue_handle, radio_statistics_queue_handle);
+        drone = new Drone(dshotObj, mpu1, mpu2, radio_queue_handle, radio_statistics_queue_handle);
     }
     return drone;
 }
@@ -302,6 +332,13 @@ esp_err_t Drone::verify_components_process()
     uint64_t radioValidCounter = 0;
 
     ESP_LOGI(log_tag, "Verifying IMU and Radio");
+    Display::set_verify_mpu1_status(STARTED);
+    Display::set_verify_mpu2_status(STARTED);
+    Display::set_verify_radio_status(STARTED);
+
+    bool mpu1Complete{};
+    bool mpu2Complete{};
+    bool radioComplete{};
 
     auto start = std::chrono::steady_clock::now();
 
@@ -322,6 +359,7 @@ esp_err_t Drone::verify_components_process()
         {
             yprCounter1++;
             yprIsValid1 = true;
+            Display::set_mpu1_angle(ypr1);
 
         }
 
@@ -330,6 +368,7 @@ esp_err_t Drone::verify_components_process()
         {
             yprCounter2++;
             yprIsValid2 = true;
+            Display::set_mpu2_angle(ypr2);
 
         }
 
@@ -339,10 +378,9 @@ esp_err_t Drone::verify_components_process()
             radioCounter++;
             radioIsValid = true;
         }
-        else{
-            continue;
-        }
+   
 
+        /* wait for 2s before verifying, allows draining the ringbuffers while waiting */
         auto end = std::chrono::steady_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
         if (elapsed < 2000)
@@ -353,6 +391,8 @@ esp_err_t Drone::verify_components_process()
             continue;
         }
 
+
+        /* verify recieved data to be within margins */
         if (verify_imu_data(ypr1) && yprIsValid1)
             yprValidCounter1++;
 
@@ -362,31 +402,46 @@ esp_err_t Drone::verify_components_process()
         if (verify_controller_data(channel) && radioIsValid)
             radioValidCounter++;
 
-        if (yprCounter1 > 1000)
+        /* if 90% of 300 sampels are valid, approve component*/
+        if (yprCounter1 > 300)
         {
-            if ((yprValidCounter1 / yprCounter1) > 0.9)
-                yprIsValid1 = true;
-            else if ((yprValidCounter1 / yprCounter1) < 0.9)
-                yprIsValid1 = false;
+            if ((yprValidCounter1 / yprCounter1) > 0.9){
+                Display::set_verify_mpu1_status(PASS);
+                mpu1Complete = true;
+            }
+            else if ((yprValidCounter1 / yprCounter1) < 0.9){
+                Display::set_verify_mpu1_status(FAILED);
+                mpu1Complete = false;
+            }
         }
 
-        if (yprCounter2 > 1000)
+        if (yprCounter2 > 300)
         {
-            if ((yprValidCounter2 / yprCounter2) > 0.9)
-                yprIsValid2 = true;
-            else if ((yprValidCounter2 / yprCounter2) < 0.9)
-                yprIsValid2 = false;
+            if ((yprValidCounter2 / yprCounter2) > 0.9){
+                Display::set_verify_mpu2_status(PASS);
+                mpu2Complete = true;
+            }
+            else if ((yprValidCounter2 / yprCounter2) < 0.9){
+                Display::set_verify_mpu2_status(FAILED);
+                mpu2Complete = true;
+            }
         }
 
         if (radioCounter > 1000)
         {
-            if (((float)radioValidCounter / radioCounter) > 0.9)
-                radioIsValid = true;
-            else if (((float)radioValidCounter / radioCounter) < 0.9)
-                radioIsValid = false;
+            if (((float)radioValidCounter / radioCounter) > 0.9){
+                Display::set_verify_radio_status(PASS);
+                radioComplete = true;
+            }
+            else if (((float)radioValidCounter / radioCounter) < 0.9){
+                Display::set_verify_radio_status(FAILED);
+                radioComplete = true;
+            }
         }
 
-        /* incase overflow */
+
+
+        /* in case overflow */
         if (yprCounter1 == UINT64_MAX)
         {
             printf("ERROR MAX VALUE YPRCOUNTER: %llu", yprCounter1);
@@ -406,7 +461,8 @@ esp_err_t Drone::verify_components_process()
             radioValidCounter = 0;
         }
 
-        if (yprCounter1 && yprCounter2 && radioIsValid)
+            
+        if (mpu1Complete && mpu2Complete && radioComplete)
             break;
 
         vTaskDelay(2 / portTICK_PERIOD_MS);
@@ -572,6 +628,8 @@ void Drone::drone_task(void *args)
     auto start_telemetry = std::chrono::system_clock::now();
 
 
+    status = calibrate_gyro();
+
     /* await valid controller & gyro */
     verify_components_process();
     
@@ -594,9 +652,9 @@ void Drone::drone_task(void *args)
         {
             this->ypr1 = ypr1;
             yprCounter++;
-            m_state.currPitch = ypr1.pitch * radToDegree;
-            m_state.currYaw = 0; // ypr1.yaw * radToDegree;
-            m_state.currRoll = ypr1.roll * radToDegree;
+            //m_state.currPitch = ypr1.pitch * radToDegree;
+            //m_state.currYaw = 0; // ypr1.yaw * radToDegree;
+            //m_state.currRoll = ypr1.roll * radToDegree;
             newImuData1 = true;
         }
 
@@ -605,11 +663,28 @@ void Drone::drone_task(void *args)
         {
             this->ypr2 = ypr2;
             yprCounter++;
-            m_state.currPitch = ypr2.pitch * radToDegree;
-            m_state.currYaw = 0; // ypr2.yaw * radToDegree;
-            m_state.currRoll = ypr2.roll * radToDegree;
+            //m_state.currPitch = ypr2.pitch * radToDegree;
+            //m_state.currYaw = 0; // ypr2.yaw * radToDegree;
+            //m_state.currRoll = ypr2.roll * radToDegree;
             newImuData2 = true;
         }
+
+        if(newImuData1 && newImuData2){
+            m_state.currPitch   = ((ypr1.pitch * radToDegree) + (ypr2.pitch * radToDegree)) / 2.0;
+            m_state.currYaw     = ((ypr1.yaw * radToDegree) + (ypr2.yaw * radToDegree)) / 2;
+            m_state.currRoll    = ((ypr1.roll * radToDegree) + (ypr2.roll * radToDegree)) / 2.0;
+        }
+        else if(newImuData1 && !newImuData2){
+            m_state.currPitch   = ypr1.pitch * radToDegree;
+            m_state.currYaw     = ypr1.yaw * radToDegree;
+            m_state.currRoll    = ypr1.roll * radToDegree;
+        }
+        else if(!newImuData1 && newImuData2){
+            m_state.currPitch   = ypr2.pitch * radToDegree;
+            m_state.currYaw     = ypr2.yaw * radToDegree;
+            m_state.currRoll    = ypr2.roll * radToDegree;
+        }
+
 
 
         status = get_radio_data(channelNew, 0);
@@ -657,12 +732,6 @@ void Drone::drone_task(void *args)
         }
         #endif
 
-        if(!m_state.isArmed && m_state.calibrateGyro){
-
-
-        }
-
-
         // send 0 throttle while not armed
         if(!m_state.isArmed){
             Dshot::DshotMessage msg{};
@@ -686,7 +755,7 @@ void Drone::drone_task(void *args)
 
         if (elapsed >= 10000)
         {
-            printf("drone_task freq: %llu\n", loopCounter / 10);
+            printf("loop freq: %llu\n", loopCounter / 10);
             m_state.dmpFreq = yprCounter;
             m_state.radioFreq = radioCounter;
             m_state.loopFreq = loopCounter;
@@ -699,7 +768,14 @@ void Drone::drone_task(void *args)
         loopCounter++;
 
         // allows rmt things to run with while maintaing max loop freq ~1000
-        vTaskDelayUntil( &xLastWakeTime, xFrequency );
+        //vTaskDelayUntil( &xLastWakeTime, xFrequency );
+
+        //int64_t start2 = esp_timer_get_time();
+        ESP_ERROR_CHECK(esp_timer_start_once(oneshot_timer, 10));
+        xSemaphoreTake(timer_sem, portMAX_DELAY);
+        //int64_t end2 = esp_timer_get_time();
+        //printf("xsemtook: %lld us\n", end2-start2);
+
     }
 }
 
@@ -826,6 +902,7 @@ void Drone::get_new_speed(Dshot::DshotMessage& msg, bool& didChange){
     pid(m_state.targetPitch, m_state.currPitch, m_pid[PITCH]);
     pid(m_state.targetRoll, m_state.currRoll, m_pid[ROLL]);
     pid(m_state.targetYaw, m_state.currYaw, m_pid[YAW]);
+    //printf("targetYaw: %f currentYay: %f m_pid[YAW]: %f\n", m_state.targetYaw, m_state.currYaw, m_pid[YAW].c);
 
     int _rlSpeed = m_state.throttle + m_pid[PITCH].c + m_pid[ROLL].c + m_pid[YAW].c;
     int _rrSpeed = m_state.throttle + m_pid[PITCH].c - m_pid[ROLL].c - m_pid[YAW].c;
@@ -1055,7 +1132,7 @@ esp_err_t Drone::parse_channel_state(const Channel &newChannel)
     }
     if (this->channel.ch4 != newChannel.ch4)
     {
-        // TODO yaw
+        m_state.targetYaw = mapValue(newChannel.ch4, Radio::minChannelValue, Radio::maxChannelValue, m_minYaw, m_maxYaw);
     }
     if (this->channel.ch5 != newChannel.ch5)
     {
@@ -1069,14 +1146,16 @@ esp_err_t Drone::parse_channel_state(const Channel &newChannel)
     }
     if (this->channel.ch7 != newChannel.ch7)
     {
+
     }
     if (this->channel.ch8 != newChannel.ch8)
     {
-        //status = blink_led(newChannel.ch8);
+
     }
-    if (newChannel.ch9 > Radio::maxChannelThld && this->channel.ch9 < Radio::minChannelThld)
+    if (this->channel.ch9 != newChannel.ch9)
     {
-        status = toggle_motor_direction();
+        // status = set_mpu_calibration_mode(newChannel.ch7);
+        // ESP_RETURN_ON_ERROR(status, log_tag, "Failed to set mpu calibration mode");
     }
     if (this->channel.ch10 != newChannel.ch10)
     {
@@ -1293,21 +1372,57 @@ esp_err_t Drone::handle_signal_lost(){
 esp_err_t Drone::calibrate_gyro(){
 
     esp_err_t status = 0;
+    Channel channel{};
+    uint32_t counter{};
+    bool startCalibration{};
 
-    /*
-    status = set_dmp_enabled(false);
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed set disable DMP: %u", false);
+    auto start = std::chrono::steady_clock::now();
 
-    status = pid_calibrate(100);
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed to calibrate imu, loops[%d]", 100);
+    while(true){
 
-    status = reset_dmp();
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed reset DMP");
+        auto now = std::chrono::steady_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count();
 
-    status = set_dmp_enabled(true);
-    ESP_RETURN_ON_ERROR(status, log_tag, "Failed set enable DMP: %u", true);
-    */
+        status = get_radio_data(channel, portMAX_DELAY);
 
+        if(status == ESP_OK && channel.ch9 >= Radio::maxChannelThld){
+            counter++;
+        }
+    
+        if(elapsed >= 2000){
+            break;
+        }
+        else if(counter >= 100){
+            startCalibration = true;
+        }
+    }
+
+    if(startCalibration){
+        Display::set_calibration_status(STARTED);
+        printf("calibrating...\n");
+        m_mpuObj1->calibrate_mpu();
+        m_mpuObj2->calibrate_mpu();
+
+        // takes rougly 2.7s
+        vTaskDelay(pdMS_TO_TICKS(3500));
+        Display::set_calibration_status(PASS);
+    }
+    else
+        printf("NO CALIBRATION\n");
 
     return status;
+}
+
+
+esp_err_t Drone::set_mpu_calibration_mode(int value){
+
+    esp_err_t status = 0;
+
+    if( value > Radio::maxChannelValue && value < Radio::minChannelValue){
+        return ESP_FAIL;
+    }
+
+    m_state.calibrateGyro = value > 0 ? true : false;
+
+    return ESP_OK;
 }

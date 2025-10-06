@@ -51,8 +51,11 @@
 
 #define ESC_CURRENT_PIN 17   // FIXME current reading adc not supported! resolder tx and rx and maybe remove from uart setup
 
-#define HIGH_PRIO 15
-#define LOW_PRIO  14
+enum {
+  PRIO_BG       = 3,   // display / web / telemetry
+  PRIO_SENSORS  = 7,   // radio + DMP readers (paced with vTaskDelayUntil)
+  PRIO_CONTROL  = 10,  // drone PID + RMT (deadline-driven)
+};
 
 #define log_tag "main"
 
@@ -296,7 +299,7 @@ void main_task(void *args)
     //Mpu6050 *mpu1 = Mpu6050::GetInstance(ADDR_68, i2c);
     Mpu6050 *mpu1 = new Mpu6050(ADDR_68, i2c, 27);
     #endif
-    ringBuffer_dmp1 = mpu1->get_queue_handle();
+    //ringBuffer_dmp1 = mpu1->get_queue_handle();
 
    /******* MPU 2 setup *******/
    #ifdef STUB_MPU6050
@@ -304,7 +307,7 @@ void main_task(void *args)
    #else
    Mpu6050 *mpu2 = new Mpu6050(ADDR_69, i2c, 26);
    #endif
-   ringBuffer_dmp2 = mpu2->get_queue_handle();
+   //ringBuffer_dmp2 = mpu2->get_queue_handle();
 
 
 
@@ -340,7 +343,7 @@ void main_task(void *args)
     };
 
 
-    Drone* drone = Drone::GetInstance(dshot, ringBuffer_dmp1, ringBuffer_dmp2, ringBuffer_radio, ringBuffer_radio_statistics);
+    Drone* drone = Drone::GetInstance(dshot, mpu1, mpu2, ringBuffer_radio, ringBuffer_radio_statistics);
     drone->init_uart(UART_ESC_RX_IO, ESC_CURRENT_PIN, UART_ESC_BAUDRATE);
     drone->set_motor_lane_mapping(motorLanes);
 
@@ -350,22 +353,22 @@ void main_task(void *args)
 
     /* start tasks */
     print_debug(DEBUG_MAIN, DEBUG_LOGIC, "starting tasks\n");
-    xTaskCreatePinnedToCore(dispatch_display, "display_task", 6144, nullptr,  LOW_PRIO, &display_handle, 0);
+    xTaskCreatePinnedToCore(dispatch_display, "display_task", 8096, nullptr,  PRIO_BG, &display_handle, 0);
     vTaskDelay(pdMS_TO_TICKS(100));
-    xTaskCreatePinnedToCore(dispatch_drone, "drone_task", 4048, nullptr,  LOW_PRIO, &drone_handle, 1);
+    xTaskCreatePinnedToCore(dispatch_drone, "drone_task", 4048, nullptr,  PRIO_CONTROL, &drone_handle, 1);
 
     #ifdef WEB_TASK
-    xTaskCreatePinnedToCore(dispatch_webClient, "web_task", 4048, nullptr, LOW_PRIO, &web_handle, 0);
+    xTaskCreatePinnedToCore(dispatch_webClient, "web_task", 4048, nullptr, PRIO_BG, &web_handle, 0);
     #endif
     #ifdef TELEMETRY_TASK
-    xTaskCreatePinnedToCore(telemetry_task, "telemetry_task", 4048, nullptr, LOW_PRIO, &telemetry_handle, 0);
+    xTaskCreatePinnedToCore(telemetry_task, "telemetry_task", 4048, nullptr, PRIO_BG, &telemetry_handle, 0);
     #endif
 
     vTaskDelay(pdMS_TO_TICKS(200));
-    xTaskCreatePinnedToCore(dispatch_radio, "radio_task", 4048, nullptr,  HIGH_PRIO, &radio_handle, 1);
-    xTaskCreatePinnedToCore(dispatch_dmp, "dmp_task1", 4048, mpu1,  HIGH_PRIO, &dmp_handle1, 1);
-    xTaskCreatePinnedToCore(dispatch_dmp, "dmp_task2", 4048, mpu2,  HIGH_PRIO, &dmp_handle2, 1);
-    xTaskCreatePinnedToCore(dispatch_esc_telemetry, "esc_telemetry_task", 4048, nullptr,  LOW_PRIO, &esc_telemetry_handle, 0);
+    xTaskCreatePinnedToCore(dispatch_radio, "radio_task", 4048, nullptr,  PRIO_SENSORS, &radio_handle, 1);
+    xTaskCreatePinnedToCore(dispatch_dmp, "dmp_task1", 4048, mpu1,  PRIO_SENSORS, &dmp_handle1, 1);
+    xTaskCreatePinnedToCore(dispatch_dmp, "dmp_task2", 4048, mpu2,  PRIO_SENSORS, &dmp_handle2, 1);
+    xTaskCreatePinnedToCore(dispatch_esc_telemetry, "esc_telemetry_task", 4048, nullptr,  PRIO_BG, &esc_telemetry_handle, 0);
 
     char buffer[500]{};
     while (true)
@@ -380,7 +383,7 @@ void main_task(void *args)
 void app_main(void)
 {
     TaskHandle_t main_handle{};
-    uint32_t files = DEBUG_MAIN ; //  | DEBUG_RADIO | DEBUG_DRONE | DEBUG_MPU6050 | DEBUG_I2C; | DEBUG_BMP ;
+    uint32_t files = DEBUG_MAIN; // | DEBUG_TELEMETRY; //  | DEBUG_RADIO | DEBUG_DRONE | DEBUG_MPU6050 | DEBUG_I2C; | DEBUG_BMP ;
     uint32_t prio = DEBUG_DATA; // | DEBUG_ARGS; // DEBUG_LOGIC | DEBUG_LOWLEVEL |
 
     set_loglevel(files, prio);

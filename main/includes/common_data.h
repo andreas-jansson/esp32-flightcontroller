@@ -5,6 +5,7 @@
 #include <vector>
 #include <string>
 
+#define RAD_TO_DEG (180.0/M_PI)
 
 namespace Radio{
     static constexpr int maxChannelValue{1811};
@@ -288,6 +289,13 @@ struct Pid{
     float integral{};
 };
 
+
+typedef enum Progress{
+    NOT_STARTED,
+    STARTED,
+    PASS,
+    FAILED
+}progress_t;
 
 
 enum MpuReg{
