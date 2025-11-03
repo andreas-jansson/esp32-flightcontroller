@@ -354,7 +354,7 @@ esp_err_t Drone::verify_components_process()
         YawPitchRoll ypr2{};
 
         /* get new data */
-        status = get_imu_data(1, ypr1, 0);
+        status = get_imu_data(1, ypr1, pdMS_TO_TICKS(1));
         if (status == ESP_OK)
         {
             yprCounter1++;
@@ -363,7 +363,7 @@ esp_err_t Drone::verify_components_process()
 
         }
 
-        status = get_imu_data(2, ypr2, 0);
+        status = get_imu_data(2, ypr2, pdMS_TO_TICKS(1));
         if (status == ESP_OK)
         {
             yprCounter2++;
@@ -372,7 +372,7 @@ esp_err_t Drone::verify_components_process()
 
         }
 
-        status = get_radio_data(channel, 0);
+        status = get_radio_data(channel, pdMS_TO_TICKS(1));
         if (status == ESP_OK)
         {
             radioCounter++;
@@ -732,7 +732,7 @@ void Drone::drone_task(void *args)
         /* if more than 100ms since last radio msg, send 0 throttle */
         bool radio_ok{true};
         auto now = std::chrono::steady_clock::now();
-        auto time_since_last_radio_msg = std::chrono::duration_cast<std::chrono::microseconds>(now-ok_radio_timer).count();
+        auto time_since_last_radio_msg = std::chrono::duration_cast<std::chrono::milliseconds>(now-ok_radio_timer).count();
         if(time_since_last_radio_msg >= 100){
             radio_ok = false;
         }

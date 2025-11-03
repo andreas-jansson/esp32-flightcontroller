@@ -49,7 +49,9 @@
 #define UART_ESC_RX_IO 37   
 #define UART_ESC_BAUDRATE 115200
 
-#define ESC_CURRENT_PIN 17   // FIXME current reading adc not supported! resolder tx and rx and maybe remove from uart setup
+#define ESC_CURRENT_PIN 17         // FIXME current reading adc not supported! resolder tx and rx and maybe remove from uart setup
+
+#define log_tag "main"
 
 enum {
   PRIO_BG       = 3,   // display / web / telemetry
@@ -57,7 +59,6 @@ enum {
   PRIO_CONTROL  = 10,  // drone PID + RMT (deadline-driven)
 };
 
-#define log_tag "main"
 
 SemaphoreHandle_t cfg_btn_sem = nullptr;
 
@@ -73,9 +74,7 @@ static void IRAM_ATTR cfg_btn_handler(void *args)
 
 
 
-void web_task(void *args)
-{
-
+void web_task(void *args){
     RingbufHandle_t ringBuffer_dmp{};
     constexpr TickType_t xDelay = 10 / portTICK_PERIOD_MS;
     esp_err_t status = 0;
@@ -207,8 +206,7 @@ void crsf_task(void *args){
     }
 }
 
-void dispatch_radio(void *args)
-{
+void dispatch_radio(void *args){
     #ifdef STUB_RADIOCONTROLLER
     RadioController_stub *radio = RadioController_stub::GetInstance();
     #else
@@ -217,8 +215,7 @@ void dispatch_radio(void *args)
     radio->radio_task(nullptr);
 }
 
-void dispatch_dmp(void *args)
-{
+void dispatch_dmp(void *args){
     
     #ifdef STUB_MPU6050
     //Mpu6050_stub *mpu = Mpu6050_stub::GetInstance();
@@ -230,26 +227,22 @@ void dispatch_dmp(void *args)
     mpu->dmp_task(nullptr);
 }
 
-void dispatch_webClient(void *args)
-{
+void dispatch_webClient(void *args){
     WebClient *client = WebClient::GetInstance();
     client->web_task2(nullptr);
 }
 
-void dispatch_drone(void *args)
-{
+void dispatch_drone(void *args){
     Drone *drone = Drone::GetInstance();
     drone->drone_task(nullptr);
 }
 
-void dispatch_dshot(void *args)
-{
+void dispatch_dshot(void *args){
     Dshot600 *dshot = Dshot600::GetInstance();
     dshot->dshot_task(nullptr);
 }
 
-void dispatch_display(void *args)
-{
+void dispatch_display(void *args){
     Display *display = Display::GetInstance();
     display->display_task(nullptr);
 }
@@ -259,8 +252,7 @@ void dispatch_esc_telemetry(void *args){
     drone->esc_telemetry_task(nullptr);
 }
 
-void main_task(void *args)
-{
+void main_task(void *args){
     TaskHandle_t altitude_handle{};
     TaskHandle_t dshot_handle{};
     TaskHandle_t dmp_handle1{}; 
@@ -296,10 +288,8 @@ void main_task(void *args)
     #ifdef STUB_MPU6050
     Mpu6050_stub *mpu = Mpu6050_stub::GetInstance(ADDR_68, i2c);
     #else
-    //Mpu6050 *mpu1 = Mpu6050::GetInstance(ADDR_68, i2c);
     Mpu6050 *mpu1 = new Mpu6050(ADDR_68, i2c, 27);
     #endif
-    //ringBuffer_dmp1 = mpu1->get_queue_handle();
 
    /******* MPU 2 setup *******/
    #ifdef STUB_MPU6050
@@ -307,7 +297,6 @@ void main_task(void *args)
    #else
    Mpu6050 *mpu2 = new Mpu6050(ADDR_69, i2c, 26);
    #endif
-   //ringBuffer_dmp2 = mpu2->get_queue_handle();
 
 
 
@@ -380,8 +369,7 @@ void main_task(void *args)
     }
 }
 
-void app_main(void)
-{
+void app_main(void){
     TaskHandle_t main_handle{};
     uint32_t files = DEBUG_MAIN; // | DEBUG_TELEMETRY; //  | DEBUG_RADIO | DEBUG_DRONE | DEBUG_MPU6050 | DEBUG_I2C; | DEBUG_BMP ;
     uint32_t prio = DEBUG_DATA; // | DEBUG_ARGS; // DEBUG_LOGIC | DEBUG_LOWLEVEL |
