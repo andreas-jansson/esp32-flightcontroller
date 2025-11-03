@@ -354,7 +354,7 @@ esp_err_t Drone::verify_components_process()
         YawPitchRoll ypr2{};
 
         /* get new data */
-        status = get_imu_data(1, ypr1, pdMS_TO_TICKS(1));
+        status = get_imu_data(1, ypr1, 0);
         if (status == ESP_OK)
         {
             yprCounter1++;
@@ -363,7 +363,7 @@ esp_err_t Drone::verify_components_process()
 
         }
 
-        status = get_imu_data(2, ypr2, pdMS_TO_TICKS(1));
+        status = get_imu_data(2, ypr2, 0);
         if (status == ESP_OK)
         {
             yprCounter2++;
@@ -372,7 +372,7 @@ esp_err_t Drone::verify_components_process()
 
         }
 
-        status = get_radio_data(channel, pdMS_TO_TICKS(1));
+        status = get_radio_data(channel, 0);
         if (status == ESP_OK)
         {
             radioCounter++;
@@ -635,6 +635,8 @@ void Drone::drone_task(void *args)
     
     Display::set_booting_status(false);
 
+    auto ok_radio_timer = std::chrono::steady_clock::now();
+
     while (true)
     {
 
@@ -652,9 +654,6 @@ void Drone::drone_task(void *args)
         {
             this->ypr1 = ypr1;
             yprCounter++;
-            //m_state.currPitch = ypr1.pitch * radToDegree;
-            //m_state.currYaw = 0; // ypr1.yaw * radToDegree;
-            //m_state.currRoll = ypr1.roll * radToDegree;
             newImuData1 = true;
         }
 
@@ -663,9 +662,6 @@ void Drone::drone_task(void *args)
         {
             this->ypr2 = ypr2;
             yprCounter++;
-            //m_state.currPitch = ypr2.pitch * radToDegree;
-            //m_state.currYaw = 0; // ypr2.yaw * radToDegree;
-            //m_state.currRoll = ypr2.roll * radToDegree;
             newImuData2 = true;
         }
 
@@ -693,6 +689,7 @@ void Drone::drone_task(void *args)
             parse_channel_state(channelNew);
             this->channel = channelNew;
             radioCounter++;
+            ok_radio_timer = std::chrono::steady_clock::now();
         }
 
         status = get_radio_statistics(radioStatisticsNew, 0);
@@ -732,8 +729,16 @@ void Drone::drone_task(void *args)
         }
         #endif
 
+        /* if more than 100ms since last radio msg, send 0 throttle */
+        bool radio_ok{true};
+        auto now = std::chrono::steady_clock::now();
+        auto time_since_last_radio_msg = std::chrono::duration_cast<std::chrono::microseconds>(now-ok_radio_timer).count();
+        if(time_since_last_radio_msg >= 100){
+            radio_ok = false;
+        }
+
         // send 0 throttle while not armed
-        if(!m_state.isArmed){
+        if(!m_state.isArmed || !radio_ok){
             Dshot::DshotMessage msg{};
             msg.msgType = Dshot::COMMAND;
 
@@ -749,16 +754,16 @@ void Drone::drone_task(void *args)
             ESP_ERROR_CHECK_WITHOUT_ABORT(send_dshot_message(msg));
         }
 
+
         /* calculate and set the frequenzy of received data */
         auto end = std::chrono::system_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
 
         if (elapsed >= 10000)
         {
-            printf("loop freq: %llu\n", loopCounter / 10);
             m_state.dmpFreq = yprCounter;
             m_state.radioFreq = radioCounter;
-            m_state.loopFreq = loopCounter;
+            m_state.loopFreq = loopCounter / 10;
             yprCounter = 0;
             radioCounter = 0;
             loopCounter = 0;
@@ -767,14 +772,10 @@ void Drone::drone_task(void *args)
         }
         loopCounter++;
 
-        // allows rmt things to run with while maintaing max loop freq ~1000
-        //vTaskDelayUntil( &xLastWakeTime, xFrequency );
+        // allows rmt things to run with while maintaing max loop freq ~2.5k Hz
 
-        //int64_t start2 = esp_timer_get_time();
         ESP_ERROR_CHECK(esp_timer_start_once(oneshot_timer, 10));
         xSemaphoreTake(timer_sem, portMAX_DELAY);
-        //int64_t end2 = esp_timer_get_time();
-        //printf("xsemtook: %lld us\n", end2-start2);
 
     }
 }
@@ -1370,25 +1371,29 @@ esp_err_t Drone::handle_signal_lost(){
 
 
 esp_err_t Drone::calibrate_gyro(){
-
     esp_err_t status = 0;
-    Channel channel{};
     uint32_t counter{};
     bool startCalibration{};
 
     auto start = std::chrono::steady_clock::now();
 
-    while(true){
+    vTaskDelay(pdMS_TO_TICKS(1000));
 
+    while(true){
+        Channel channel{};
+        status = 0;
         auto now = std::chrono::steady_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count();
 
-        status = get_radio_data(channel, portMAX_DELAY);
+        auto start2 = std::chrono::steady_clock::now();
+        status = get_radio_data(channel, pdMS_TO_TICKS(1000));
+        auto end2 = std::chrono::steady_clock::now();
+        auto elapsed2 = std::chrono::duration_cast<std::chrono::microseconds>(end2 - start2).count();
 
         if(status == ESP_OK && channel.ch9 >= Radio::maxChannelThld){
             counter++;
         }
-    
+      
         if(elapsed >= 2000){
             break;
         }
@@ -1408,7 +1413,7 @@ esp_err_t Drone::calibrate_gyro(){
         Display::set_calibration_status(PASS);
     }
     else
-        printf("NO CALIBRATION\n");
+        printf("NO CALIBRATION counter[%lu]\n", counter);
 
     return status;
 }

@@ -455,21 +455,6 @@ esp_err_t Dshot600::parse_dshot_message(struct Dshot::DshotMessage& msg) {
     print_debug(DEBUG_DSHOT, DEBUG_ARGS, "%s %d:", __FILE__, __LINE__);
 
     bool badMsg = false;
-    //uint8_t writeToCheck{};
-
-    //for(int i=0;i<Dshot::maxChannels;i++){
-    //    writeToCheck += msg.writeTo[i];
-    //}
-
-   //badMsg = writeToCheck == 0? true : false;
-
-    //if (writeToCheck == 0) {
-    //    ESP_LOGE(TAG, "Invalid: No motor write request");
-    //    for(int i=0;i<Dshot::maxChannels;i++){
-    //        printf("m%d writeTo: %d speed: %d cmd: %d\n", i, msg.writeTo[i], msg.speed[i], msg.cmd[i]);
-    //    }
-    //    return ESP_FAIL;
-    //}
 
     // Validate motor speed and loop count
     auto validate_motor = [](uint16_t speed, uint8_t loops) {

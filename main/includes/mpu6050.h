@@ -209,8 +209,6 @@ public:
     esp_err_t set_dmp_enabled(bool enable);
 
 	void calibrate_mpu(){xSemaphoreGive(calibrate_sem);}
-
-
 };
 
 

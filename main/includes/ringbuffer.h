@@ -19,12 +19,12 @@ struct Payload{
 class CircularBuffer{
 
 	SemaphoreHandle_t m_dataAvailable{};
+    SemaphoreHandle_t m_bufferMutex{};
+
     std::string m_name;
 
 public:
 
-    volatile bool m_isEmpty{true};
-    volatile bool m_isFull{false};
     volatile bool m_newPeek{false};
 
     volatile uint32_t m_maxSize{};
@@ -40,13 +40,12 @@ public:
 
     std::byte* m_data{};
 
-    std::mutex m_bufferMutex;
-
 
     bool isSlotEmpty(uint32_t idx);
 
     CircularBuffer(uint32_t nItems, uint32_t itemsSize, std::string name=""){
-        vSemaphoreCreateBinary(m_dataAvailable);
+        m_dataAvailable = xSemaphoreCreateCounting(nItems, 0);
+        m_bufferMutex = xSemaphoreCreateMutex();
         m_maxSize = nItems;
         m_itemSize = itemsSize;
         m_name = name;
@@ -56,9 +55,7 @@ public:
 
 
     esp_err_t insert_obj(void* data);
-    esp_err_t insert_obj2(void* data);
     esp_err_t get_obj(void* data, TickType_t ticksToWait);
-    esp_err_t get_obj2(void* data, TickType_t ticksToWait);
     void peek_obj(void* data, TickType_t ticksToWait);
     void print_all();
     void clear_buffer();

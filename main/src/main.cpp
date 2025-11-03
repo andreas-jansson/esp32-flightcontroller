@@ -365,9 +365,9 @@ void main_task(void *args)
     #endif
 
     vTaskDelay(pdMS_TO_TICKS(200));
-    xTaskCreatePinnedToCore(dispatch_radio, "radio_task", 4048, nullptr,  PRIO_SENSORS, &radio_handle, 1);
-    xTaskCreatePinnedToCore(dispatch_dmp, "dmp_task1", 4048, mpu1,  PRIO_SENSORS, &dmp_handle1, 1);
-    xTaskCreatePinnedToCore(dispatch_dmp, "dmp_task2", 4048, mpu2,  PRIO_SENSORS, &dmp_handle2, 1);
+    xTaskCreatePinnedToCore(dispatch_radio, "radio_task", 4048, nullptr,  PRIO_SENSORS, &radio_handle, 0);
+    xTaskCreatePinnedToCore(dispatch_dmp, "dmp_task1", 4048, mpu1,  PRIO_SENSORS, &dmp_handle1, 0);
+    xTaskCreatePinnedToCore(dispatch_dmp, "dmp_task2", 4048, mpu2,  PRIO_SENSORS, &dmp_handle2, 0);
     xTaskCreatePinnedToCore(dispatch_esc_telemetry, "esc_telemetry_task", 4048, nullptr,  PRIO_BG, &esc_telemetry_handle, 0);
 
     char buffer[500]{};
@@ -376,7 +376,7 @@ void main_task(void *args)
         // enable CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=y
         vTaskDelay(pdMS_TO_TICKS(5000));
         //vTaskGetRunTimeStats(buffer);
-        printf("%s", buffer);
+        //printf("%s", buffer);
     }
 }
 
