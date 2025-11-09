@@ -298,8 +298,6 @@ void main_task(void *args){
    Mpu6050 *mpu2 = new Mpu6050(ADDR_69, i2c, 26);
    #endif
 
-
-
     /******* wifi *******/
     #ifdef WEB_TASK
     std::string ssid{"Ubiquity 2"};
@@ -312,7 +310,6 @@ void main_task(void *args){
     client->init(ringBuffer_dmp1, ringBuffer_web);
     #endif
 
-
     /******* Dshot600 *******/
     gpio_num_t motorPin[Radio::maxChannels]{};
     motorPin[MOTOR1] = static_cast<gpio_num_t>(12); // rear right   0
@@ -322,7 +319,6 @@ void main_task(void *args){
 
     Dshot600* dshot = Dshot600::GetInstance(motorPin);
 
-
     /*******  Drone *******/
     MotorLaneMapping motorLanes{
         .rearLeftlane   = MOTOR3,
@@ -330,7 +326,6 @@ void main_task(void *args){
         .frontLeftlane  = MOTOR4,    
         .frontRightlane = MOTOR2
     };
-
 
     Drone* drone = Drone::GetInstance(dshot, mpu1, mpu2, ringBuffer_radio, ringBuffer_radio_statistics);
     drone->init_uart(UART_ESC_RX_IO, ESC_CURRENT_PIN, UART_ESC_BAUDRATE);
@@ -371,7 +366,7 @@ void main_task(void *args){
 
 void app_main(void){
     TaskHandle_t main_handle{};
-    uint32_t files = DEBUG_MAIN; // | DEBUG_TELEMETRY; //  | DEBUG_RADIO | DEBUG_DRONE | DEBUG_MPU6050 | DEBUG_I2C; | DEBUG_BMP ;
+    uint32_t files = DEBUG_MAIN;// | DEBUG_TELEMETRY; //  | DEBUG_RADIO | DEBUG_DRONE | DEBUG_MPU6050 | DEBUG_I2C; | DEBUG_BMP ;
     uint32_t prio = DEBUG_DATA; // | DEBUG_ARGS; // DEBUG_LOGIC | DEBUG_LOWLEVEL |
 
     set_loglevel(files, prio);
@@ -389,7 +384,5 @@ void app_main(void){
 
 
     xTaskCreatePinnedToCore(main_task, "main_task", 4048, nullptr, configMAX_PRIORITIES - 3, &main_handle, 0);
-
-    
 }
  

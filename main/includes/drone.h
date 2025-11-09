@@ -144,8 +144,6 @@ class Drone{
     void pid(float target, float current, Pid& pid);
     void get_new_speed(Dshot::DshotMessage& msg, bool& didChange);
 
-    esp_err_t ramp_up_motors();
-
     uint8_t updateCrc8(uint8_t crc, uint8_t crc_seed);
     uint8_t calculateCrc8(const uint8_t *Buf, const uint8_t BufLen);
 

@@ -16,23 +16,9 @@
 
 
 RadioController* RadioController::radio = nullptr;
+uart_port_t RadioController::s_uartNum{2};
 
 
-namespace radio{
-    enum statistics{
-        UPPLINK_RSSI_1 = 3,
-        UPPLINK_RSSI_2,
-        UPPLINK_QUALITY,
-        UPPLINK_SNR,
-        UPPLINK_ACTIVE_ANTENNA,
-        RF_MODE,
-        UPPLINK_TX_POWER,
-        DOWNLINK_RSSI ,
-        DOWNLINK_QUALITY,
-        DOWNLINK_SNR
-    };
-
-}
 
 
 
@@ -54,11 +40,11 @@ RadioController::RadioController(){
     uart_config.rx_flow_ctrl_thresh = 0;
     uart_config.source_clk = UART_SCLK_APB;  
 
-    this->uartNum = UART_NUM_2;
+    s_uartNum = UART_NUM_2;
 
-    ESP_ERROR_CHECK(uart_param_config(this->uartNum, &uart_config));
-    ESP_ERROR_CHECK(uart_set_pin(this->uartNum, txPin, rxPin, rtsPin, ctsPin));
-    ESP_ERROR_CHECK(uart_driver_install(this->uartNum, uart_buffer_size, uart_buffer_size, 10, &this->uart_queue, 0));
+    ESP_ERROR_CHECK(uart_param_config(s_uartNum, &uart_config));
+    ESP_ERROR_CHECK(uart_set_pin(s_uartNum, txPin, rxPin, rtsPin, ctsPin));
+    ESP_ERROR_CHECK(uart_driver_install(s_uartNum, uart_buffer_size, uart_buffer_size, 10, &this->uart_queue, 0));
 
     channelSem = xSemaphoreCreateMutex();
     ESP_ERROR_CHECK((channelSem==nullptr));
@@ -102,18 +88,18 @@ RadioController* RadioController::GetInstance(){
 esp_err_t RadioController::uart_write(uint8_t* data, uint8_t dataLength){
     esp_err_t status = 0;
 
-    uart_write_bytes(this->uartNum, data, dataLength);
+    uart_write_bytes(s_uartNum, data, dataLength);
 
     return status;
 }
 
 esp_err_t RadioController::uart_read(uint8_t* data, size_t& dataLength){
     esp_err_t status = 0;
-    print_debug(DEBUG_RADIO, DEBUG_ARGS, "%-33s: uartNum: %d dataLength: %u id: %d\n", __func__, this->uartNum, dataLength, this->id);
+    print_debug(DEBUG_RADIO, DEBUG_ARGS, "%-33s: uartNum: %d dataLength: %u id: %d\n", __func__, s_uartNum, dataLength, this->id);
 
-    ESP_ERROR_CHECK(uart_get_buffered_data_len(this->uartNum, &dataLength));
+    ESP_ERROR_CHECK(uart_get_buffered_data_len(s_uartNum, &dataLength));
 
-    dataLength = uart_read_bytes(this->uartNum, data, dataLength, 100);
+    dataLength = uart_read_bytes(s_uartNum, data, dataLength, 100);
 
     return status;
 }
@@ -160,6 +146,8 @@ void RadioController::radio_task(void* args){
                     continue;
                 }
 
+    
+
                 if(data[c_addrIdx] == flightControllerAddr){
                     uint8_t frameLen = data[c_frameLenIdx];
                     uint8_t type = data[c_dataIdx];
@@ -170,22 +158,29 @@ void RadioController::radio_task(void* args){
                     }
 
                     if(type == c_frameTypeChannels){
+
                         send_channel_to_queue((Channel*)data);
 
                     }
                     else if(type == c_frameTypeLinkStatistics){
-                        /*printf("stats: up_RSSI_1: %-2udb up_RSSI_2: %-2udb up_quality: %u %% up_SNR: %-2ddb" \
-                            "active_antenna_nr: %-2u rf_Mode: %-2x up_TX_Power: %-2x down_rssi: %-2udb down_quality: %-2udb down_snr: %-2ddb\n",
-                        data[UPPLINK_RSSI_1], 
-                        data[UPPLINK_RSSI_2], 
-                        data[UPPLINK_QUALITY], 
-                        data[UPPLINK_SNR], 
-                        data[UPPLINK_ACTIVE_ANTENNA], 
-                        data[RF_MODE], 
-                        data[UPPLINK_TX_POWER],
-                        data[DOWNLINK_RSSI],
-                        data[DOWNLINK_QUALITY],
-                        data[DOWNLINK_SNR]);*/
+                        /*
+                            printf("stats: up_RSSI_1: %-2udb up_RSSI_2: %-2udb up_quality: %u %% up_SNR: %-2ddb" \
+                               "active_antenna_nr: %-2u rf_Mode: %-2x up_TX_Power: %-2x down_rssi: %-2udb down_quality: %-2udb down_snr: %-2ddb\n",
+                            data[UPPLINK_RSSI_1], 
+                            data[UPPLINK_RSSI_2], 
+                            data[UPPLINK_QUALITY], 
+                            data[UPPLINK_SNR], 
+                            data[UPPLINK_ACTIVE_ANTENNA], 
+                            data[RF_MODE], 
+                            data[UPPLINK_TX_POWER],
+                            data[DOWNLINK_RSSI],
+                            data[DOWNLINK_QUALITY],
+                            data[DOWNLINK_SNR]);
+                        printf("sync[0x%x] len[%u] type[0x%x] data[0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x] crc[0x%x]", 
+                            data[0], data[1], data[2],data[3],data[4],data[5],data[6],data[7],data[8],data[9],data[10],data[11],data[12],data[13]);
+                        
+                        printf("****************************************************\n");
+                        */
 
                         send_statistics(data);
                     
@@ -273,10 +268,11 @@ esp_err_t RadioController::send_channel_to_queue(void* newChannel){
         bootCounter++;
     }
 
-    // If data is the same, no need to update
-    if (!isNewData(static_cast<Channel*>(newChannel+3)) && bootCounter >= 10000){
-        return ESP_OK;
-    }
+    // comment back to only send new data - removed due to drone logic thinking it looses contact with radio
+    //// If data is the same, no need to update
+    //if (!isNewData(static_cast<Channel*>(newChannel+3)) && bootCounter >= 10000){
+    //    return ESP_OK;
+    //}
 
     CircularBufEnqueue(radio_queue_handle, newChannel + 3);
     memcpy(&this->channel, newChannel + 3, 22);
@@ -346,4 +342,97 @@ esp_err_t RadioController::get_yaw(uint16_t& data){
     data = channel.ch4;
 
     return ESP_OK;
+}
+
+
+
+esp_err_t RadioController::send_attitude(YawPitchRoll& ypr){
+    esp_err_t status{};
+    radio::AttitudeMsg msg{};
+
+    msg.pitch = static_cast<int16_t>(ypr.pitch * 10000);
+    msg.roll = static_cast<int16_t>(ypr.roll * 10000);
+    msg.yaw = static_cast<int16_t>(ypr.yaw * 10000);
+
+    uint8_t* crsf_frame = nullptr;
+    ESP_ERROR_CHECK(set_telemetry_data(radio::CRSF_FRAMETYPE_ATTITUDE, reinterpret_cast<uint8_t*>(&msg), &crsf_frame));
+    uart_write_bytes(s_uartNum, crsf_frame, sizeof(msg) + 4);
+
+    free(crsf_frame);
+    return 0;
+}
+
+int16_t swap_endian(int16_t val)
+{
+    return (int16_t)(((val & 0xFF00) >> 8) |
+                     ((val & 0x00FF) << 8));
+}
+
+esp_err_t RadioController::send_battery_data(float voltage, float current, float used){
+    esp_err_t status{};
+    radio::BatteryMsg msg{};
+
+    int16_t voltage_dv = static_cast<int16_t>(voltage * 10);
+    int16_t current_da = static_cast<int16_t>(current * 10);
+    uint8_t used_mah = used;
+    int8_t percent_left = 75;
+
+    msg.voltage_dV = swap_endian(voltage_dv);
+    msg.current_dA = swap_endian(current_da);
+    msg.used_mAh[2] = used;
+    msg.battery_percent_left = percent_left;
+
+    uint8_t* crsf_frame = nullptr;
+    ESP_ERROR_CHECK(set_telemetry_data(radio::CRSF_FRAMETYPE_BATTERY_SENSOR, reinterpret_cast<uint8_t*>(&msg), &crsf_frame));
+    uart_write_bytes(s_uartNum, crsf_frame, sizeof(msg) + 4);
+    free(crsf_frame);
+    return 0;
+}
+
+esp_err_t RadioController::set_telemetry_data(enum radio::crsfFrameType type, uint8_t *data, uint8_t **r_crsf_frame){
+
+    if(!radio::crsfMsgSize.at(type)){
+        return ESP_ERR_INVALID_ARG;
+    }
+    uint8_t frame_size = radio::crsfMsgSize.at(type) + 4;
+    uint8_t nr_bytes_crc = radio::crsfMsgSize.at(type) + 1;
+
+    *r_crsf_frame = static_cast<uint8_t*>(calloc(1, frame_size));
+    (*r_crsf_frame)[0] = 0xC8;
+    (*r_crsf_frame)[1] = radio::crsfMsgSize.at(type) + 2;
+    (*r_crsf_frame)[2] = type;
+
+    for(uint8_t i=0;i<radio::crsfMsgSize[type];i++){
+        (*r_crsf_frame)[i+3] = data[i];
+    }
+
+    uint8_t len = (*r_crsf_frame)[1]; // total = type + payload + crc
+    uint8_t crc = crc8_dvb_s2(&(*r_crsf_frame)[2], len - 1);
+    (*r_crsf_frame)[2 + len - 1] = crc;
+
+    printf("sync[0x%x] len[0x%x] type[0x%x] data[", (*r_crsf_frame)[0], (*r_crsf_frame)[1], (*r_crsf_frame)[2]);
+    for(int i=0;i<radio::crsfMsgSize[type];i++){
+        printf("0x%x ", (*r_crsf_frame)[i+3]);
+    }
+    printf("] crc[0x%x]\n", (*r_crsf_frame)[frame_size - 1]);
+
+    return 0;
+}
+
+
+uint8_t RadioController::crc8_dvb_s2(const uint8_t *data, size_t len) {
+    uint8_t crc = 0x00;
+    const uint8_t poly = 0xD5;
+
+    while (len--) {
+        crc ^= *data++;
+        for (int i = 0; i < 8; i++) {
+            if (crc & 0x80) {
+                crc = (crc << 1) ^ poly;
+            } else {
+                crc <<= 1;
+            }
+        }
+    }
+    return crc;
 }

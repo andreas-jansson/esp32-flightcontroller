@@ -261,8 +261,6 @@ esp_err_t Drone::arming_process()
     status = arm_drone(channel.ch5);
     ESP_RETURN_ON_ERROR(status, log_tag, "Failed to arm drone");
 
-    //ramp_up_motors();
-
     m_state.motorFlSpeed = c_minThrottleValue;
     m_state.motorFrSpeed = c_minThrottleValue;
     m_state.motorRlSpeed = c_minThrottleValue;
@@ -354,7 +352,7 @@ esp_err_t Drone::verify_components_process()
         YawPitchRoll ypr2{};
 
         /* get new data */
-        status = get_imu_data(1, ypr1, pdMS_TO_TICKS(1));
+        status = get_imu_data(1, ypr1, 0);
         if (status == ESP_OK)
         {
             yprCounter1++;
@@ -363,7 +361,7 @@ esp_err_t Drone::verify_components_process()
 
         }
 
-        status = get_imu_data(2, ypr2, pdMS_TO_TICKS(1));
+        status = get_imu_data(2, ypr2, 0);
         if (status == ESP_OK)
         {
             yprCounter2++;
@@ -372,14 +370,13 @@ esp_err_t Drone::verify_components_process()
 
         }
 
-        status = get_radio_data(channel, pdMS_TO_TICKS(1));
+        status = get_radio_data(channel, 0);
         if (status == ESP_OK)
         {
             radioCounter++;
             radioIsValid = true;
         }
    
-
         /* wait for 2s before verifying, allows draining the ringbuffers while waiting */
         auto end = std::chrono::steady_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
@@ -438,8 +435,6 @@ esp_err_t Drone::verify_components_process()
                 radioComplete = true;
             }
         }
-
-
 
         /* in case overflow */
         if (yprCounter1 == UINT64_MAX)
@@ -660,14 +655,15 @@ void Drone::drone_task(void *args)
         status = get_imu_data(2, ypr2, 0);
         if (status == ESP_OK)
         {
-            this->ypr2 = ypr2;
-            yprCounter++;
-            newImuData2 = true;
+            //this->ypr2 = ypr2;
+            //yprCounter++;
+            //newImuData2 = true;
         }
 
         if(newImuData1 && newImuData2){
             m_state.currPitch   = ((ypr1.pitch * radToDegree) + (ypr2.pitch * radToDegree)) / 2.0;
-            m_state.currYaw     = ((ypr1.yaw * radToDegree) + (ypr2.yaw * radToDegree)) / 2;
+            //m_state.currYaw     = ((ypr1.yaw * radToDegree) + (ypr2.yaw * radToDegree)) / 2;
+            m_state.currYaw     = ypr1.yaw * radToDegree;
             m_state.currRoll    = ((ypr1.roll * radToDegree) + (ypr2.roll * radToDegree)) / 2.0;
         }
         else if(newImuData1 && !newImuData2){
@@ -677,7 +673,6 @@ void Drone::drone_task(void *args)
         }
         else if(!newImuData1 && newImuData2){
             m_state.currPitch   = ypr2.pitch * radToDegree;
-            m_state.currYaw     = ypr2.yaw * radToDegree;
             m_state.currRoll    = ypr2.roll * radToDegree;
         }
 
@@ -725,6 +720,8 @@ void Drone::drone_task(void *args)
         {
             //ESP_ERROR_CHECK_WITHOUT_ABORT(measure_current());
             ESP_ERROR_CHECK_WITHOUT_ABORT(send_telemetry());
+            RadioController::send_attitude(ypr1);
+            RadioController::send_battery_data(24.0, 90.5, 100.9);
             start_telemetry = std::chrono::system_clock::now();
         }
         #endif
@@ -733,7 +730,7 @@ void Drone::drone_task(void *args)
         bool radio_ok{true};
         auto now = std::chrono::steady_clock::now();
         auto time_since_last_radio_msg = std::chrono::duration_cast<std::chrono::milliseconds>(now-ok_radio_timer).count();
-        if(time_since_last_radio_msg >= 100){
+        if(time_since_last_radio_msg >= 250){
             radio_ok = false;
         }
 
@@ -761,8 +758,8 @@ void Drone::drone_task(void *args)
 
         if (elapsed >= 10000)
         {
-            m_state.dmpFreq = yprCounter;
-            m_state.radioFreq = radioCounter;
+            m_state.dmpFreq = yprCounter / 10;
+            m_state.radioFreq = radioCounter / 10;
             m_state.loopFreq = loopCounter / 10;
             yprCounter = 0;
             radioCounter = 0;
@@ -889,7 +886,7 @@ esp_err_t Drone::init_uart(int rxPin, int txPin, int baudrate){
 void Drone::get_new_speed(Dshot::DshotMessage& msg, bool& didChange){
 
     constexpr uint8_t minStepSize{2};
-    const uint16_t maxThrottleValue = c_saftyParams? 500u : Dshot::maxThrottleValue;
+    const uint16_t maxThrottleValue = c_saftyParams? 1000u : Dshot::maxThrottleValue;
 
     msg.msgType = Dshot::THROTTLE;
 
@@ -1043,34 +1040,6 @@ esp_err_t Drone::measure_current() {
     return ESP_OK;
 }
 
-esp_err_t Drone::ramp_up_motors(){
-    esp_err_t status = 0;
-
-    for(uint16_t i=80;i<c_minThrottleValue;i++){ 
-        Dshot::DshotMessage msg{};
-
-        msg.msgType = Dshot::THROTTLE;
-
-        for(int j=0;j<Dshot::maxChannels;j++){ 
-            //msg.writeTo[j] = true;
-            msg.loops[j] = 0;
-            msg.speed[j] = i;
-            msg.telemetryReq[j] = false;
-
-        }
-
-        status = send_dshot_message(msg);
-        vTaskDelay(pdMS_TO_TICKS(10));
-    }
-    
-    m_state.motorFlSpeed = c_minThrottleValue;
-    m_state.motorFrSpeed = c_minThrottleValue;
-    m_state.motorRlSpeed = c_minThrottleValue;
-    m_state.motorRrSpeed = c_minThrottleValue;
-
-    return status;
-
-}
 
 esp_err_t Drone::send_telemetry(){
     TelemetryData telemetry{};
