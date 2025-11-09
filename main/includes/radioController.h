@@ -84,9 +84,9 @@ namespace radio{
     };
 
     struct __attribute__((packed))AttitudeMsg{
-        int16_t pitch;
-        int16_t roll;
-        int16_t yaw;
+        uint16_t pitch;
+        uint16_t roll;
+        uint16_t yaw;
     };
 
     struct __attribute__((packed))BatteryMsg{
@@ -153,6 +153,19 @@ class RadioController{
 
      static uint8_t crc8_dvb_s2(const uint8_t *data, size_t len);
      static esp_err_t set_telemetry_data(enum radio::crsfFrameType type, uint8_t *data, uint8_t **r_crsf_frame);
+
+     static int16_t swap_endian(int16_t val)
+     {
+         return (int16_t)(((val & 0xFF00) >> 8) |
+                          ((val & 0x00FF) << 8));
+     }
+
+     static uint16_t swap_endian(uint16_t val)
+     {
+         return (uint16_t)(((val & 0xFF00) >> 8) |
+                          ((val & 0x00FF) << 8));
+     }
+
 
      public:
      RadioController(RadioController &other) = delete;

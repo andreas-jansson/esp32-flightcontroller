@@ -350,9 +350,9 @@ esp_err_t RadioController::send_attitude(YawPitchRoll& ypr){
     esp_err_t status{};
     radio::AttitudeMsg msg{};
 
-    msg.pitch = static_cast<int16_t>(ypr.pitch * 10000);
-    msg.roll = static_cast<int16_t>(ypr.roll * 10000);
-    msg.yaw = static_cast<int16_t>(ypr.yaw * 10000);
+    msg.pitch = swap_endian(static_cast<uint16_t>(ypr.pitch * 10000));
+    msg.roll = swap_endian(static_cast<uint16_t>(ypr.roll * 10000));
+    msg.yaw = swap_endian(static_cast<uint16_t>(ypr.yaw * 10000));
 
     uint8_t* crsf_frame = nullptr;
     ESP_ERROR_CHECK(set_telemetry_data(radio::CRSF_FRAMETYPE_ATTITUDE, reinterpret_cast<uint8_t*>(&msg), &crsf_frame));
@@ -362,11 +362,6 @@ esp_err_t RadioController::send_attitude(YawPitchRoll& ypr){
     return 0;
 }
 
-int16_t swap_endian(int16_t val)
-{
-    return (int16_t)(((val & 0xFF00) >> 8) |
-                     ((val & 0x00FF) << 8));
-}
 
 esp_err_t RadioController::send_battery_data(float voltage, float current, float used){
     esp_err_t status{};
@@ -410,11 +405,11 @@ esp_err_t RadioController::set_telemetry_data(enum radio::crsfFrameType type, ui
     uint8_t crc = crc8_dvb_s2(&(*r_crsf_frame)[2], len - 1);
     (*r_crsf_frame)[2 + len - 1] = crc;
 
-    printf("sync[0x%x] len[0x%x] type[0x%x] data[", (*r_crsf_frame)[0], (*r_crsf_frame)[1], (*r_crsf_frame)[2]);
-    for(int i=0;i<radio::crsfMsgSize[type];i++){
-        printf("0x%x ", (*r_crsf_frame)[i+3]);
-    }
-    printf("] crc[0x%x]\n", (*r_crsf_frame)[frame_size - 1]);
+    //printf("sync[0x%x] len[0x%x] type[0x%x] data[", (*r_crsf_frame)[0], (*r_crsf_frame)[1], (*r_crsf_frame)[2]);
+    //for(int i=0;i<radio::crsfMsgSize[type];i++){
+    //    printf("0x%x ", (*r_crsf_frame)[i+3]);
+    //}
+    //printf("] crc[0x%x]\n", (*r_crsf_frame)[frame_size - 1]);
 
     return 0;
 }

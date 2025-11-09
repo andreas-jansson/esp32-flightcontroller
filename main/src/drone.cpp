@@ -73,16 +73,6 @@ Drone::Drone(Dshot600* dshotObj, Mpu6050* mpu1, Mpu6050* mpu2, CircularHandle_t 
     };
 
     ESP_ERROR_CHECK(esp_timer_create(&oneshot_timer_args, &oneshot_timer));
-
-    ///* Start the timers */
-    //int64_t start = esp_timer_get_time();
-    //ESP_ERROR_CHECK(esp_timer_start_once(oneshot_timer, 50));
-//
-    //xSemaphoreTake(timer_sem, portMAX_DELAY);
-    //int64_t end = esp_timer_get_time();
-//
-    //printf("xsemtook: %lld us\n", end-start);
-
 }
 
 esp_err_t Drone::set_motor_lane_mapping(const MotorLaneMapping motorMapping){
@@ -655,16 +645,16 @@ void Drone::drone_task(void *args)
         status = get_imu_data(2, ypr2, 0);
         if (status == ESP_OK)
         {
-            //this->ypr2 = ypr2;
-            //yprCounter++;
-            //newImuData2 = true;
+            this->ypr2 = ypr2;
+            yprCounter++;
+            newImuData2 = true;
         }
 
         if(newImuData1 && newImuData2){
-            m_state.currPitch   = ((ypr1.pitch * radToDegree) + (ypr2.pitch * radToDegree)) / 2.0;
-            //m_state.currYaw     = ((ypr1.yaw * radToDegree) + (ypr2.yaw * radToDegree)) / 2;
-            m_state.currYaw     = ypr1.yaw * radToDegree;
-            m_state.currRoll    = ((ypr1.roll * radToDegree) + (ypr2.roll * radToDegree)) / 2.0;
+            m_state.currPitch   = ((ypr1.pitch + ypr2.pitch) * radToDegree) / 2.0;
+            m_state.currYaw     = ((ypr1.yaw + ypr2.yaw) * radToDegree) / 2;
+            m_state.currYaw     = ypr1.yaw * radToDegree;  // ignoring imu 2 yaw
+            m_state.currRoll    = ((ypr1.roll + ypr2.roll) * radToDegree) / 2.0;
         }
         else if(newImuData1 && !newImuData2){
             m_state.currPitch   = ypr1.pitch * radToDegree;
@@ -674,6 +664,7 @@ void Drone::drone_task(void *args)
         else if(!newImuData1 && newImuData2){
             m_state.currPitch   = ypr2.pitch * radToDegree;
             m_state.currRoll    = ypr2.roll * radToDegree;
+            // ignoring imu 2 yaw
         }
 
 

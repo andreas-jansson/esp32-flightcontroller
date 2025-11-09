@@ -11,6 +11,8 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "driver/gpio.h"
+#include "nvs_flash.h"
+#include "nvs.h"
 
 #include "mpu6050.h"
 #include "debug.h"
@@ -300,37 +302,38 @@ void Mpu6050::dmp_task(void* args){
     // getYGyroOffset: 4
     // getZGyroOffset: -35
 
+    load_offsets();
 
     if(address == ADDR_68){
-        status = set_x_accel_offset(-5071);
-        ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-        status = set_y_accel_offset(1580);
-        ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-        status = set_z_accel_offset(514);
-        ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-        status = set_x_gyro_offset(-63);
-        ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-        status = set_y_gyro_offset(27);
-        ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-        status = set_z_gyro_offset(-2);
-        ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+        //status = set_x_accel_offset(-5071);
+        //ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+        //status = set_y_accel_offset(1580);
+        //ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+        //status = set_z_accel_offset(514);
+        //ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+        //status = set_x_gyro_offset(-63);
+        //ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+        //status = set_y_gyro_offset(27);
+        //ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+        //status = set_z_gyro_offset(-2);
+        //ESP_ERROR_CHECK_WITHOUT_ABORT(status);
 
         status = this->set_chip_rotation(ROTATE_180);
         ESP_ERROR_CHECK_WITHOUT_ABORT(status);
     }
     else{
-        status = set_x_accel_offset(224);
-        ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-        status = set_y_accel_offset(1);
-        ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-        status = set_z_accel_offset(1614);
-        ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-        status = set_x_gyro_offset(49);
-        ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-        status = set_y_gyro_offset(4);
-        ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-        status = set_z_gyro_offset(-35);
-        ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+        //status = set_x_accel_offset(224);
+        //ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+        //status = set_y_accel_offset(1);
+        //ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+        //status = set_z_accel_offset(1614);
+        //ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+        //status = set_x_gyro_offset(49);
+        //ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+        //status = set_y_gyro_offset(4);
+        //ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+        //status = set_z_gyro_offset(-35);
+        //ESP_ERROR_CHECK_WITHOUT_ABORT(status);
 
 
         status = this->set_chip_rotation(ROTATE_90);
@@ -381,16 +384,12 @@ void Mpu6050::dmp_task(void* args){
     gpio_config(&ioConf);
 
 
-
     if(address == ADDR_68)
         status = gpio_isr_handler_add(static_cast<gpio_num_t>(m_interruptPin), dmp_data_handler_1, (void *)m_interruptPin);
     else if(address == ADDR_69)
         status = gpio_isr_handler_add(static_cast<gpio_num_t>(m_interruptPin), dmp_data_handler_2, (void *)m_interruptPin);
 
     ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-
-    // calibrating if pressing bottom left button on ctrl l2?
-    //pid_calibrate(100);
 
     status = this->set_dmp_enabled(true);
     ESP_ERROR_CHECK_WITHOUT_ABORT(status);
@@ -1695,7 +1694,7 @@ esp_err_t Mpu6050::pid_calibrate(int nrLoops){
     set_y_gyro_offset(0);
     set_z_gyro_offset(0);
 
-
+    // dont remember why 4? magic numbers wtf..
     for(int j=0;j<4;j++){
         for(int i=0;i<nrLoops;i++){
         
@@ -1796,8 +1795,16 @@ esp_err_t Mpu6050::pid_calibrate(int nrLoops){
     status = get_z_gyro_offset(z_gyro);
     ESP_ERROR_CHECK_WITHOUT_ABORT(status);
 
-    printf("\naddr: 0x%x x_acc: %d y_acc: %d z_acc: %d x_gyro: %d y_gyro: %d z_gyro: %d\n", address, x_acc, y_acc, z_acc, x_gyro, y_gyro, z_gyro);
+    imuOffsets offsets = {
+        .x_acc = x_acc,
+        .y_acc = y_acc,
+        .z_acc = z_acc,
+        .x_gyro = x_gyro,
+        .y_gyro = y_gyro,
+        .z_gyro = z_gyro
+    };
 
+    store_offsets(offsets);
 
     return status;
 }
@@ -1826,4 +1833,79 @@ void Mpu6050::pid(float target, float current, Pid& pid){
     pid.prevErr = err;
     pid.c = kPOut + kIOut + kDOut;
 
+}
+
+
+esp_err_t Mpu6050::store_offsets(imuOffsets& offset_data){
+    esp_err_t status{};
+    nvs_handle_t my_handle;
+    std::string key = "imu_offset_" + std::to_string(this->address);
+
+    status = nvs_open("imu_offsets", NVS_READWRITE, &my_handle);
+    if (status != ESP_OK) {
+        printf("Error opening NVS handle!\n");
+        return status;
+    }
+
+    status = nvs_set_blob(my_handle, key.c_str(), &offset_data, sizeof(offset_data));
+    if (status != ESP_OK) {
+        printf("Error writing NVS blob!\n");
+        nvs_close(my_handle);
+        return status;
+    }
+    printf("written data to key[%s]\n", key.c_str());
+
+    status = nvs_commit(my_handle);
+    if (status != ESP_OK) {
+        printf("Error commiting data!\n");
+    }
+    printf("comitted write\n");
+
+    nvs_close(my_handle);
+
+
+    printf("\nSaved addr: 0x%x\nx_acc: %d\ny_acc: %d\nz_acc: %d\nx_gyro: %d\ny_gyro: %d\nz_gyro: %d\n", 
+        this->address, offset_data.x_acc, offset_data.y_acc, offset_data.z_acc, offset_data.x_gyro, offset_data.y_gyro, offset_data.z_gyro);
+
+    return status;
+}
+
+esp_err_t Mpu6050::load_offsets(){
+    esp_err_t status{};
+    nvs_handle_t my_handle;
+    imuOffsets offets{};
+    size_t offsets_size{sizeof(imuOffsets)};
+    std::string key = "imu_offset_" + std::to_string(this->address);
+
+    status = nvs_open("imu_offsets", NVS_READWRITE, &my_handle);
+    if (status != ESP_OK) {
+        printf("Error opening NVS handle!\n");
+        return status;
+    }
+
+    status = nvs_get_blob(my_handle, key.c_str(), &offets, &offsets_size);
+    if (status != ESP_OK) {
+        printf("Error getting blob key[%s]\n", key.c_str());
+        return status;
+    }
+
+    status = set_x_accel_offset(offets.x_acc);
+    ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+    status = set_y_accel_offset(offets.y_acc);
+    ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+    status = set_z_accel_offset(offets.z_acc);
+    ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+    status = set_x_gyro_offset(offets.x_gyro);
+    ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+    status = set_y_gyro_offset(offets.y_gyro);
+    ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+    status = set_z_gyro_offset(offets.z_gyro);
+    ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+   
+
+    printf("\nLoaded addr: 0x%x\nx_acc: %d\ny_acc: %d\nz_acc: %d\nx_gyro: %d\ny_gyro: %d\nz_gyro: %d\n", 
+        this->address, offets.x_acc, offets.y_acc, offets.z_acc, offets.x_gyro, offets.y_gyro, offets.z_gyro);
+
+    nvs_close(my_handle);
+    return status;
 }

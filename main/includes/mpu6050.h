@@ -45,6 +45,14 @@ namespace mpu6050Value{
     constexpr inline uint8_t VALUE_PWR_MGMT_1_CLKSEL_EXT_PLL_19MHZ = 0x5;
     constexpr inline uint8_t VALUE_PWR_MGMT_1_CLKSEL_STOP = 0x7;
 }
+struct imuOffsets{
+    int16_t x_acc{};
+    int16_t y_acc{};
+    int16_t z_acc{};
+    int16_t x_gyro{};
+    int16_t y_gyro{};
+    int16_t z_gyro{};
+};
 
 enum YawPitchRollEnum{
 	YAW,
@@ -98,11 +106,6 @@ class Mpu6050{
 
 	Mpu6050(enum Mpu6050Addr addr, I2cHandler* i2c, int interruptPin);
 
-	//Mpu6050(Mpu6050 &other) = delete;
-    //void operator=(const Mpu6050 &) = delete;
-    //static Mpu6050 *GetInstance(enum Mpu6050Addr address, I2cHandler* i2c);
-	//static Mpu6050 *GetInstance();
-
     esp_err_t mpu6050_init();
     esp_err_t dmp_init();
 	void dmp_task(void* args);
@@ -111,6 +114,9 @@ class Mpu6050{
 	RingbufHandle_t get_queue_handle(){
 		return dmp_buf_handle;
 	}
+
+	esp_err_t store_offsets(imuOffsets& offset_data);
+	esp_err_t load_offsets();
 
     esp_err_t get_6axis_motion(int16_t& ax, int16_t& ay, int16_t& az, int16_t& gx, int16_t& gy, int16_t& gz);
 	esp_err_t get_6axis_motion2(int16_t& ax, int16_t& ay, int16_t& az, int16_t& gx, int16_t& gy, int16_t& gz);
