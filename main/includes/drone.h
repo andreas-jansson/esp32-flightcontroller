@@ -91,15 +91,10 @@ class Drone{
     uart_port_t uartNum{1};
     QueueHandle_t uart_queue{};
 
-    /*  */
+    /* battery info */
     float m_battert_max_voltage;
     float m_battert_max_mah;
     float m_battert_max_wh;
-
-    float m_battert_current_voltage;
-    float m_battert_current_mah;
-    float m_battert_current_wh;
-
 
     Drone(
         Dshot600* dshot_obj, 

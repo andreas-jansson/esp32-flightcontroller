@@ -80,9 +80,6 @@ esp_err_t Mpu6050::mpu6050_init(){
     status = set_clk_source(1);
     ESP_RETURN_ON_ERROR(status, log_tag, "Failed to set clock source: 0x%x", 0);
 
-    //status = set_sample_rate(4);
-    //ESP_RETURN_ON_ERROR(status, log_tag, "Failed to set sample rate: 0x%x", 0);
-
     status = set_full_scale_gyro_range(0);
     ESP_RETURN_ON_ERROR(status, log_tag, "Failed to set gyro scale range: 0x%x", 0);
 
@@ -278,90 +275,44 @@ void Mpu6050::dmp_task(void* args){
     status = this->dmp_init();
     ESP_ERROR_CHECK_WITHOUT_ABORT(status);
 
-    // old 0x68
-    //getXAccelOffset: -4991
-    //getYAccelOffset: 1534
-    //getZAccelOffset: 476
-    //getXGyroOffset: -61
-    //getYGyroOffset: 32
-    //getZGyroOffset: 3
-
-    // new 0x68
-    // getXAccelOffset: -5071
-    // getYAccelOffset: 1514
-    // getZAccelOffset: 514
-    // getXGyroOffset: -63
-    // getYGyroOffset: 27
-    // getZGyroOffset: -2
-
-    //new 0x69
-    // getXAccelOffset: 224
-    // getYAccelOffset: 1
-    // getZAccelOffset: 1614
-    // getXGyroOffset: 49
-    // getYGyroOffset: 4
-    // getZGyroOffset: -35
+    /* sets the dmp FIFO rate divisor(default 1) in the firmware to 0*/
+    /* 200 / (1+1) */
+    uint8_t dmp_update[2] = {0x00, 0x00}; // 0x0000 → divisor = 0 → full 200 Hz
+    writeMemoryBlock(dmp_update, 2, 0x02, 0x16);
 
     load_offsets();
 
     if(address == ADDR_68){
-        //status = set_x_accel_offset(-5071);
-        //ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-        //status = set_y_accel_offset(1580);
-        //ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-        //status = set_z_accel_offset(514);
-        //ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-        //status = set_x_gyro_offset(-63);
-        //ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-        //status = set_y_gyro_offset(27);
-        //ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-        //status = set_z_gyro_offset(-2);
-        //ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-
         status = this->set_chip_rotation(ROTATE_180);
         ESP_ERROR_CHECK_WITHOUT_ABORT(status);
     }
     else{
-        //status = set_x_accel_offset(224);
-        //ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-        //status = set_y_accel_offset(1);
-        //ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-        //status = set_z_accel_offset(1614);
-        //ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-        //status = set_x_gyro_offset(49);
-        //ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-        //status = set_y_gyro_offset(4);
-        //ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-        //status = set_z_gyro_offset(-35);
-        //ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-
-
         status = this->set_chip_rotation(ROTATE_90);
         ESP_ERROR_CHECK_WITHOUT_ABORT(status);
     }
 
-        int16_t x_acc{};
-        int16_t y_acc{};
-        int16_t z_acc{};
+    int16_t x_acc{};
+    int16_t y_acc{};
+    int16_t z_acc{};
 
-        int16_t x_gyro{};
-        int16_t y_gyro{};
-        int16_t z_gyro{};
+    int16_t x_gyro{};
+    int16_t y_gyro{};
+    int16_t z_gyro{};
 
-        status = get_x_accel_offset(x_acc);
-        ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-        status = get_y_accel_offset(y_acc);
-        ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-        status = get_z_accel_offset(z_acc);
-        ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-        status = get_x_gyro_offset(x_gyro);
-        ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-        status = get_y_gyro_offset(y_gyro);
-        ESP_ERROR_CHECK_WITHOUT_ABORT(status);
-        status = get_z_gyro_offset(z_gyro);
-        ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+    status = get_x_accel_offset(x_acc);
+    ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+    status = get_y_accel_offset(y_acc);
+    ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+    status = get_z_accel_offset(z_acc);
+    ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+    status = get_x_gyro_offset(x_gyro);
+    ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+    status = get_y_gyro_offset(y_gyro);
+    ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+    status = get_z_gyro_offset(z_gyro);
+    ESP_ERROR_CHECK_WITHOUT_ABORT(status);
 
-        printf("x_acc: %d y_acc: %d z_acc: %d x_gyro: %d y_gyro: %d z_gyro: %d", x_acc, y_acc, z_acc, x_gyro, y_gyro, z_gyro);
+    printf("x_acc: %d y_acc: %d z_acc: %d x_gyro: %d y_gyro: %d z_gyro: %d", x_acc, y_acc, z_acc, x_gyro, y_gyro, z_gyro);
     
     /////// ISR setup /////////
     if(address == ADDR_68){
@@ -447,7 +398,7 @@ void Mpu6050::dmp_task(void* args){
             BaseType_t res = xRingbufferSend(dmp_buf_handle, &ypr, sizeof(YawPitchRoll), 1);
 
         if (res != pdTRUE) {
-                //printf("Failed to send dmp item: handle %p size %u\n", web_buf_handle, sizeof(ypr));
+                printf("Failed to send dmp item\n");
             } 
         }
     }
@@ -489,7 +440,7 @@ void Mpu6050::raw_task(void* args){
     //ESP_ERROR_CHECK_WITHOUT_ABORT(status);
 
     // 	setRate(4); // 1khz / (1 + 4) = 200 Hz
-    status = set_sample_rate(0);
+    status = set_sample_rate(4);
     ESP_ERROR_CHECK_WITHOUT_ABORT(status);
 
     status = set_dlpf_mode(0x3);
