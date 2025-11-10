@@ -1,6 +1,6 @@
 
 # ESP32 Flight Controller (ongoing)
-
+Built using IDF 5.1.1, using custom implementation of DSHOT600, MPU6050 and CRFS parsing.
 
 ## Key Points
 * 2x MPU6050 
@@ -20,10 +20,6 @@
 * CRSF 500Hz
 * control loop 2,5kHz 
 
-## Build Info
-* Built using IDF 5.1.1
-
-
 ## Components
 * components/arduino/libraries/TFT_eSPI
 * components/bmp280
@@ -32,3 +28,10 @@
 * Replace circular buffers with signal to improve performance
 * Implement additional telemetry, drone -> controller
 * Implement GPS module
+
+## Known issues
+* ESP32 gpio pin 37 needs to be remapped, need to be analog
+
+### Schematics
+
+![image info](./images/dev_board.jpeg)
