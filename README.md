@@ -1,32 +1,34 @@
-# _Sample project_
 
-(See the README.md file in the upper level 'examples' directory for more information about examples.)
-
-This is the simplest buildable example. The example is used by command `idf.py create-project`
-that copies the project to user specified path and set it's name. For more information follow the [docs page](https://docs.espressif.com/projects/esp-idf/en/latest/api-guides/build-system.html#start-a-new-project)
+# ESP32 Flight Controller (ongoing)
 
 
+## Key Points
+* 2x MPU6050 
+* BMP280
+* CRSF
+* DSHOT600 (rmt)
 
-## How to use example
-We encourage the users to use the example as a template for the new projects.
-A recommended way is to follow the instructions on a [docs page](https://docs.espressif.com/projects/esp-idf/en/latest/api-guides/build-system.html#start-a-new-project).
+## Hardware
+* ESP32 ttgo
+* MPU6050
+* BMP280
+* Radiomaster RP3 ExpressLRS ELRS 2.4GHz
+* Sequre E70
 
-## Example folder contents
+## Performance
+* IMU 200Hz (100Hz per imu)
+* CRSF 500Hz
+* control loop 2,5kHz 
 
-The project **sample_project** contains one source file in C language [main.c](main/main.c). The file is located in folder [main](main).
+## Build Info
+* Built using IDF 5.1.1
 
-ESP-IDF projects are built using CMake. The project build configuration is contained in `CMakeLists.txt`
-files that provide set of directives and instructions describing the project's source files and targets
-(executable, library, or both). 
 
-Below is short explanation of remaining files in the project folder.
+## Components
+* components/arduino/libraries/TFT_eSPI
+* components/bmp280
 
-```
-├── CMakeLists.txt
-├── main
-│   ├── CMakeLists.txt
-│   └── main.c
-└── README.md                  This is the file you are currently reading
-```
-Additionally, the sample project contains Makefile and component.mk files, used for the legacy Make based build system. 
-They are not used or needed when building with CMake and idf.py.
+## TODO
+* Replace circular buffers with signal to improve performance
+* Implement additional telemetry, drone -> controller
+* Implement GPS module

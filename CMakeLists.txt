@@ -9,5 +9,3 @@ set(EXTRA_COMPONENT_DIRS "components")
 set(EXTRA_COMPONENT_DIRS "components/arduino/libraries/TFT_eSPI")
 project(flightController)
 
-#SET(CMAKE_CXX_STANDARD 17)
-#target_compile_options(${COMPONENT_LIB} PUBLIC -std=gnu++17)
