@@ -277,8 +277,8 @@ void Mpu6050::dmp_task(void* args){
 
     /* sets the dmp FIFO rate divisor(default 1) in the firmware to 0*/
     /* 200 / (1+1) */
-    uint8_t dmp_update[2] = {0x00, 0x00}; // 0x0000 → divisor = 0 → full 200 Hz
-    writeMemoryBlock(dmp_update, 2, 0x02, 0x16);
+    // uint8_t dmp_update[2] = {0x00, 0x00}; // 0x0000 → divisor = 0 → full 200 Hz
+    // writeMemoryBlock(dmp_update, 2, 0x02, 0x16);
 
     load_offsets();
 
