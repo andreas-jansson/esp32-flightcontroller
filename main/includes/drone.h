@@ -91,6 +91,15 @@ class Drone{
     uart_port_t uartNum{1};
     QueueHandle_t uart_queue{};
 
+    /*  */
+    float m_battert_max_voltage;
+    float m_battert_max_mah;
+    float m_battert_max_wh;
+
+    float m_battert_current_voltage;
+    float m_battert_current_mah;
+    float m_battert_current_wh;
+
 
     Drone(
         Dshot600* dshot_obj, 
@@ -170,8 +179,13 @@ class Drone{
 
     esp_err_t init_uart(int rxPin, int txPin, int baudrate);
 
-
     CircularHandle_t get_telemetry_handle(){return m_telemetry_queue_handle;}
+
+    void set_battery_data(float max_mah, float max_voltage, float max_wh){
+        m_battert_max_voltage = max_voltage;
+        m_battert_max_mah = max_mah;
+        m_battert_max_wh = max_wh;
+    };
 
     //manage state
     esp_err_t arm_drone(uint32_t value);   

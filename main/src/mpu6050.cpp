@@ -1775,13 +1775,13 @@ esp_err_t Mpu6050::pid_calibrate(int nrLoops){
 
     }
 
-
     int16_t x_acc{};
     int16_t y_acc{};
     int16_t z_acc{};
     int16_t x_gyro{};
     int16_t y_gyro{};
     int16_t z_gyro{};
+
     status = get_x_accel_offset(x_acc);
     ESP_ERROR_CHECK_WITHOUT_ABORT(status);
     status = get_y_accel_offset(y_acc);
@@ -1909,3 +1909,5 @@ esp_err_t Mpu6050::load_offsets(){
     nvs_close(my_handle);
     return status;
 }
+
+

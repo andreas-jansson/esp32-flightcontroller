@@ -32,6 +32,15 @@
 #include "ringbuffer.h"
 #include "radioController.h"
 
+// battery info
+// battery 4000 mah
+// 22.2v
+// 60c / 120c burst
+// 88.8 WH
+
+#define BATTERY_MAX_V   22.2
+#define BATTERY_MAX_MAH 4000
+#define BATTERY_MAX_WH  88.8
 
 
 // uncomment to add back tasks
@@ -330,6 +339,7 @@ void main_task(void *args){
     Drone* drone = Drone::GetInstance(dshot, mpu1, mpu2, ringBuffer_radio, ringBuffer_radio_statistics);
     drone->init_uart(UART_ESC_RX_IO, ESC_CURRENT_PIN, UART_ESC_BAUDRATE);
     drone->set_motor_lane_mapping(motorLanes);
+    drone->set_battery_data(BATTERY_MAX_MAH, BATTERY_MAX_V, BATTERY_MAX_WH);
 
     esp_err_t status = gpio_install_isr_service(0);
     ESP_ERROR_CHECK_WITHOUT_ABORT(status);
@@ -366,7 +376,7 @@ void main_task(void *args){
 
 void app_main(void){
     TaskHandle_t main_handle{};
-    uint32_t files = DEBUG_MAIN;// | DEBUG_TELEMETRY; //  | DEBUG_RADIO | DEBUG_DRONE | DEBUG_MPU6050 | DEBUG_I2C; | DEBUG_BMP ;
+    uint32_t files = DEBUG_MAIN | DEBUG_TELEMETRY; //  | DEBUG_RADIO | DEBUG_DRONE | DEBUG_MPU6050 | DEBUG_I2C; | DEBUG_BMP ;
     uint32_t prio = DEBUG_DATA; // | DEBUG_ARGS; // DEBUG_LOGIC | DEBUG_LOWLEVEL |
 
     set_loglevel(files, prio);

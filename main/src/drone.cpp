@@ -712,7 +712,7 @@ void Drone::drone_task(void *args)
             //ESP_ERROR_CHECK_WITHOUT_ABORT(measure_current());
             ESP_ERROR_CHECK_WITHOUT_ABORT(send_telemetry());
             RadioController::send_attitude(ypr1);
-            RadioController::send_battery_data(24.0, 90.5, 100.9);
+            RadioController::send_battery_data(m_state.escState->voltage,m_state.escState->current, 100.0);
             start_telemetry = std::chrono::system_clock::now();
         }
         #endif
