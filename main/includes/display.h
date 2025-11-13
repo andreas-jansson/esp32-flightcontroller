@@ -14,11 +14,14 @@
 
 #include "common_data.h"
 
+enum DisplayState{
+    BOOTING,
+    DRONE,
+    PID_CONFIG,
+};
 
 
 class Display{
-
-
     static Display* display;
     static TFT_eSprite s_backgroundSprite;
     static TFT_eSPI m_tft;
@@ -35,7 +38,9 @@ class Display{
     static YawPitchRoll m_yprMpu1;
     static YawPitchRoll m_yprMpu2;
     static bool m_isArmed;
-    static bool m_isBooting;
+    //static bool m_isBooting;
+    static enum DisplayState m_state;
+
     static progress_t m_isCalibrating;
     static bool m_isArmed_bad_state;
     static bool m_radioActive;
@@ -43,11 +48,29 @@ class Display{
     static progress_t m_isVerifyingMPU1;
     static progress_t m_isVerifyingMPU2;
     static progress_t m_isVerifyingRadio;
+    static enum PidConfigDisplay m_pidSelected;
+    static Pid m_pid;
 
     const int32_t c_screenMidX{c_screenWidth/2};
     const int32_t c_screenMidY{c_screenHeight/2};
 
+    
 
+    void init();
+    void boot_menu();
+    void cleanup();
+    void drone_state();
+    void pid_menu();
+
+    void draw_btn(
+        int32_t x, 
+        int32_t y, 
+        int32_t w, 
+        int32_t h, 
+        uint16_t borderColor, 
+        uint16_t backgroundColor, 
+        const char* str, 
+        uint16_t strColor);
 
     Display() = default;
 
@@ -60,9 +83,10 @@ public:
     static Display *GetInstance();
 
 
+    static void set_display_state(enum DisplayState state){m_state = state; xSemaphoreGive(s_newData);};
 
     static void set_armed_status(bool isArmed);
-    static void set_booting_status(bool isBooting){m_isBooting = isBooting; xSemaphoreGive(s_newData);}
+    //static void set_booting_status(){m_state = BOOTING; xSemaphoreGive(s_newData);}
     static void set_armed_bad_state_status(bool is_bad){m_isArmed_bad_state = is_bad; xSemaphoreGive(s_newData);}
     static void set_bad_arm_status(bool isArmed){m_isArmed = isArmed; xSemaphoreGive(s_newData);}
     static void set_radio_status(bool radioActive){m_radioActive = radioActive; xSemaphoreGive(s_newData); }
@@ -73,6 +97,7 @@ public:
     static void set_mpu1_angle(YawPitchRoll yprMpu1){m_yprMpu1 = yprMpu1; xSemaphoreGive(s_newData);}
     static void set_mpu2_angle(YawPitchRoll yprMpu2){m_yprMpu2 = yprMpu2; xSemaphoreGive(s_newData);}
     static void set_calibration_status(progress_t status){m_isCalibrating = status; xSemaphoreGive(s_newData);}
+    static void set_pid_config_data(Pid pid, enum PidConfigDisplay state);
 
     void display_task(void* args);
 

@@ -11,6 +11,7 @@ idf_component_register(SRCS
                          "src/dshot600.cpp"
                          "src/display.cpp"
                          "src/ringbuffer.cpp"
+                         "src/pidConfig.cpp"
 
                          "icons/wifi_icon.cpp"
                          "icons/flight_icon.cpp"

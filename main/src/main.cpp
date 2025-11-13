@@ -349,6 +349,8 @@ void main_task(void *args){
     print_debug(DEBUG_MAIN, DEBUG_LOGIC, "starting tasks\n");
     xTaskCreatePinnedToCore(dispatch_display, "display_task", 8096, nullptr,  PRIO_BG, &display_handle, 0);
     vTaskDelay(pdMS_TO_TICKS(100));
+    Display::set_display_state(BOOTING);
+
     xTaskCreatePinnedToCore(dispatch_drone, "drone_task", 4048, nullptr,  PRIO_CONTROL, &drone_handle, 1);
 
     #ifdef WEB_TASK
@@ -376,7 +378,7 @@ void main_task(void *args){
 
 void app_main(void){
     TaskHandle_t main_handle{};
-    uint32_t files = DEBUG_MAIN | DEBUG_TELEMETRY; //  | DEBUG_RADIO | DEBUG_DRONE | DEBUG_MPU6050 | DEBUG_I2C; | DEBUG_BMP ;
+    uint32_t files = DEBUG_MAIN;// | DEBUG_TELEMETRY; //  | DEBUG_RADIO | DEBUG_DRONE | DEBUG_MPU6050 | DEBUG_I2C; | DEBUG_BMP ;
     uint32_t prio = DEBUG_DATA; // | DEBUG_ARGS; // DEBUG_LOGIC | DEBUG_LOWLEVEL |
 
     set_loglevel(files, prio);

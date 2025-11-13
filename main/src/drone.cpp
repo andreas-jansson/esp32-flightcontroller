@@ -30,6 +30,8 @@ static auto endTel = std::chrono::steady_clock::now();
 
 SemaphoreHandle_t timer_sem = nullptr;
 static esp_timer_handle_t oneshot_timer;
+Channel Drone::channel{};
+Pid Drone::m_pid[3]{};
 
 static void oneshot_timer_callback(void* arg)
 {
@@ -593,38 +595,32 @@ esp_err_t Drone::signal_telemetry_request(Dshot::DshotMessage& msg, bool& newTel
     return status;
 }
 
-void Drone::drone_task(void *args)
-{
+void Drone::drone_task(void *args){
 
-    esp_err_t status = 0;
+    using namespace std::chrono_literals;
+    using namespace std::chrono;
 
-    TickType_t xLastWakeTime;
-    const TickType_t xFrequency = 1;
-
-    constexpr uint8_t minStepSize{2};
-    constexpr float radToDegree = (180.0 / M_PI);
-
-    uint64_t yprCounter = 0;
-    uint64_t radioCounter = 0;
+    esp_err_t status              = 0;
+    uint64_t yprCounter           = 0;
+    uint64_t radioCounter         = 0;
     volatile uint64_t loopCounter = 0;
-
-
+    bool pid_config_running{};
     auto start = std::chrono::system_clock::now();
-    auto start_telemetry = std::chrono::system_clock::now();
+    auto ok_radio_timer = std::chrono::steady_clock::now();
+#ifdef TELEMETRY_TASK
+    auto telemetry_period_ms = 100ms;
+    auto next_log_time = std::chrono::steady_clock::now() + telemetry_period_ms;
+#endif
 
 
     status = calibrate_gyro();
 
-    /* await valid controller & gyro */
     verify_components_process();
     
-    Display::set_booting_status(false);
-
-    auto ok_radio_timer = std::chrono::steady_clock::now();
+    Display::set_display_state(DRONE);
 
     while (true)
     {
-
         Dshot::DshotMessage msg{};
         Channel channelNew{};
         RadioStatistics radioStatisticsNew{};
@@ -633,42 +629,28 @@ void Drone::drone_task(void *args)
         bool newSpeedValues{};
         bool newImuData1{};
         bool newImuData2{};
+        bool radio_ok{true};
 
-        status = get_imu_data(1, ypr1, 0);
+        /*********  IMU processing *********/
+        status = get_imu_data(1, m_ypr1, 0);
         if (status == ESP_OK)
         {
-            this->ypr1 = ypr1;
+            this->m_ypr1 = m_ypr1;
             yprCounter++;
             newImuData1 = true;
         }
 
-        status = get_imu_data(2, ypr2, 0);
+        status = get_imu_data(2, m_ypr2, 0);
         if (status == ESP_OK)
         {
-            this->ypr2 = ypr2;
+            this->m_ypr2 = m_ypr2;
             yprCounter++;
             newImuData2 = true;
         }
 
-        if(newImuData1 && newImuData2){
-            m_state.currPitch   = ((ypr1.pitch + ypr2.pitch) * radToDegree) / 2.0;
-            m_state.currYaw     = ((ypr1.yaw + ypr2.yaw) * radToDegree) / 2;
-            m_state.currYaw     = ypr1.yaw * radToDegree;  // ignoring imu 2 yaw
-            m_state.currRoll    = ((ypr1.roll + ypr2.roll) * radToDegree) / 2.0;
-        }
-        else if(newImuData1 && !newImuData2){
-            m_state.currPitch   = ypr1.pitch * radToDegree;
-            m_state.currYaw     = ypr1.yaw * radToDegree;
-            m_state.currRoll    = ypr1.roll * radToDegree;
-        }
-        else if(!newImuData1 && newImuData2){
-            m_state.currPitch   = ypr2.pitch * radToDegree;
-            m_state.currRoll    = ypr2.roll * radToDegree;
-            // ignoring imu 2 yaw
-        }
+        set_imu_data(newImuData1, newImuData2);
 
-
-
+        /*********   Radio processing **********/
         status = get_radio_data(channelNew, 0);
         if (status == ESP_OK)
         {
@@ -682,71 +664,47 @@ void Drone::drone_task(void *args)
         if (status == ESP_OK)
         {
             this->radio_statistics = radioStatisticsNew;
-            handle_signal_lost();
-
         }
 
-        /* send dshot telemetry command */
-        ESP_ERROR_CHECK_WITHOUT_ABORT(signal_telemetry_request(msg, newTelemetryReq));
-        startTel = std::chrono::steady_clock::now();
-
-        if(channel.ch3 >= m_deadzone){
-            /*  PID for new throttle values */
-            get_new_speed(msg, newSpeedValues);
-        }
-        else{
-            /* send 0 if thottle close to bottom*/
-            for(int i=0;i<Dshot::maxChannels;i++){
-                msg.speed[i] = 0;
-                msg.loops[i] = 0;
-            }
-        }
-
-
-        /* send telemetry and state data */
-        #ifdef TELEMETRY_TASK
-        auto end_telemetry = std::chrono::system_clock::now();
-        auto elapsed_telemetry = std::chrono::duration_cast<std::chrono::milliseconds>(end_telemetry - start_telemetry).count();
-        if (elapsed_telemetry >= 100)
-        {
-            //ESP_ERROR_CHECK_WITHOUT_ABORT(measure_current());
-            ESP_ERROR_CHECK_WITHOUT_ABORT(send_telemetry());
-            RadioController::send_attitude(ypr1);
-            RadioController::send_battery_data(m_state.escState->voltage,m_state.escState->current, 100.0);
-            start_telemetry = std::chrono::system_clock::now();
-        }
-        #endif
-
-        /* if more than 100ms since last radio msg, send 0 throttle */
-        bool radio_ok{true};
+        /* if more than 250ms since last radio msg, send 0 throttle */
         auto now = std::chrono::steady_clock::now();
         auto time_since_last_radio_msg = std::chrono::duration_cast<std::chrono::milliseconds>(now-ok_radio_timer).count();
         if(time_since_last_radio_msg >= 250){
             radio_ok = false;
         }
 
-        // send 0 throttle while not armed
-        if(!m_state.isArmed || !radio_ok){
-            Dshot::DshotMessage msg{};
-            msg.msgType = Dshot::COMMAND;
+        if(!m_state.isControllerArmed && configure_pid()){
+            printf("PID config active!\n");
+            static bool pid_config_exit_ongoing{};
 
-            for(int i=0;i<Dshot::maxChannels;i++){
-                msg.speed[i] = 0;
-                msg.loops[i] = 0;
-                msg.telemetryReq[i] = false;
+            if(!pid_config_running){
+                pid_config_running = true;
+                TaskHandle_t pid_configure_handle{};
+                xTaskCreatePinnedToCore(Drone::pid_configure_task, "pid_config_task", 4048, nullptr, 3, &pid_configure_handle, 0);
             }
+            else if(pid_config_running){
 
-            send_dshot_message(msg);
+            }
+            vTaskDelay(pdMS_TO_TICKS(2)); //no need to run control loop in full speed
         }
-        else{
-            ESP_ERROR_CHECK_WITHOUT_ABORT(send_dshot_message(msg));
+
+        /* send dshot telemetry command */
+        ESP_ERROR_CHECK_WITHOUT_ABORT(signal_telemetry_request(msg, newTelemetryReq));
+        startTel = std::chrono::steady_clock::now();
+
+        if(m_state.isControllerArmed && radio_ok && !pid_config_running){
+            m_state.isDroneArmed = true;
         }
 
+        get_speed(msg);
+        write_speed(msg);
 
-        /* calculate and set the frequenzy of received data */
+
+#ifdef TELEMETRY_TASK
         auto end = std::chrono::system_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
 
+        /* calculate and set the frequenzy of received data */
         if (elapsed >= 10000)
         {
             m_state.dmpFreq = yprCounter / 10;
@@ -756,15 +714,88 @@ void Drone::drone_task(void *args)
             radioCounter = 0;
             loopCounter = 0;
             start = std::chrono::system_clock::now();
-
         }
+
+        now = steady_clock::now();
+        if (now >= next_log_time)
+        {
+            //ESP_ERROR_CHECK_WITHOUT_ABORT(measure_current());
+            ESP_ERROR_CHECK_WITHOUT_ABORT(send_telemetry());
+            RadioController::send_attitude(m_ypr1);
+            RadioController::send_battery_data(m_state.escState->voltage,m_state.escState->current, 100.0);
+            next_log_time = now + telemetry_period_ms;
+        }
+#endif
+
         loopCounter++;
 
         // allows rmt things to run with while maintaing max loop freq ~2.5k Hz
-
         ESP_ERROR_CHECK(esp_timer_start_once(oneshot_timer, 10));
         xSemaphoreTake(timer_sem, portMAX_DELAY);
+    }
+}
 
+void Drone::write_speed(Dshot::DshotMessage &msg)
+{
+    // send 0 throttle while not armed
+    if (!m_state.isDroneArmed)
+    {
+        Dshot::DshotMessage msg{};
+        msg.msgType = Dshot::COMMAND;
+
+        for (int i = 0; i < Dshot::maxChannels; i++)
+        {
+            msg.speed[i] = 0;
+            msg.loops[i] = 0;
+            msg.telemetryReq[i] = false;
+        }
+
+        send_dshot_message(msg);
+    }
+    else
+    {
+        ESP_ERROR_CHECK_WITHOUT_ABORT(send_dshot_message(msg));
+    }
+}
+
+void Drone::get_speed(Dshot::DshotMessage &msg)
+{
+    if (channel.ch3 >= m_deadzone)
+    {
+        /*  PID for new throttle values */
+        get_new_speed(msg);
+    }
+    else
+    {
+        /* send 0 if thottle close to bottom*/
+        for (int i = 0; i < Dshot::maxChannels; i++)
+        {
+            msg.speed[i] = 0;
+            msg.loops[i] = 0;
+        }
+    }
+}
+
+void Drone::set_imu_data(bool newImuData1, bool newImuData2)
+{
+    if (newImuData1 && newImuData2)
+    {
+        m_state.currPitch = ((m_ypr1.pitch + m_ypr2.pitch) * RAD_TO_DEGREE) / 2.0;
+        m_state.currYaw = ((m_ypr1.yaw + m_ypr2.yaw) * RAD_TO_DEGREE) / 2;
+        m_state.currYaw = m_ypr1.yaw * RAD_TO_DEGREE; // ignoring imu 2 yaw
+        m_state.currRoll = ((m_ypr1.roll + m_ypr2.roll) * RAD_TO_DEGREE) / 2.0;
+    }
+    else if (newImuData1 && !newImuData2)
+    {
+        m_state.currPitch = m_ypr1.pitch * RAD_TO_DEGREE;
+        m_state.currYaw = m_ypr1.yaw * RAD_TO_DEGREE;
+        m_state.currRoll = m_ypr1.roll * RAD_TO_DEGREE;
+    }
+    else if (!newImuData1 && newImuData2)
+    {
+        m_state.currPitch = m_ypr2.pitch * RAD_TO_DEGREE;
+        m_state.currRoll = m_ypr2.roll * RAD_TO_DEGREE;
+        // ignoring imu 2 yaw
     }
 }
 
@@ -779,7 +810,7 @@ void Drone::esc_telemetry_task(void* args){
     vTaskDelay(pdMS_TO_TICKS(50000));
 
      // wait until armed for telemetry data
-    while(m_state.isArmed == false){
+    while(m_state.isControllerArmed == false){
         vTaskDelay(pdMS_TO_TICKS(5000));
     }
 
@@ -874,7 +905,7 @@ esp_err_t Drone::init_uart(int rxPin, int txPin, int baudrate){
     return status;
 }
 
-void Drone::get_new_speed(Dshot::DshotMessage& msg, bool& didChange){
+void Drone::get_new_speed(Dshot::DshotMessage& msg){
 
     constexpr uint8_t minStepSize{2};
     const uint16_t maxThrottleValue = c_saftyParams? 1000u : Dshot::maxThrottleValue;
@@ -916,9 +947,6 @@ void Drone::get_new_speed(Dshot::DshotMessage& msg, bool& didChange){
     minMax(rrSpeed, c_minThrottleValue, maxThrottleValue);  
     minMax(flSpeed, c_minThrottleValue, maxThrottleValue);  
     minMax(frSpeed, c_minThrottleValue, maxThrottleValue);  
-
-    didChange = true;
-
 
     msg.speed[m_motorLaneMapping.rearLeftlane] = rlSpeed;
     msg.loops[m_motorLaneMapping.rearLeftlane] = 0;
@@ -1034,12 +1062,12 @@ esp_err_t Drone::measure_current() {
 
 esp_err_t Drone::send_telemetry(){
     TelemetryData telemetry{};
-    telemetry.ypr1 = this->ypr1;
-    telemetry.ypr2 = this->ypr2;
+    telemetry.ypr1 = this->m_ypr1;
+    telemetry.ypr2 = this->m_ypr2;
     telemetry.channel = this->channel;
     telemetry.radioStatistics = radio_statistics;
 
-    telemetry.drone.isArmed = m_state.isArmed;
+    telemetry.drone.isControllerArmed = m_state.isControllerArmed;
     telemetry.drone.mode = m_state.mode;
     telemetry.drone.dmpFreq = m_state.dmpFreq;
     telemetry.drone.radioFreq = m_state.radioFreq;
@@ -1158,14 +1186,14 @@ esp_err_t Drone::arm_drone(uint32_t value)
 {
     
     if(value <= Radio::minChannelThld){
-        m_state.isArmed = false;
+        m_state.isControllerArmed = false;
         Display::set_armed_status(false);
         return ESP_OK;
     }
 
     esp_err_t status = 0;
 
-    m_state.isArmed = true;
+    m_state.isControllerArmed = true;
     
     Display::set_armed_status(true);
 
@@ -1250,17 +1278,11 @@ esp_err_t Drone::set_flight_mode(int value){
 
 esp_err_t Drone::set_motor_direction(enum Motor motorNum, enum MotorDirection direction)
 {
-
-    //  se data etc etc
-    // dshot->write();
     return ESP_FAIL;
 }
 
 esp_err_t Drone::get_motor_direction(enum Motor motorNum, enum MotorDirection &direction)
 {
-
-    // parse data etc etc
-    // dshot->read();
     return ESP_FAIL;
 }
 
@@ -1308,26 +1330,6 @@ uint8_t Drone::calculateCrc8(const uint8_t *Buf, const uint8_t BufLen){
     return crc;
 }
 
-esp_err_t Drone::handle_signal_lost(){
-
-    static uint32_t counter{};
-
-    if(counter >= 10){
-        // cut power
-    }
-
-    if(radio_statistics.upplink_quality == 0){
-
-        counter++;
-    }
-    else{
-        counter = 0;
-    }
-
-
-
- return 0;
-}
 
 
 esp_err_t Drone::calibrate_gyro(){
@@ -1391,3 +1393,142 @@ esp_err_t Drone::set_mpu_calibration_mode(int value){
 
     return ESP_OK;
 }
+
+
+bool Drone::configure_pid(){
+    static bool onging_check{};
+    static uint32_t counter{};
+    static std::chrono::_V2::steady_clock::time_point configBtnPressed{};
+
+    if(channel.ch9 >= Radio::maxChannelThld && !onging_check){
+        configBtnPressed = std::chrono::steady_clock::now();
+        onging_check = true;
+    }
+
+    if(channel.ch9 >= Radio::maxChannelThld && onging_check){
+        counter++;
+    }
+
+    auto now = std::chrono::steady_clock::now();
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now-configBtnPressed).count();
+    if(counter >= 250 && elapsed >= 500){
+        onging_check = false;
+        counter = 0;
+        return true;
+    }
+    return false;
+}
+
+
+void Drone::pid_configure_task(void* args){
+
+
+
+    enum PidConfigDisplay prev_selected_row{};
+    enum PidConfigDisplay selected_row{};
+
+    Display::set_display_state(PID_CONFIG);
+
+    Pid temp_pid = Drone::m_pid[0];
+    bool apply{};
+    bool cancel{};
+    bool exit_config{};
+
+    uint32_t speed_counter{};
+
+    while(true){
+        bool increase{};
+        bool decrease{};
+        
+        if(Drone::channel.ch2 > Radio::maxChannelThld){ // down
+            if(selected_row == 0 )
+                selected_row = CANCEL_PID;
+            else
+                selected_row = static_cast<enum PidConfigDisplay>((selected_row - 1) % 5);
+            vTaskDelay(pdMS_TO_TICKS(100));
+        }
+        else if(Drone::channel.ch2 < Radio::minChannelThld){ // up
+            selected_row = static_cast<enum PidConfigDisplay>((selected_row + 1) % 5);
+            vTaskDelay(pdMS_TO_TICKS(100));
+        }
+        else if(Drone::channel.ch1 < Radio::minChannelThld){ // left
+            increase = true;
+            if(speed_counter>=10){
+                vTaskDelay(pdMS_TO_TICKS(70));
+            }
+            else
+                vTaskDelay(pdMS_TO_TICKS(100));        
+        }
+        else if(Drone::channel.ch1 > Radio::maxChannelThld){ // right
+            decrease = true;
+            if(speed_counter>=10){
+                vTaskDelay(pdMS_TO_TICKS(70));
+            }
+            else
+                vTaskDelay(pdMS_TO_TICKS(100));
+        }
+        else if(Drone::channel.ch9 > Radio::maxChannelThld){ // confirm
+            if(selected_row == APPLY){
+                for(int i=0;i<3;i++){
+                    m_pid[i].kP = temp_pid.kP;
+                    m_pid[i].kI = temp_pid.kI;
+                    m_pid[i].kD = temp_pid.kD;
+                }
+                exit_config = true;
+            }
+            else if (selected_row == CANCEL_PID){
+                exit_config = true;
+            }
+        }
+
+        
+        switch(selected_row){
+            case P:
+                if(increase)
+                    temp_pid.kP += 0.01;
+                else if(decrease)
+                    temp_pid.kP -= 0.01;
+            break;
+            case I:
+                if(increase)
+                    temp_pid.kI += 0.01;
+                else if(decrease)
+                    temp_pid.kI -= 0.01;
+            break;
+            case D:
+                if(increase)
+                    temp_pid.kD += 0.01;
+                else if(decrease)
+                    temp_pid.kD -= 0.01;
+            break;
+            case APPLY:
+            break;
+            case CANCEL_PID:
+            break;
+        }
+            if(selected_row != prev_selected_row || increase || decrease){
+                printf("%d\n", selected_row);
+                Display::set_pid_config_data(temp_pid, selected_row);
+            }
+
+
+            if(increase || decrease)
+                speed_counter++;
+            else
+                speed_counter = 0;
+        
+
+            prev_selected_row = selected_row;
+
+            if(exit_config){
+                printf("deleteing task");
+                Display::set_display_state(DRONE);
+                vTaskDelete(nullptr);
+            }
+        
+            if(speed_counter<=5){
+                vTaskDelay(pdMS_TO_TICKS(100));
+            }
+    }
+}
+

@@ -158,7 +158,7 @@ void telemetry_task(void* args){
 
 
         print_debug(DEBUG_TELEMETRY, DEBUG_DATA,"[KArmed: %3s mode: %-17s (%d) dmp: %lu Hz radio: %lu Hz loop Hz: %lu\n", 
-            telemetry.drone.isArmed? "Yes" : "No", 
+            telemetry.drone.isControllerArmed? "Yes" : "No", 
             mode[telemetry.drone.mode].c_str(), 
             telemetry.drone.mode, 
             telemetry.drone.dmpFreq,

@@ -42,15 +42,15 @@ struct MotorLaneMapping{
 class Drone{
 
     static Drone* drone;
+    static Channel channel;
+    static Pid m_pid[3];
+
     DroneState m_state{};
     MotorLaneMapping m_motorLaneMapping{};
 
-    Channel channel{};
-    YawPitchRoll ypr1{};
-    YawPitchRoll ypr2{};
+    YawPitchRoll m_ypr1{};
+    YawPitchRoll m_ypr2{};
     RadioStatistics radio_statistics{};
-
-    Pid m_pid[3]{};
 
     Dshot600* m_dshotObj;
     Mpu6050* m_mpuObj1;
@@ -62,14 +62,9 @@ class Drone{
     const float m_minYaw{-45};
     const float m_maxRoll{45};
     const float m_minRoll{-45};
-    const float m_deadzone{295 * 1.10}; // min throttle raw value: 295
+    const float m_deadzone{295 * 1.05}; // min throttle raw value: 295
 
-    bool m_motor1DirectionNormal{true};
-    bool m_motor2DirectionNormal{true};
-    bool m_motor3DirectionNormal{true};
-    bool m_motor4DirectionNormal{true};
-
-    const uint16_t c_minThrottleValue{48}; //sending lower may cause strange motor behaviour
+    const uint16_t c_minThrottleValue{48}; // lowest value for dshot protocol
     const bool c_saftyParams{true}; //limits various values while testing
 
 
@@ -103,6 +98,7 @@ class Drone{
         CircularHandle_t radio_queue_handle,
         CircularHandle_t radio_statistics_queue_handle);
 
+    static void pid_configure_task(void* args);
 
     esp_err_t parse_channel_state(const Channel& channel);
 
@@ -111,6 +107,7 @@ class Drone{
 
     esp_err_t send_dshot_message(Dshot::DshotMessage& msg);
 
+    esp_err_t measure_current();
     esp_err_t send_telemetry_message(TelemetryData& msg);
     esp_err_t send_telemetry();
     esp_err_t signal_telemetry_request(Dshot::DshotMessage& msg, bool& newTelemetryReq);
@@ -123,6 +120,7 @@ class Drone{
     esp_err_t verify_components_process();
     esp_err_t arming_process();
 
+    esp_err_t calibrate_gyro();
     bool verify_controller_data(Channel channel);
     bool verify_imu_data(YawPitchRoll ypr);
 
@@ -130,13 +128,10 @@ class Drone{
     esp_err_t toggle_motor_direction(); //not working 
     esp_err_t blink_led(uint16_t newChannelValue); //not working, no led?
 
+    void set_imu_data(bool newImuData1, bool newImuData2);
     esp_err_t get_imu_data(int imuNr, YawPitchRoll& newData, TickType_t ticks);
     esp_err_t get_radio_data(Channel& newData, TickType_t ticks);
     esp_err_t get_radio_statistics(RadioStatistics &newData, TickType_t ticks);
-
-    esp_err_t measure_current();
-
-    esp_err_t calibrate_gyro();
 
     ToggleState did_channel_state_switch(uint16_t newChannelValue, uint8_t channelNr);
 
@@ -146,12 +141,16 @@ class Drone{
     float mapValue2(uint32_t x, uint32_t in_min, uint32_t in_max, float out_min, float out_max);
 
     void pid(float target, float current, Pid& pid);
-    void get_new_speed(Dshot::DshotMessage& msg, bool& didChange);
+    void get_new_speed(Dshot::DshotMessage& msg);
+    void write_speed(Dshot::DshotMessage &msg);
+    void get_speed(Dshot::DshotMessage &msg);
 
     uint8_t updateCrc8(uint8_t crc, uint8_t crc_seed);
     uint8_t calculateCrc8(const uint8_t *Buf, const uint8_t BufLen);
 
-    esp_err_t handle_signal_lost();
+    bool configure_pid();
+
+    esp_err_t arm_drone(uint32_t value);   
 
 
     public:
@@ -170,6 +169,7 @@ class Drone{
     esp_err_t set_motor_lane_mapping(const MotorLaneMapping motorMapping);
 
     void drone_task(void *args);
+
     void esc_telemetry_task(void* args);
 
     esp_err_t init_uart(int rxPin, int txPin, int baudrate);
@@ -182,11 +182,7 @@ class Drone{
         m_battert_max_wh = max_wh;
     };
 
-    //manage state
-    esp_err_t arm_drone(uint32_t value);   
 
     esp_err_t set_motor_direction(enum Motor motorNum, enum MotorDirection direction);  // TODO
     esp_err_t get_motor_direction(enum Motor motorNum, enum MotorDirection& direction); // TODO
-
-
 };

@@ -7,6 +7,9 @@
 
 #define RAD_TO_DEG (180.0/M_PI)
 
+
+#define RAD_TO_DEGREE (180.0 / M_PI)
+
 namespace Radio{
     static constexpr int maxChannelValue{1811};
     static constexpr int maxChannelThld{maxChannelValue-100};
@@ -164,7 +167,8 @@ struct EscTelemetry{
 struct DroneState{
 
     bool isPaired{};
-    bool isArmed{};
+    bool isControllerArmed{};
+    bool isDroneArmed{};
     bool isGrounded{};
     bool calibrateGyro{};
 
@@ -296,6 +300,14 @@ typedef enum Progress{
     PASS,
     FAILED
 }progress_t;
+
+enum PidConfigDisplay{
+    P,
+    I,
+    D,
+    APPLY,
+    CANCEL_PID
+};
 
 
 enum MpuReg{

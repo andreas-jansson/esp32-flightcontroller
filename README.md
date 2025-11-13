@@ -28,6 +28,8 @@ Built using IDF 5.1.1, using custom implementation of DSHOT600, MPU6050 and CRFS
 * Replace circular buffers with signal to improve performance
 * Implement additional telemetry, drone -> controller
 * Implement GPS module
+* BIDI dshot600
+* rpm filtering
 
 ## Known issues
 * ESP32 gpio pin 37 needs to be remapped, need to be analog
@@ -35,3 +37,8 @@ Built using IDF 5.1.1, using custom implementation of DSHOT600, MPU6050 and CRFS
 ### Schematics
 
 ![image info](./images/dev_board.jpeg)
+
+## noteable issues solved
+* stuttering motors - solved by sleep/wait after rmt write
+* dmp above 100hz (write to fw) freaks out after a while
+
