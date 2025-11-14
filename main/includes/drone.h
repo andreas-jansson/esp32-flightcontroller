@@ -79,6 +79,8 @@ class Drone{
     CircularHandle_t m_telemetry_queue_handle{};
     CircularHandle_t m_dshot_queue_handle{};
 
+    static QueueHandle_t m_pid_conf_sem;
+
     uint32_t m_dmpFreq{};
     uint32_t m_radioFreq{};
     uint32_t m_loopFreq{};

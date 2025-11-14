@@ -306,7 +306,9 @@ enum PidConfigDisplay{
     I,
     D,
     APPLY,
-    CANCEL_PID
+    CANCEL_PID,
+    PID_CONFIG_APPLY,
+    PID_CONFIG_CANCEL
 };
 
 

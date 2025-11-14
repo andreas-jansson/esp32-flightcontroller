@@ -6,20 +6,18 @@ Display *Display::display = nullptr;
 TFT_eSPI Display::m_tft{TFT_eSPI()};
 TFT_eSprite Display::s_backgroundSprite{TFT_eSprite(&m_tft)};
 SemaphoreHandle_t Display::s_newData = nullptr;
-
-enum DisplayState Display::m_state{};
 YawPitchRoll Display::m_yprMpu1{};
 YawPitchRoll Display::m_yprMpu2{};
 bool Display::m_isArmed{};
-//bool Display::m_isBooting{true};
-progress_t Display::m_isCalibrating{};
 bool Display::m_isArmed_bad_state{};
 bool Display::m_radioActive{};
 bool Display::m_wifiConnected{};
+progress_t Display::m_isCalibrating{};
 progress_t Display::m_isVerifyingMPU1{NOT_STARTED};
 progress_t Display::m_isVerifyingMPU2{NOT_STARTED};
 progress_t Display::m_isVerifyingRadio{NOT_STARTED};
 enum PidConfigDisplay Display::m_pidSelected;
+enum DisplayState Display::m_state{};
 Pid Display::m_pid;
 
 
@@ -36,9 +34,8 @@ void Display::draw_leveling(int32_t offsetMiddle, int32_t y, float angle, float 
 
     const int32_t cx = c_screenMidX + offsetMiddle;
     const int32_t cy = y;
-    const float half_len = length/2;    // half the drawn length (total = 60 px)
-    const float gain = 1.0f;            // scale if you want: theta = gain * roll
-    // If roll is in radians (common):
+    const float half_len = length/2;    
+    const float gain = 1.0f;          
     float theta = gain * angle;
 
     float cs = cosf(theta);
@@ -196,14 +193,14 @@ void Display::boot_menu(){
             float lineLen = 25;     
 
             s_backgroundSprite.setTextSize(1);
-            draw_leveling(-40, 200, m_yprMpu1.roll, lineLen, TFT_WHITE); 
-            draw_leveling(0, 200, -m_yprMpu1.pitch, lineLen, TFT_WHITE); 
-            draw_leveling(40, 200, m_yprMpu1.yaw + (M_PI/2), lineLen, TFT_WHITE); 
+            draw_leveling(-40, 200,  m_yprMpu1.roll,           lineLen, TFT_WHITE); 
+            draw_leveling(0,   200, -m_yprMpu1.pitch,          lineLen, TFT_WHITE); 
+            draw_leveling(40,  200,  m_yprMpu1.yaw + (M_PI/2), lineLen, TFT_WHITE); 
 
             s_backgroundSprite.setTextColor(TFT_WHITE);
-            s_backgroundSprite.drawString("roll", 10, 225);
-            s_backgroundSprite.drawString("pitch", 50, 225);
-            s_backgroundSprite.drawString("yaw", 100, 225);
+            s_backgroundSprite.drawString("roll",  10,  225);
+            s_backgroundSprite.drawString("pitch", 50,  225);
+            s_backgroundSprite.drawString("yaw",   100, 225);
         }
 
         if (m_isVerifyingMPU2 != NOT_STARTED) {
@@ -211,13 +208,9 @@ void Display::boot_menu(){
             float lineLen = 25;     
 
             s_backgroundSprite.setTextSize(1);
-            draw_leveling(-35, 195, m_yprMpu2.roll, lineLen, TFT_BLUE); 
-
-
-            draw_leveling(5, 195, -m_yprMpu2.pitch, lineLen, TFT_BLUE); 
-
-
-            draw_leveling(45, 195, m_yprMpu2.yaw + (M_PI/2), lineLen, TFT_BLUE); 
+            draw_leveling(-35,  195,  m_yprMpu2.roll,           lineLen, TFT_BLUE); 
+            draw_leveling(5,    195, -m_yprMpu2.pitch,          lineLen, TFT_BLUE); 
+            draw_leveling(45,   195,  m_yprMpu2.yaw + (M_PI/2), lineLen, TFT_BLUE); 
 
         }
 
@@ -288,9 +281,10 @@ void Display::pid_menu(){
 
 
     uint16_t x{45};
-    uint16_t y{15};
+    uint16_t y{5};
     uint16_t y_dist{40};
     uint16_t x_offset{30};
+    Pid prev_pid{};
 
     char p_str[25];
     char i_str[25];
@@ -298,11 +292,15 @@ void Display::pid_menu(){
 
     m_pidSelected = P;
 
+    s_backgroundSprite.unloadFont();
+    s_backgroundSprite.setTextSize(1);
+    s_backgroundSprite.drawString("PRESS L2 TO SELECT" , x - x_offset, (y_dist * 5) + 5);
+
+
     s_backgroundSprite.loadFont(fontHemi);
 
-    Pid prev_pid{};
 
-    while(m_state == PID_CONFIG || true){
+    while(m_state == PID_CONFIG){
 
         (void)snprintf(p_str, 25, "P: %-3.2f",  m_pid.kP);
         (void)snprintf(i_str, 25, "I:  %-3.2f", m_pid.kI);
@@ -310,57 +308,74 @@ void Display::pid_menu(){
 
         switch(m_pidSelected){
             case P:
-                s_backgroundSprite.fillRect(x - x_offset, y + y_dist, 150, 30, TFT_BLACK);
-
+                s_backgroundSprite.fillRect(x - x_offset, y, 150, 30, TFT_BLACK);
                 s_backgroundSprite.setTextColor(TFT_WHITE, TFT_BLACK);
-                s_backgroundSprite.drawString(p_str , x - x_offset, y + y_dist);
+                s_backgroundSprite.drawString(p_str , x - x_offset, y);
                 s_backgroundSprite.setTextColor(TFT_DARKGREY);
-                s_backgroundSprite.drawString(i_str , x - x_offset, y + (y_dist * 2));
-                s_backgroundSprite.drawString(d_str , x - x_offset, y + (y_dist * 3));
-                s_backgroundSprite.drawString("APPLY", x - x_offset, y + (y_dist * 4));
-                s_backgroundSprite.drawString("CANCEL", x - x_offset, y + (y_dist * 5));
+                s_backgroundSprite.drawString(i_str , x - x_offset, y + (y_dist));
+                s_backgroundSprite.drawString(d_str , x - x_offset, y + (y_dist * 2));
+                s_backgroundSprite.drawString("APPLY", x - x_offset, y + (y_dist * 3));
+                s_backgroundSprite.drawString("CANCEL", x - x_offset, y + (y_dist * 4));
                 break;
             case I:
-                s_backgroundSprite.fillRect(x - x_offset, y + y_dist * 2, 150, 30, TFT_BLACK);
-            
-                s_backgroundSprite.drawString(p_str , x - x_offset, y + y_dist);
+                s_backgroundSprite.fillRect(x - x_offset, y + y_dist, 150, 30, TFT_BLACK);
+                s_backgroundSprite.drawString(p_str , x - x_offset, y);
                 s_backgroundSprite.setTextColor(TFT_WHITE, TFT_BLACK);
-                s_backgroundSprite.drawString(i_str , x - x_offset, y + (y_dist * 2));
+                s_backgroundSprite.drawString(i_str , x - x_offset, y + y_dist);
                 s_backgroundSprite.setTextColor(TFT_DARKGREY);
-                s_backgroundSprite.drawString(d_str , x - x_offset, y + (y_dist * 3));
-                s_backgroundSprite.drawString("APPLY", x - x_offset, y + (y_dist * 4));
-                s_backgroundSprite.drawString("CANCEL", x - x_offset, y + (y_dist * 5));
+                s_backgroundSprite.drawString(d_str , x - x_offset, y + (y_dist * 2));
+                s_backgroundSprite.drawString("APPLY", x - x_offset, y + (y_dist * 3));
+                s_backgroundSprite.drawString("CANCEL", x - x_offset, y + (y_dist * 4));
             break;
             case D:
-                s_backgroundSprite.fillRect(x - x_offset, y + y_dist * 3, 150, 30, TFT_BLACK);
-                
-                s_backgroundSprite.drawString(p_str , x - x_offset, y + y_dist);
-                s_backgroundSprite.drawString(i_str , x - x_offset, y + (y_dist * 2));
+                s_backgroundSprite.fillRect(x - x_offset, y + y_dist * 2, 150, 30, TFT_BLACK);
+                s_backgroundSprite.drawString(p_str , x - x_offset, y);
+                s_backgroundSprite.drawString(i_str , x - x_offset, y + y_dist);
                 s_backgroundSprite.setTextColor(TFT_WHITE, TFT_BLACK);
-                s_backgroundSprite.drawString(d_str , x - x_offset, y + (y_dist * 3));
+                s_backgroundSprite.drawString(d_str , x - x_offset, y + (y_dist * 2));
                 s_backgroundSprite.setTextColor(TFT_DARKGREY);
-                s_backgroundSprite.drawString("APPLY", x - x_offset, y + (y_dist * 4));
-                s_backgroundSprite.drawString("CANCEL", x - x_offset, y + (y_dist * 5));
+                s_backgroundSprite.drawString("APPLY", x - x_offset, y + (y_dist * 3));
+                s_backgroundSprite.drawString("CANCEL", x - x_offset, y + (y_dist * 4));
             break;
             case APPLY:
-                s_backgroundSprite.drawString(p_str , x - x_offset, y + y_dist);
-                s_backgroundSprite.drawString(i_str , x - x_offset, y + (y_dist * 2));
-                s_backgroundSprite.drawString(d_str , x - x_offset, y + (y_dist * 3));
+                s_backgroundSprite.drawString(p_str , x - x_offset, y);
+                s_backgroundSprite.drawString(i_str , x - x_offset, y + y_dist);
+                s_backgroundSprite.drawString(d_str , x - x_offset, y + (y_dist * 2));
                 s_backgroundSprite.setTextColor(TFT_WHITE);
-                s_backgroundSprite.drawString("APPLY", x - x_offset, y + (y_dist * 4));
+                s_backgroundSprite.drawString("APPLY", x - x_offset, y + (y_dist * 3));
                 s_backgroundSprite.setTextColor(TFT_DARKGREY);
-                s_backgroundSprite.drawString("CANCEL", x - x_offset, y + (y_dist * 5));
+                s_backgroundSprite.drawString("CANCEL", x - x_offset, y + (y_dist * 4));
             break;
             case CANCEL_PID:
-                s_backgroundSprite.drawString(p_str , x - x_offset, y + y_dist);
-                s_backgroundSprite.drawString(i_str , x - x_offset, y + (y_dist * 2));
-                s_backgroundSprite.drawString(d_str , x - x_offset, y + (y_dist * 3));
-                s_backgroundSprite.drawString("APPLY", x - x_offset, y + (y_dist * 4));
+                s_backgroundSprite.drawString(p_str , x - x_offset, y);
+                s_backgroundSprite.drawString(i_str , x - x_offset, y + y_dist);
+                s_backgroundSprite.drawString(d_str , x - x_offset, y + (y_dist * 2));
+                s_backgroundSprite.drawString("APPLY", x - x_offset, y + (y_dist * 3));
                 s_backgroundSprite.setTextColor(TFT_WHITE);
-                s_backgroundSprite.drawString("CANCEL", x - x_offset, y + (y_dist * 5));
+                s_backgroundSprite.drawString("CANCEL", x - x_offset, y + (y_dist * 4));
+                s_backgroundSprite.setTextColor(TFT_DARKGREY);
+            break;
+            case PID_CONFIG_APPLY:
+                s_backgroundSprite.drawString(p_str , x - x_offset, y);
+                s_backgroundSprite.drawString(i_str , x - x_offset, y + y_dist);
+                s_backgroundSprite.drawString(d_str , x - x_offset, y + (y_dist * 2));
+                s_backgroundSprite.setTextColor(TFT_GREEN);
+                s_backgroundSprite.drawString("APPLY", x - x_offset, y + (y_dist * 3));
+                s_backgroundSprite.setTextColor(TFT_DARKGREY);
+                s_backgroundSprite.drawString("CANCEL", x - x_offset, y + (y_dist * 4));
+            break;
+            case PID_CONFIG_CANCEL:
+                s_backgroundSprite.drawString(p_str , x - x_offset, y);
+                s_backgroundSprite.drawString(i_str , x - x_offset, y + y_dist);
+                s_backgroundSprite.drawString(d_str , x - x_offset, y + (y_dist * 2));
+                s_backgroundSprite.drawString("APPLY", x - x_offset, y + (y_dist * 3));
+                s_backgroundSprite.setTextColor(TFT_RED);
+                s_backgroundSprite.drawString("CANCEL", x - x_offset, y + (y_dist * 4));
                 s_backgroundSprite.setTextColor(TFT_DARKGREY);
             break;
         }
+
+
         s_backgroundSprite.pushSprite(0,0);
 
 
@@ -409,6 +424,7 @@ void Display::display_task(void* args){
     init();
 
     while(true){
+        cleanup();
         switch(m_state){
             case BOOTING:
                 boot_menu();

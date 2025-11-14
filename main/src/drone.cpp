@@ -26,6 +26,7 @@ Drone *Drone::drone = nullptr;
 
 static auto startTel = std::chrono::steady_clock::now();
 static auto endTel = std::chrono::steady_clock::now();
+QueueHandle_t Drone::m_pid_conf_sem;
 
 
 SemaphoreHandle_t timer_sem = nullptr;
@@ -62,6 +63,10 @@ Drone::Drone(Dshot600* dshotObj, Mpu6050* mpu1, Mpu6050* mpu2, CircularHandle_t 
     this->m_radio_queue_handle = radio_queue_handle;
     this->m_radio_statistics_queue_handle = radio_statistics_queue_handle;
     this->m_dshotObj = dshotObj;
+
+    vSemaphoreCreateBinary(m_pid_conf_sem);
+    ESP_ERROR_CHECK_WITHOUT_ABORT((m_pid_conf_sem == nullptr));
+    xSemaphoreTake(m_pid_conf_sem, 0);
 
     vSemaphoreCreateBinary(timer_sem);
     ESP_ERROR_CHECK_WITHOUT_ABORT((timer_sem == nullptr));
@@ -650,7 +655,7 @@ void Drone::drone_task(void *args){
 
         set_imu_data(newImuData1, newImuData2);
 
-        /*********   Radio processing **********/
+        /*********  Radio processing **********/
         status = get_radio_data(channelNew, 0);
         if (status == ESP_OK)
         {
@@ -673,19 +678,21 @@ void Drone::drone_task(void *args){
             radio_ok = false;
         }
 
+        /********* Launch PID config mode **********/
         if(!m_state.isControllerArmed && configure_pid()){
             printf("PID config active!\n");
-            static bool pid_config_exit_ongoing{};
 
-            if(!pid_config_running){
-                pid_config_running = true;
-                TaskHandle_t pid_configure_handle{};
-                xTaskCreatePinnedToCore(Drone::pid_configure_task, "pid_config_task", 4048, nullptr, 3, &pid_configure_handle, 0);
-            }
-            else if(pid_config_running){
-
-            }
-            vTaskDelay(pdMS_TO_TICKS(2)); //no need to run control loop in full speed
+                if(!pid_config_running){
+                    pid_config_running = true;
+                    TaskHandle_t pid_configure_handle{};
+                    xTaskCreatePinnedToCore(Drone::pid_configure_task, "pid_config_task", 4048, nullptr, 3, &pid_configure_handle, 0);
+                }            
+                else{
+                    BaseType_t status = xSemaphoreTake(m_pid_conf_sem, pdMS_TO_TICKS(10));
+                    if(status == pdTRUE)
+                        pid_config_running = false;
+                }
+            vTaskDelay(pdMS_TO_TICKS(10));
         }
 
         /* send dshot telemetry command */
@@ -698,7 +705,6 @@ void Drone::drone_task(void *args){
 
         get_speed(msg);
         write_speed(msg);
-
 
 #ifdef TELEMETRY_TASK
         auto end = std::chrono::system_clock::now();
@@ -726,7 +732,6 @@ void Drone::drone_task(void *args){
             next_log_time = now + telemetry_period_ms;
         }
 #endif
-
         loopCounter++;
 
         // allows rmt things to run with while maintaing max loop freq ~2.5k Hz
@@ -816,7 +821,6 @@ void Drone::esc_telemetry_task(void* args){
 
     while(true){
 
-   
 
         if (xQueueReceive(uart_queue, (void *)&event, portMAX_DELAY)){
             if (event.type == UART_DATA) {
@@ -1505,6 +1509,8 @@ void Drone::pid_configure_task(void* args){
             break;
             case CANCEL_PID:
             break;
+            default:
+            break;
         }
             if(selected_row != prev_selected_row || increase || decrease){
                 printf("%d\n", selected_row);
@@ -1512,8 +1518,12 @@ void Drone::pid_configure_task(void* args){
             }
 
 
-            if(increase || decrease)
-                speed_counter++;
+            if(increase || decrease){
+                if(speed_counter>=10)
+                    speed_counter +=4;
+                else
+                    speed_counter++;
+            }
             else
                 speed_counter = 0;
         
@@ -1522,8 +1532,17 @@ void Drone::pid_configure_task(void* args){
 
             if(exit_config){
                 printf("deleteing task");
+                if(selected_row == APPLY)
+                    Display::set_pid_config_data(temp_pid, PID_CONFIG_APPLY);
+                else
+                    Display::set_pid_config_data(temp_pid, PID_CONFIG_CANCEL);
+
+                vTaskDelay(pdMS_TO_TICKS(700));
+
                 Display::set_display_state(DRONE);
+                xSemaphoreGive(m_pid_conf_sem);
                 vTaskDelete(nullptr);
+                printf("should not see this!\n");
             }
         
             if(speed_counter<=5){
