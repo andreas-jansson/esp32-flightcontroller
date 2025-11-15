@@ -703,6 +703,7 @@ void Drone::drone_task(void *args){
             m_state.isDroneArmed = true;
         }
 
+        //vTaskDelay(pdMS_TO_TICKS(1000));
         get_speed(msg);
         write_speed(msg);
 

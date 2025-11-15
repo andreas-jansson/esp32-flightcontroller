@@ -147,18 +147,18 @@ class Dshot600{
 
     //CircularHandle_t m_dshot_queue_handle{};
     static Dshot600* dshot;
+    static bool m_isBidi;
 
     rmt_sync_manager_handle_t synchro{};
     rmt_channel_handle_t esc_motor_chan[4]{};
-    rmt_channel_handle_t rmt_rx_handle{};
+    rmt_channel_handle_t rmt_rx_handle[4]{};
     rmt_encoder_handle_t dshot_encoder{};
 
+    gpio_num_t m_gpioMotorPin[4]{};
 
-    Dshot600(gpio_num_t motorPin[Dshot::maxChannels]);
+    Dshot600(gpio_num_t motorPin[Dshot::maxChannels], bool isBidi);
 
     void read_dshot_telemetry();
-
-    esp_err_t rmt_new_dshot_esc_encoder(const Dshot::dshot_esc_encoder_config_t *config, rmt_encoder_handle_t *ret_encoder);
 
     esp_err_t write_speed(struct Dshot::DshotMessage& msg);
     esp_err_t write_command(struct Dshot::DshotMessage& msg);
@@ -171,24 +171,31 @@ class Dshot600{
 
     esp_err_t get_message(struct Dshot::DshotMessage& msg, TickType_t ticks);
 
-
     esp_err_t set_idle();
+
+    static size_t rmt_encode_dshot_esc(
+        rmt_encoder_t *encoder, 
+        rmt_channel_handle_t channel, 
+        const void *primary_data, 
+        size_t data_size, 
+        rmt_encode_state_t *ret_state);
+    esp_err_t rmt_new_dshot_esc_encoder(const Dshot::dshot_esc_encoder_config_t *config, rmt_encoder_handle_t *ret_encoder);
+    static esp_err_t rmt_del_dshot_encoder(rmt_encoder_t *encoder);
+    static esp_err_t rmt_dshot_encoder_reset(rmt_encoder_t *encoder);
+    static void make_dshot_frame(Dshot::dshot_esc_frame_t *frame, uint16_t throttle, bool telemetry);
+    static void make_bidi_dshot_frame(Dshot::dshot_esc_frame_t *frame, uint16_t throttle, bool telemetry);
+
 
     public:
 
     Dshot600(Dshot600 &other) = delete;
     void operator=(const Dshot600 &) = delete;
-    static Dshot600 *GetInstance(gpio_num_t motorPin[Dshot::maxChannels]);
+    static Dshot600 *GetInstance(gpio_num_t motorPin[Dshot::maxChannels], bool isBidi);
     static Dshot600 *GetInstance();
 
     esp_err_t set_speed(struct Dshot::DshotMessage& msg);
 
     void dshot_task(void* args);
-
-    //CircularHandle_t get_queue_handle(){return m_dshot_queue_handle;}
-
-
-
 
 
     // Commands

@@ -12,8 +12,7 @@
 #include "esp_check.h"
 #include "rom/ets_sys.h"
 #include "freertos/queue.h"
-
-
+#include "driver/gpio.h"
 
 
 
@@ -23,6 +22,7 @@ static const char *TAG = "dshot_encoder";
 using namespace Dshot;
 
 Dshot600* Dshot600::dshot = nullptr;
+bool Dshot600::m_isBidi{true};
 
 
 // Could argue to remove 0 values and handle that seperately
@@ -130,14 +130,8 @@ constexpr uint16_t dshotLoopsLookup[48] = {
 
 
 
-
-
-
 /*          rmt RX          */
-
-
-static bool example_rmt_rx_done_callback(rmt_channel_handle_t channel, const rmt_rx_done_event_data_t *edata, void *user_data)
-{
+static bool example_rmt_rx_done_callback(rmt_channel_handle_t channel, const rmt_rx_done_event_data_t *edata, void *user_data){
     BaseType_t high_task_wakeup = pdFALSE;
     QueueHandle_t receive_queue = (QueueHandle_t)user_data;
     // send the received RMT symbols to the parser task
@@ -155,14 +149,24 @@ static bool example_rmt_rx_done_callback(rmt_channel_handle_t channel, const rmt
 
 /*      My logic        */
 
-Dshot600::Dshot600(gpio_num_t motorPin[Dshot::maxChannels]){
-
+Dshot600::Dshot600(gpio_num_t motorPin[Dshot::maxChannels], bool isBidi){
     rmt_tx_channel_config_t tx_chan_config{};
+    rmt_rx_channel_config_t rx_chan_config{};
 
     tx_chan_config.clk_src = RMT_CLK_SRC_DEFAULT;               // select source clock
     tx_chan_config.mem_block_symbols = 128;                     // memory block size, 64 * 4 = 256Bytes
     tx_chan_config.resolution_hz = DSHOT_ESC_RESOLUTION_HZ;     // 1MHz tick resolution, i.e. 1 tick = 1us
     tx_chan_config.trans_queue_depth = 2;                       // set the number of transactions that can pend in the background
+   
+    if(isBidi)
+    {
+        tx_chan_config.flags.invert_out = 1;
+        //tx_chan_config.flags.io_od_mode = 1;    
+    }
+
+    //rx_chan_config.clk_src = RMT_CLK_SRC_DEFAULT;
+    //rx_chan_config.mem_block_symbols = 64;
+    //rx_chan_config.resolution_hz = DSHOT_ESC_RESOLUTION_HZ;
 
     dshot_esc_encoder_config_t encoder_config = {
         .resolution = DSHOT_ESC_RESOLUTION_HZ,
@@ -173,79 +177,28 @@ Dshot600::Dshot600(gpio_num_t motorPin[Dshot::maxChannels]){
 
     for(int i=0;i<Dshot::maxChannels;i++){
         tx_chan_config.gpio_num = motorPin[i];
+        rx_chan_config.gpio_num = motorPin[i];
+        m_gpioMotorPin[i]= motorPin[i];
+
         ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_new_tx_channel(&tx_chan_config, &this->esc_motor_chan[i]));
         printf("motor chan %d: %p pin %d\n", i, this->esc_motor_chan[i], tx_chan_config.gpio_num);
+        //ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_new_rx_channel(&rx_chan_config, &this->rmt_rx_handle[i]));
+
     }
 
     for(int i=0;i<Dshot::maxChannels;i++){
+        ESP_ERROR_CHECK_WITHOUT_ABORT(gpio_set_pull_mode(m_gpioMotorPin[i], GPIO_PULLUP_ONLY));
+        //gpio_pullup_en(m_gpioMotorPin[i]);
         ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_enable(this->esc_motor_chan[i]));
+        //ESP_ERROR_CHECK_WITHOUT_ABORT(gpio_set_direction(m_gpioMotorPin[i], GPIO_MODE_OUTPUT_OD));
     }
 
-    //this->m_dshot_queue_handle = xRingbufferCreate(sizeof(DshotMessage) * 10, RINGBUF_TYPE_NOSPLIT);
-    //if (this->m_dshot_queue_handle == NULL) {
-    //    printf("Failed to create drone ring buffer\n");
-    //}
-
-    //this->m_dshot_queue_handle = CircularBufCreate(10, sizeof(DshotMessage), "dshot600");
-    //if (this->m_dshot_queue_handle == nullptr)
-    //{
-    //    printf("Failed to create dshot600 ring buffer\n");
-    //}
-
-
-    ////////// DEBUGGING ///////////
-
-    /*
-    auto start = std::chrono::steady_clock::now();
-    DshotMessage msg;
-    msg.msgType = Dshot::COMMAND;
-
-    printf("Arming....\n");
-    for(int i=0;i<Dshot::maxChannels;i++){
-        msg.writeTo[i] = true;
-        msg.loops[i] = 0;
-        msg.cmd[i] = DSHOT_CMD_MOTOR_STOP;
-        msg.telemetryReq[i] = false;
-
-    }
-
-
-    while(true){
-        write_command(msg);
-
-        auto now = std::chrono::steady_clock::now();
-        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now-start).count();
-
-        if(elapsed >= 5000){
-            break;
-        }
-        vTaskDelay(1);
-    }
-
-    msg.msgType = Dshot::THROTTLE;
-    printf("Ramping up....\n");
-
-    for(int i=48;i<1000;i++){
-
-        for(int j=0;j<Dshot::maxChannels;j++){
-            msg.writeTo[j] = true;
-            msg.loops[j] = 0;
-            msg.telemetryReq[j] = false;
-            msg.speed[j] = i;
-        }   
-        write_speed(msg);
-        vTaskDelay(pdMS_TO_TICKS(10));
-
-    }
-
-    printf("Ramping up complete\n");
-    */
-
+    m_isBidi = isBidi;  
 }
 
-Dshot600* Dshot600::GetInstance(gpio_num_t motorPin[Dshot::maxChannels]){
+Dshot600* Dshot600::GetInstance(gpio_num_t motorPin[Dshot::maxChannels], bool isBidi){
     if(dshot==nullptr){
-        dshot = new Dshot600(motorPin);
+        dshot = new Dshot600(motorPin, isBidi);
     }
     return dshot;
 }
@@ -255,7 +208,6 @@ Dshot600* Dshot600::GetInstance(){
 }
 
 void Dshot600::dshot_task(void* args){
-
     esp_err_t status = 0;
     uint16_t prevSpeed[Dshot::maxChannels]{};
     TickType_t lastSleep = xTaskGetTickCount();
@@ -263,7 +215,6 @@ void Dshot600::dshot_task(void* args){
     TickType_t sleepDur = pdMS_TO_TICKS(1);
     TickType_t waitMs{portMAX_DELAY};
     bool firstMsg{true};
-
 
     while(true){
 
@@ -334,13 +285,17 @@ esp_err_t Dshot600::get_message(struct Dshot::DshotMessage& msg, TickType_t tick
     return ESP_FAIL;
 }
 
+#include "include/soc/gpio_sig_map.h"
+#include "driver/gpio.h"
+#include "hal/gpio_hal.h"
+
 esp_err_t Dshot600::write_speed(struct Dshot::DshotMessage& msg){
 
     esp_err_t status = 0;
     dshot_esc_throttle_t throttle[Dshot::maxChannels]{};
     rmt_transmit_config_t tx_config[Dshot::maxChannels]{};
+    rmt_receive_config_t rx_config[Dshot::maxChannels]{};
 
-    static DshotMessage prev_msg;
 
     for(int i=0;i<Dshot::maxChannels;i++){
         throttle[i] = {
@@ -350,33 +305,62 @@ esp_err_t Dshot600::write_speed(struct Dshot::DshotMessage& msg){
 
         tx_config[i] = {
             .loop_count = msg.loops[i] == -1? -1 : 0,
+            //.flags{.eot_level = 1,},
         };    
 
-    }
-    prev_msg = msg;
-
-    for(int i=0;i<Dshot::maxChannels;i++){
-
-            print_debug(DEBUG_DSHOT, DEBUG_DATA, "m%d throttle: %u telemetry: %d channel: 0x%x", i, throttle[i].throttle, throttle[i].telemetry_req, this->esc_motor_chan[i]);
-            ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_transmit(this->esc_motor_chan[i], this->dshot_encoder, &throttle[i], sizeof(throttle[i]), &tx_config[i])); 
-            //ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_tx_wait_all_done(this->esc_motor_chan[i], pdMS_TO_TICKS(1)));
-
+        rx_config[i] = {
+            .signal_range_min_ns = 	uint32_t(400),
+            .signal_range_max_ns = uint32_t(1600),
+        };
     }
 
-    int64_t start[4]{};
-    int64_t end[4]{};
 
-    for(int i=0;i<Dshot::maxChannels;i++){
-        //start[i] = esp_timer_get_time();
-        ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_tx_wait_all_done(this->esc_motor_chan[i], pdMS_TO_TICKS(20)));
-        //end[i] = esp_timer_get_time();
+    if(m_isBidi){
+        for(int i=0;i<Dshot::maxChannels;i++){
+
+                //rmt_enable(esc_motor_chan[i]);
+
+                //gpio_ll_od_disable(GPIO_LL_GET_HW(GPIO_PORT_0), m_gpioMotorPin[i]);
+                //gpio_set_direction(m_gpioMotorPin[i], GPIO_MODE_OUTPUT);
+                gpio_pullup_dis(m_gpioMotorPin[i]);
+                ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_transmit(this->esc_motor_chan[i], this->dshot_encoder, &throttle[i], sizeof(throttle[i]), &tx_config[i])); 
+                ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_tx_wait_all_done(this->esc_motor_chan[i], pdMS_TO_TICKS(2)));
+                gpio_pullup_en(m_gpioMotorPin[i]);
+
+                //gpio_ll_od_enable(GPIO_LL_GET_HW(GPIO_PORT_0), m_gpioMotorPin[i]);
+
+                //rmt_disable(this->esc_motor_chan[i]);
+                //
+                //ets_delay_us(6);  
+                //rmt_enable(rmt_rx_handle[i]);
+
+                //gpio_set_direction(m_gpioMotorPin[i], GPIO_MODE_INPUT);  
+                //uint8_t buffer[128]={0};
+                //rmt_receive(rmt_rx_handle[i], buffer, 128, &rx_config[i]);
+                //rmt_disable(rmt_rx_handle[i]);
+
+        }
     }
-    
-    //printf("rmt_tx_wait_all_done took [%llu] [%llu] [%llu] [%llu] us\n", end[0]-start[0], end[1]-start[1], end[2]-start[2], end[3]-start[3]);
+    else{
+        for(int i=0;i<Dshot::maxChannels;i++){
+                print_debug(DEBUG_DSHOT, DEBUG_DATA, "m%d throttle: %u telemetry: %d channel: 0x%x", i, throttle[i].throttle, throttle[i].telemetry_req, this->esc_motor_chan[i]);
+                ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_transmit(this->esc_motor_chan[i], this->dshot_encoder, &throttle[i], sizeof(throttle[i]), &tx_config[i])); 
+                //ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_tx_wait_all_done(this->esc_motor_chan[i], pdMS_TO_TICKS(1)));
+        }
+        int64_t start[4]{};
+        int64_t end[4]{};
 
+        for(int i=0;i<Dshot::maxChannels;i++){
+            //start[i] = esp_timer_get_time();
+            ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_tx_wait_all_done(this->esc_motor_chan[i], pdMS_TO_TICKS(20)));
+            //end[i] = esp_timer_get_time();
+        }
 
+        //printf("rmt_tx_wait_all_done took [%llu] [%llu] [%llu] [%llu] us\n", end[0]-start[0], end[1]-start[1], end[2]-start[2], end[3]-start[3]);
 
-    print_debug(DEBUG_DSHOT, DEBUG_DATA, "\n");
+        //print_debug(DEBUG_DSHOT, DEBUG_DATA, "\n");
+    }
+
 
     return status;
 }
@@ -397,7 +381,7 @@ esp_err_t Dshot600::write_command(struct Dshot::DshotMessage& msg){
             .loop_count = msg.loops[i] == -1? -1 : 0,
         };    
     }
-
+    
     for(int i=0;i<Dshot::maxChannels;i++){
 
         for(uint16_t j=0;j<dshotLoopsLookup[msg.cmd[i]];j++){
@@ -410,7 +394,6 @@ esp_err_t Dshot600::write_command(struct Dshot::DshotMessage& msg){
     }
     print_debug(DEBUG_DSHOT, DEBUG_DATA, "\n");
 
-
     return status;
 }
 
@@ -421,7 +404,6 @@ esp_err_t Dshot600::set_idle(){
         .msgType = COMMAND,
         .loops = {-1, -1, -1, -1},
         .cmd = {0, 0, 0, 0},
-        //.writeTo = {true, true, true, true},
     };
 
     status = parse_dshot_message(msg);
@@ -531,7 +513,6 @@ esp_err_t Dshot600::blink_led_cmd(){
     DshotMessage msg{};
     
     msg.msgType = COMMAND;
-    //msg.writeTo[0] = true;
     msg.cmd[0] = DSHOT_CMD_LED0_ON;
     msg.loops[0] = 1;
 
@@ -559,7 +540,6 @@ esp_err_t Dshot600::arm_esc_cmd(){
     
     for(int i=0;i<1/*Dshot::maxChannels*/;i++){
         msg.msgType = COMMAND;
-        //msg.writeTo[i] = i == 0? true : false;
         msg.cmd[i] = DSHOT_CMD_MOTOR_STOP;
         msg.loops[i] = 0;
 
@@ -576,7 +556,7 @@ esp_err_t Dshot600::arm_esc_cmd(){
 
 /*      RMT example functions       */
 
-static esp_err_t rmt_del_dshot_encoder(rmt_encoder_t *encoder)
+esp_err_t Dshot600::rmt_del_dshot_encoder(rmt_encoder_t *encoder)
 {
     rmt_dshot_esc_encoder_t *dshot_encoder = __containerof(encoder, rmt_dshot_esc_encoder_t, base);
     rmt_del_encoder(dshot_encoder->bytes_encoder);
@@ -585,7 +565,7 @@ static esp_err_t rmt_del_dshot_encoder(rmt_encoder_t *encoder)
     return ESP_OK;
 }
 
-static esp_err_t rmt_dshot_encoder_reset(rmt_encoder_t *encoder)
+esp_err_t Dshot600::rmt_dshot_encoder_reset(rmt_encoder_t *encoder)
 {
     rmt_dshot_esc_encoder_t *dshot_encoder = __containerof(encoder, rmt_dshot_esc_encoder_t, base);
     rmt_encoder_reset(dshot_encoder->bytes_encoder);
@@ -594,19 +574,33 @@ static esp_err_t rmt_dshot_encoder_reset(rmt_encoder_t *encoder)
     return ESP_OK;
 }
 
-static void make_dshot_frame(dshot_esc_frame_t *frame, uint16_t throttle, bool telemetry)
+void Dshot600::make_dshot_frame(dshot_esc_frame_t *frame, uint16_t throttle, bool telemetry)
 {
     frame->throttle = throttle;
     frame->telemetry = telemetry;
     uint16_t val = frame->val;
-    uint8_t crc = ((val ^ (val >> 4) ^ (val >> 8)) & 0xF0) >> 4;;
+    uint8_t crc = ((val ^ (val >> 4) ^ (val >> 8)) & 0xF0) >> 4;
     frame->crc = crc;
     val = frame->val;
     // change the endian
     frame->val = ((val & 0xFF) << 8) | ((val & 0xFF00) >> 8);
 }
 
-static size_t rmt_encode_dshot_esc(rmt_encoder_t *encoder, rmt_channel_handle_t channel,
+void Dshot600::make_bidi_dshot_frame(dshot_esc_frame_t *frame, uint16_t throttle, bool telemetry)
+{
+    frame->throttle = throttle;
+    frame->telemetry = telemetry;
+    uint16_t val = frame->val;
+    uint8_t crc = (~(val ^ (val >> 4) ^ (val >> 8))) & 0x0F;
+    frame->crc = crc;
+    val = frame->val;
+    // change the endian
+    frame->val = ((val & 0xFF) << 8) | ((val & 0xFF00) >> 8);
+}
+
+
+
+size_t Dshot600::rmt_encode_dshot_esc(rmt_encoder_t *encoder, rmt_channel_handle_t channel,
     const void *primary_data, size_t data_size, rmt_encode_state_t *ret_state)
 {
     rmt_dshot_esc_encoder_t *dshot_encoder = __containerof(encoder, rmt_dshot_esc_encoder_t, base);
@@ -619,7 +613,12 @@ static size_t rmt_encode_dshot_esc(rmt_encoder_t *encoder, rmt_channel_handle_t 
     // convert user data into dshot frame
     dshot_esc_throttle_t *throttle = (dshot_esc_throttle_t *)primary_data;
     dshot_esc_frame_t frame = {};
-    make_dshot_frame(&frame, throttle->throttle, throttle->telemetry_req);
+    if(m_isBidi){
+        make_bidi_dshot_frame(&frame, throttle->throttle, throttle->telemetry_req);
+    }
+    else{
+        make_dshot_frame(&frame, throttle->throttle, throttle->telemetry_req);
+    }
 
     switch (dshot_encoder->state) {
         case 0: // send the dshot frame
@@ -650,6 +649,76 @@ static size_t rmt_encode_dshot_esc(rmt_encoder_t *encoder, rmt_channel_handle_t 
 }
 
 
+typedef struct tx_callback_datapack_s
+{
+    gpio_num_t gpio_num;
+
+    rmt_channel_handle_t channel_handle; //rx_chan
+    rmt_receive_config_t channel_config; //dshot_config.tx_callback_datapack
+    rmt_symbol_word_t* raw_symbols; //where the gotten symbols should go
+    size_t raw_sym_size; //size of the storage space for the raw symbols
+
+
+} tx_callback_datapack_t;
+
+static bool rx_done_callback(rmt_channel_handle_t channel, const rmt_rx_done_event_data_t *edata, void *user_data)
+{
+	//init return value
+	//high task wakeup will be true if pushing data to the queue started a task with a higher priority than this inturrupt.
+    BaseType_t high_task_wakeup = pdFALSE;
+
+	//get pointer to the settings passed in by us when we initialized the callback
+	//rx_callback_datapack_t* config = (rx_callback_datapack_t*)user_data;
+
+	//rx_frame_data_t out_data = {};
+
+	//copy the edata symbols to the frame data
+	//size_t sym_count = edata->num_symbols > RX_SYMBOL_MAX ? RX_SYMBOL_MAX : edata->num_symbols; //cap copy size to 11
+	//memcpy(&out_data.received_symbols, edata->received_symbols, sym_count * sizeof(rmt_symbol_word_t));
+	//out_data.num_symbols = sym_count;
+
+	//TEST
+	//Serial.printf("~%d\n", edata->num_symbols);
+	//for(int i = 0; i < edata->num_symbols; ++i)
+	//	Serial.printf("%d,%d|%d,%d\n",edata->received_symbols[i].duration0,edata->received_symbols[i].level0,
+	//			edata->received_symbols[i].duration1,edata->received_symbols[i].level1);
+
+	//we're getting a packet back whose last symbol does not end in the terminating value (which is a symbol with 0 length values)
+	size_t last_sym = edata->num_symbols - 1;
+	if(edata->received_symbols[last_sym].duration0 != 0
+		&& edata->received_symbols[last_sym].duration1 != 0)
+	{
+		//this results in a guru meditation error, but we shouldn't be getting these anyway... I wonder what the packet looks like...
+		//Serial.printf("~\n");
+		//out_data.non_termination = true;
+	}
+
+
+
+
+    //send the received RMT symbols to the parser task
+	//xQueueSendFromISR(config->receive_queue, &out_data, &high_task_wakeup);
+
+    return high_task_wakeup == pdTRUE; //return xQueueSendFromISR result (does it wake up a higher task?)
+}
+
+static bool tx_done_callback(rmt_channel_handle_t tx_chan, const rmt_tx_done_event_data_t *edata, void *user_ctx)
+{
+	BaseType_t high_task_wakeup = pdFALSE;
+	tx_callback_datapack_t* config = (tx_callback_datapack_t*)user_ctx;
+	//size_t symbol_count = edata->num_symbols; //we don't need to know how many symbols we sent
+
+	//restart rx channel
+	rmt_enable(config->channel_handle);
+
+	//enable open drain mode before listening for a response (no need for snap logic here, we only do callbacks in bidirectional mode)
+	gpio_ll_od_enable(GPIO_LL_GET_HW(GPIO_PORT_0), config->gpio_num);
+
+	//start listening for a response
+	rmt_receive(config->channel_handle, config->raw_symbols, config->raw_sym_size, &config->channel_config);
+	
+	return high_task_wakeup; //nothing to wake up; no data needs to be sent back
+}
 
 /* configure timings for rmt data */
 esp_err_t Dshot600::rmt_new_dshot_esc_encoder(const dshot_esc_encoder_config_t *config, rmt_encoder_handle_t *ret_encoder)
@@ -663,6 +732,17 @@ esp_err_t Dshot600::rmt_new_dshot_esc_encoder(const dshot_esc_encoder_config_t *
     dshot_encoder->base.reset = rmt_dshot_encoder_reset;
     uint32_t delay_ticks = config->resolution / 1e6 * config->post_delay_us;
     printf("delay_ticks: %lu\n", delay_ticks); 
+
+    	//rmt_tx_event_callbacks_t callback = 
+		//{
+		//	.on_trans_done = tx_done_callback
+		//};
+
+        //	rmt_rx_event_callbacks_t callback = 
+		//{
+		//	.on_recv_done = rx_done_callback
+		//};
+	
 
     rmt_symbol_word_t dshot_delay_symbol{};
 
@@ -692,15 +772,18 @@ esp_err_t Dshot600::rmt_new_dshot_esc_encoder(const dshot_esc_encoder_config_t *
     printf("t0l_ticks: %d (%.2f µs)\n", t0l_ticks, t0l_ticks * 25.0e-3);
 
     rmt_bytes_encoder_config_t bytes_encoder_config{};
-    bytes_encoder_config.bit0.level0 = 1;
-    bytes_encoder_config.bit0.duration0 = t0h_ticks;
-    bytes_encoder_config.bit0.level1 = 0;
-    bytes_encoder_config.bit0.duration1 = t0l_ticks;
-    bytes_encoder_config.bit1.level0 = 1;
-    bytes_encoder_config.bit1.duration0 = t1h_ticks;
-    bytes_encoder_config.bit1.level1 = 0;
-    bytes_encoder_config.bit1.duration1 = t1l_ticks;
+
+        bytes_encoder_config.bit0.level0 = 1;
+        bytes_encoder_config.bit0.duration0 = t0h_ticks;
+        bytes_encoder_config.bit0.level1 = 0;
+        bytes_encoder_config.bit0.duration1 = t0l_ticks;
+        bytes_encoder_config.bit1.level0 = 1;
+        bytes_encoder_config.bit1.duration0 = t1h_ticks;
+        bytes_encoder_config.bit1.level1 = 0;
+        bytes_encoder_config.bit1.duration1 = t1l_ticks;
+
     bytes_encoder_config.flags.msb_first = 1;
+
 
     rmt_new_bytes_encoder(&bytes_encoder_config, &dshot_encoder->bytes_encoder);
     rmt_copy_encoder_config_t copy_encoder_config = {};
@@ -709,4 +792,5 @@ esp_err_t Dshot600::rmt_new_dshot_esc_encoder(const dshot_esc_encoder_config_t *
 
     return ret;
 } 
+
 

@@ -36,7 +36,7 @@ idf_component_register(SRCS
                          esp_rom
                          nvs_flash
                          "driver"
-                        "nvs_flash" 
+                         "nvs_flash" 
                        )
 
 #SET(CMAKE_CXX_STANDARD 17)

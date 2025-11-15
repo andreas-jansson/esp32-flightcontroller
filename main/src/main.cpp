@@ -280,6 +280,8 @@ void main_task(void *args){
     CircularHandle_t ringBuffer_radio_statistics{};
     RingbufHandle_t  ringBuffer_web{};
 
+    constexpr bool isBidiDshot{true};
+
     /******* I2C setup *******/
     I2cHandler *i2c = new I2cHandler(I2C_MASTER_SDA_IO, I2C_MASTER_SCL_IO, I2C_MASTER_FREQ_HZ);
     i2c->init();
@@ -326,7 +328,7 @@ void main_task(void *args){
     motorPin[MOTOR3] = static_cast<gpio_num_t>(15); // rear left    2
     motorPin[MOTOR4] = static_cast<gpio_num_t>(2);  // front left   3
 
-    Dshot600* dshot = Dshot600::GetInstance(motorPin);
+    Dshot600* dshot = Dshot600::GetInstance(motorPin, isBidiDshot);
 
     /*******  Drone *******/
     MotorLaneMapping motorLanes{
