@@ -397,9 +397,9 @@ void Mpu6050::dmp_task(void* args){
         if(ypr != yprPrev){ 
             BaseType_t res = xRingbufferSend(dmp_buf_handle, &ypr, sizeof(YawPitchRoll), 1);
 
-        if (res != pdTRUE) {
-                printf("Failed to send dmp item\n");
-            } 
+        //if (res != pdTRUE) {
+        //        printf("Failed to send dmp item\n");
+        //    } 
         }
     }
 }

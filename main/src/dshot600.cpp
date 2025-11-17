@@ -17,6 +17,21 @@
 
 
 
+static constexpr gpio_num_t DSHOT_DEBUG_PIN = GPIO_NUM_25; // or any free pin
+
+void init_dshot_debug_pin()
+{
+    gpio_config_t io_conf = {};
+    io_conf.pin_bit_mask = 1ULL << DSHOT_DEBUG_PIN;
+    io_conf.mode = GPIO_MODE_OUTPUT;
+    io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
+    io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
+    io_conf.intr_type = GPIO_INTR_DISABLE;
+    gpio_config(&io_conf);
+
+    gpio_set_level(DSHOT_DEBUG_PIN, 1);
+}
+
 
 #include <stdio.h>
 #include "driver/gpio.h"
@@ -192,6 +207,10 @@ void my_gpio_dump(gpio_num_t gpio)
 }
 
 
+#define DSHOT_150 150 
+#define DSHOT_300 300 
+#define DSHOT_600 600 
+#define DSHOT_SPEED DSHOT_600 
 
 #define DSHOT_ESC_RESOLUTION_HZ 80000000 
 static const char *TAG = "dshot_encoder";
@@ -199,8 +218,15 @@ static const char *TAG = "dshot_encoder";
 using namespace Dshot;
 
 Dshot600* Dshot600::dshot = nullptr;
-bool Dshot600::m_isBidi{true};
+bool Dshot600::m_isBidi{};
 
+struct cb_dshot_ctx{
+    rmt_channel_handle_t tx_handle;
+    rmt_channel_handle_t rx_handle;
+    gpio_num_t pin;
+    motor_type_t motor;
+    rmt_receive_config_t rx_chan_config;
+};
 
 // Could argue to remove 0 values and handle that seperately
 constexpr TickType_t dshotWaitLookup[48] = {
@@ -306,15 +332,36 @@ constexpr uint16_t dshotLoopsLookup[48] = {
 };
 
 
-
+rmt_symbol_word_t raw_symbols[64];
 /*          rmt RX          */
-static bool example_rmt_rx_done_callback(rmt_channel_handle_t channel, const rmt_rx_done_event_data_t *edata, void *user_data){
-    BaseType_t high_task_wakeup = pdFALSE;
-    QueueHandle_t receive_queue = (QueueHandle_t)user_data;
-    // send the received RMT symbols to the parser task
-    xQueueSendFromISR(receive_queue, edata, &high_task_wakeup);
-    // return whether any task is woken up
-    return high_task_wakeup == pdTRUE;
+
+static bool IRAM_ATTR example_rmt_rx_done_callback(rmt_channel_handle_t channel, const rmt_rx_done_event_data_t *edata, void *user_ctx){
+
+    cb_dshot_ctx* ctx = reinterpret_cast<cb_dshot_ctx*>(user_ctx);
+    gpio_ll_od_disable(GPIO_LL_GET_HW(GPIO_PORT_0), ctx->pin);
+
+    return  pdTRUE;
+}
+
+auto start_us = std::chrono::steady_clock::now();
+auto now_us = std::chrono::steady_clock::now();
+volatile bool done_measure{};
+volatile uint64_t elapsed_us{};
+
+static bool IRAM_ATTR tx_done_callback(rmt_channel_handle_t tx_chan, const rmt_tx_done_event_data_t *edata, void *user_ctx)
+{
+    cb_dshot_ctx* ctx = reinterpret_cast<cb_dshot_ctx*>(user_ctx);
+    static bool once{true};
+
+    if(once && ctx->pin == static_cast<gpio_num_t>(12)){
+        now_us = std::chrono::steady_clock::now();
+        elapsed_us = std::chrono::duration_cast<std::chrono::microseconds>(now_us - start_us).count();
+        once = false;
+        done_measure = true;
+    }
+    //gpio_ll_od_enable(GPIO_LL_GET_HW(GPIO_PORT_0), ctx->pin);
+    //rmt_receive(ctx->rx_handle, raw_symbols, 64, const_cast<rmt_receive_config_t*>(&ctx->rx_chan_config));
+	return true; 
 }
 
 
@@ -331,7 +378,7 @@ Dshot600::Dshot600(gpio_num_t motorPin[Dshot::maxChannels], bool isBidi){
     rmt_rx_channel_config_t rx_chan_config{};
 
     tx_chan_config.clk_src = RMT_CLK_SRC_DEFAULT;               // select source clock
-    tx_chan_config.mem_block_symbols = 128;                     // memory block size, 64 * 4 = 256Bytes
+    tx_chan_config.mem_block_symbols = 64;                     // memory block size, 64 * 4 = 256Bytes
     tx_chan_config.resolution_hz = DSHOT_ESC_RESOLUTION_HZ;     // 1MHz tick resolution, i.e. 1 tick = 1us
     tx_chan_config.trans_queue_depth = 2;                       // set the number of transactions that can pend in the background
    
@@ -341,53 +388,92 @@ Dshot600::Dshot600(gpio_num_t motorPin[Dshot::maxChannels], bool isBidi){
         tx_chan_config.flags.io_od_mode = 1;    
     }
 
-    //rx_chan_config.clk_src = RMT_CLK_SRC_DEFAULT;
-    //rx_chan_config.mem_block_symbols = 64;
-    //rx_chan_config.resolution_hz = DSHOT_ESC_RESOLUTION_HZ;
-    //rx_chan_config.flags.invert_in = 1;
+    rx_chan_config.clk_src = RMT_CLK_SRC_DEFAULT;
+    rx_chan_config.mem_block_symbols = 64;
+    rx_chan_config.resolution_hz = DSHOT_ESC_RESOLUTION_HZ;
+    rx_chan_config.flags.invert_in = 1;
+
+    uint32_t baud_rate{};
+    switch(DSHOT_SPEED){
+        case DSHOT_600:
+        baud_rate = DSHOT_600 * 1000;
+        break;
+        case DSHOT_150:
+        baud_rate = DSHOT_150 * 1000;
+        break;
+        default:
+        baud_rate = DSHOT_600 * 1000;
+    }
+    
+    init_dshot_debug_pin();
 
     dshot_esc_encoder_config_t encoder_config = {
         .resolution = DSHOT_ESC_RESOLUTION_HZ,
-        .baud_rate = 600000, 
-        .post_delay_us = 26, // extra delay between each frame
+        .baud_rate = baud_rate,
+        .post_delay_us = (m_isBidi? 0u : 26u), // extra delay between each frame
     };
     ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_new_dshot_esc_encoder(&encoder_config, &this->dshot_encoder));
+
+    for(int i=0;i<Dshot::maxChannels;i++){
+        gpio_ll_output_disable(GPIO_LL_GET_HW(GPIO_PORT_0), motorPin[i]);
+        //gpio_ll_input_enable(GPIO_LL_GET_HW(GPIO_PORT_0), motorPin[i]);
+        ESP_ERROR_CHECK_WITHOUT_ABORT(gpio_set_pull_mode(motorPin[i], GPIO_PULLUP_ONLY));
+    }
+
 
     for(int i=0;i<Dshot::maxChannels;i++){
         tx_chan_config.gpio_num = motorPin[i];
         rx_chan_config.gpio_num = motorPin[i];
         m_gpioMotorPin[i]= motorPin[i];
 
+        printf("motor chan %d: %p pin %d\n", i, this->esc_motor_chan[i], tx_chan_config.gpio_num);
+        // start rx before to not mess upp gpio func
+        ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_new_rx_channel(&rx_chan_config, &this->rmt_rx_handle[i]));
         ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_new_tx_channel(&tx_chan_config, &this->esc_motor_chan[i]));
         printf("motor chan %d: %p pin %d\n", i, this->esc_motor_chan[i], tx_chan_config.gpio_num);
-        //ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_new_rx_channel(&rx_chan_config, &this->rmt_rx_handle[i]));
 
     }
 
 
+    rmt_rx_event_callbacks_t rx_callback = 
+    {
+        .on_recv_done = example_rmt_rx_done_callback
+    };
+    rmt_tx_event_callbacks_t tx_callback = 
+    {
+        .on_trans_done = tx_done_callback
+    };
+
+    rmt_receive_config_t rx_config{};
+
+
+    rx_config = {
+        .signal_range_min_ns = 	uint32_t(200),
+        .signal_range_max_ns = uint32_t(3000),
+    };
+
     for(int i=0;i<Dshot::maxChannels;i++){
-        //gpio_config_t gpioConf = {
-        //    .pin_bit_mask = static_cast<uint64_t>(1ULL<<m_gpioMotorPin[i]),
-        //    .mode = GPIO_MODE_OUTPUT,
-        //    .pull_up_en = GPIO_PULLUP_DISABLE,
-        //    .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        //};
 
-        //gpio_config(&gpioConf);
+        cb_dshot_ctx* ctx = reinterpret_cast<cb_dshot_ctx*>(calloc(1, sizeof(cb_dshot_ctx)));
 
-        ESP_ERROR_CHECK_WITHOUT_ABORT(gpio_set_pull_mode(m_gpioMotorPin[i], GPIO_PULLUP_ONLY));
-        //gpio_pullup_en(m_gpioMotorPin[i]);
-        //my_gpio_dump(m_gpioMotorPin[i]);
+        ctx->tx_handle = esc_motor_chan[i];
+        ctx->rx_handle = rmt_rx_handle[i];
+        ctx->pin = m_gpioMotorPin[i];
+        ctx->motor = static_cast<motor_type_t>(i);
+        ctx->rx_chan_config = rx_config;
+
+        ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_rx_register_event_callbacks(rmt_rx_handle[i], &rx_callback, ctx));
+        ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_tx_register_event_callbacks(esc_motor_chan[i], &tx_callback, ctx));
+    }
+
+    for(int i=0;i<Dshot::maxChannels;i++){
+    
+        // start rx before to not mess upp gpio func
+        ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_enable(this->rmt_rx_handle[i]));
         ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_enable(this->esc_motor_chan[i]));
-        //ESP_ERROR_CHECK_WITHOUT_ABORT(gpio_set_direction(m_gpioMotorPin[i], GPIO_MODE_OUTPUT_OD));
-        //my_gpio_dump(m_gpioMotorPin[i]);
-
-        //gpio_ll_od_disable(GPIO_LL_GET_HW(GPIO_PORT_0), m_gpioMotorPin[i]);
-        //my_gpio_dump(m_gpioMotorPin[i]);
-        //gpio_set_direction(m_gpioMotorPin[i], GPIO_MODE_OUTPUT);
-        //gpio_pullup_dis(m_gpioMotorPin[i]);
-        //my_gpio_dump(m_gpioMotorPin[i]);
-
+        gpio_ll_od_disable(GPIO_LL_GET_HW(GPIO_PORT_0), motorPin[i]);
+        printf("************** setup ***************\n");
+        my_gpio_dump(m_gpioMotorPin[i]);
         printf("************************************\n");
 
     }
@@ -489,11 +575,22 @@ esp_err_t Dshot600::get_message(struct Dshot::DshotMessage& msg, TickType_t tick
 #include "hal/gpio_hal.h"
 
 esp_err_t Dshot600::write_speed(struct Dshot::DshotMessage& msg){
-
+    using namespace std::chrono_literals;
+    
     esp_err_t status = 0;
     dshot_esc_throttle_t throttle[Dshot::maxChannels]{};
     rmt_transmit_config_t tx_config[Dshot::maxChannels]{};
-    rmt_receive_config_t rx_config[Dshot::maxChannels]{};
+
+    static uint64_t cntr{};
+    static auto next_point = std::chrono::steady_clock::now() + 1s;
+    auto now = std::chrono::steady_clock::now();
+    if(now >= next_point){
+        cntr = 0;
+        next_point = std::chrono::steady_clock::now() + 1s;
+    }
+    cntr++;
+
+  
 
 
     for(int i=0;i<Dshot::maxChannels;i++){
@@ -505,49 +602,58 @@ esp_err_t Dshot600::write_speed(struct Dshot::DshotMessage& msg){
         tx_config[i].loop_count = msg.loops[i] == -1? -1 : 0;
         //tx_config[i].flags.eot_level = m_isBidi? 1 : 0;
 
-        rx_config[i] = {
-            .signal_range_min_ns = 	uint32_t(400),
-            .signal_range_max_ns = uint32_t(1600),
-        };
+    
     }
 
     static bool once{true};
+    static bool print_once{false};
+
+    static auto start = std::chrono::steady_clock::now();
+
+    rmt_receive_config_t rx_config = {
+        .signal_range_min_ns = 	uint32_t(200),
+        .signal_range_max_ns = uint32_t(3000),
+    };
+
 
     if(m_isBidi){
         for(int i=0;i<Dshot::maxChannels;i++){
 
-                //rmt_enable(esc_motor_chan[i]);
                 gpio_ll_od_disable(GPIO_LL_GET_HW(GPIO_PORT_0), m_gpioMotorPin[i]);
-                //gpio_set_direction(m_gpioMotorPin[i], GPIO_MODE_OUTPUT);
-                //gpio_pullup_dis(m_gpioMotorPin[i]);
-                if(once)
-                    my_gpio_dump(m_gpioMotorPin[i]);
-
-                ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_transmit(this->esc_motor_chan[i], this->dshot_encoder, &throttle[i], sizeof(throttle[i]), &tx_config[i])); 
-                ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_tx_wait_all_done(this->esc_motor_chan[i], pdMS_TO_TICKS(2)));
-                ets_delay_us(50);  
-                //gpio_pullup_en(m_gpioMotorPin[i]);
-                gpio_ll_input_enable(GPIO_LL_GET_HW(GPIO_PORT_0), m_gpioMotorPin[i]); // enable input
-                gpio_ll_od_enable(GPIO_LL_GET_HW(GPIO_PORT_0), m_gpioMotorPin[i]);
-
                 if(once){
+                    printf("freq: %llu\n", cntr);
+                    printf("*************** pre tx gpio[%d] ****************\n", m_gpioMotorPin[i]);
                     my_gpio_dump(m_gpioMotorPin[i]);
-                    printf("*************************************");
-                    once = false;
                 }
+                ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_transmit(this->esc_motor_chan[i], this->dshot_encoder, &throttle[i], sizeof(throttle[i]), &tx_config[i])); 
+                
+                //if(m_gpioMotorPin[i] == 12){
+                //    ets_delay_us(60);
+                //    gpio_set_level(DSHOT_DEBUG_PIN, 0);
+                //    ets_delay_us(5);
+                //    gpio_set_level(DSHOT_DEBUG_PIN, 1);
+                //}
       
 
+                ets_delay_us(65);
+                gpio_ll_od_enable(GPIO_LL_GET_HW(GPIO_PORT_0), m_gpioMotorPin[i]);
 
-                //rmt_disable(this->esc_motor_chan[i]);
-                //
-                //rmt_enable(rmt_rx_handle[i]);
+                cb_dshot_ctx ctx;
 
-                //gpio_set_direction(m_gpioMotorPin[i], GPIO_MODE_INPUT);  
-                //uint8_t buffer[128]={0};
-                //rmt_receive(rmt_rx_handle[i], buffer, 128, &rx_config[i]);
-                //rmt_disable(rmt_rx_handle[i]);
+                ctx.tx_handle = esc_motor_chan[i];
+                ctx.rx_handle = rmt_rx_handle[i];
+                ctx.pin = m_gpioMotorPin[i];
+                ctx.motor = static_cast<motor_type_t>(i);
+                ctx.rx_chan_config = rx_config;
 
-        }
+                rmt_receive(ctx.rx_handle, raw_symbols, 64, const_cast<rmt_receive_config_t*>(&ctx.rx_chan_config));
+
+                if(once){
+                    once = false;
+                    print_once = true;
+                    start_us = std::chrono::steady_clock::now();
+                }
+            }
     }
     else{
         for(int i=0;i<Dshot::maxChannels;i++){
@@ -568,7 +674,14 @@ esp_err_t Dshot600::write_speed(struct Dshot::DshotMessage& msg){
 
         //print_debug(DEBUG_DSHOT, DEBUG_DATA, "\n");
     }
-    vTaskDelay(pdMS_TO_TICKS(1));
+
+    auto now_dd = std::chrono::steady_clock::now();
+    if(print_once && now_dd >= start + 5s){
+        printf("tx cb called after %llu us\n", elapsed_us);
+        print_once = false;
+    }
+
+//    vTaskDelay(pdMS_TO_TICKS(2));
     return status;
 }
 
@@ -805,9 +918,80 @@ void Dshot600::make_bidi_dshot_frame(dshot_esc_frame_t *frame, uint16_t throttle
     frame->val = ((val & 0xFF) << 8) | ((val & 0xFF00) >> 8);
 }
 
+size_t Dshot600::rmt_encode_dshot_esc(
+    rmt_encoder_t *encoder,
+    rmt_channel_handle_t channel,
+    const void *primary_data,
+    size_t data_size,
+    rmt_encode_state_t *ret_state)
+{
+    rmt_dshot_esc_encoder_t *dshot_encoder =
+        __containerof(encoder, rmt_dshot_esc_encoder_t, base);
+
+    rmt_encode_state_t session_state = RMT_ENCODING_RESET;
+    rmt_encode_state_t state = RMT_ENCODING_RESET;
+    size_t encoded_symbols = 0;
+
+    dshot_esc_throttle_t *throttle = (dshot_esc_throttle_t *)primary_data;
+
+    dshot_esc_frame_t frame = {};
+    if (m_isBidi)
+        make_bidi_dshot_frame(&frame, throttle->throttle, throttle->telemetry_req);
+    else
+        make_dshot_frame(&frame, throttle->throttle, throttle->telemetry_req);
+
+    switch (dshot_encoder->state) {
+
+    case 0: // Encode 16-bit DSHOT frame
+        encoded_symbols += dshot_encoder->bytes_encoder->encode(
+            dshot_encoder->bytes_encoder,
+            channel, &frame, sizeof(frame),
+            &session_state);
+
+        if (session_state & RMT_ENCODING_COMPLETE)
+            dshot_encoder->state = 1;
+
+        if (session_state & RMT_ENCODING_MEM_FULL) {
+            state = (rmt_encode_state_t)(RMT_ENCODING_MEM_FULL);
+            goto out;
+        }
+        // fallthrough intentional
+
+    case 1:
+        // >>>>>>>>>> THIS IS THE MAGIC <<<<<<<<<<<<<<
+        // Switch pin to input/OD exactly when delay symbol encoding begins
+        if (m_isBidi) {
+            //gpio_ll_output_disable(GPIO_LL_GET_HW(GPIO_PORT_0), dshot_encoder->pin);
+            //gpio_ll_input_enable (GPIO_LL_GET_HW(GPIO_PORT_0), dshot_encoder->pin);
+            gpio_ll_od_enable    (GPIO_LL_GET_HW(GPIO_PORT_0), dshot_encoder->pin);
+        }
+
+        // Encode the "delay" symbol
+        encoded_symbols += dshot_encoder->copy_encoder->encode(
+            dshot_encoder->copy_encoder,
+            channel,
+            &dshot_encoder->dshot_delay_symbol,
+            sizeof(rmt_symbol_word_t),
+            &session_state);
+
+        if (session_state & RMT_ENCODING_COMPLETE) {
+            state = RMT_ENCODING_COMPLETE;
+            dshot_encoder->state = 0;
+        }
+        if (session_state & RMT_ENCODING_MEM_FULL) {
+            state = RMT_ENCODING_MEM_FULL;
+            goto out;
+        }
+        break;
+    }
+
+out:
+    *ret_state = state;
+    return encoded_symbols;
+}
 
 
-size_t Dshot600::rmt_encode_dshot_esc(rmt_encoder_t *encoder, rmt_channel_handle_t channel,
+size_t Dshot600::rmt_encode_dshot_esc_old(rmt_encoder_t *encoder, rmt_channel_handle_t channel,
     const void *primary_data, size_t data_size, rmt_encode_state_t *ret_state)
 {
     rmt_dshot_esc_encoder_t *dshot_encoder = __containerof(encoder, rmt_dshot_esc_encoder_t, base);
@@ -856,76 +1040,6 @@ size_t Dshot600::rmt_encode_dshot_esc(rmt_encoder_t *encoder, rmt_channel_handle
 }
 
 
-typedef struct tx_callback_datapack_s
-{
-    gpio_num_t gpio_num;
-
-    rmt_channel_handle_t channel_handle; //rx_chan
-    rmt_receive_config_t channel_config; //dshot_config.tx_callback_datapack
-    rmt_symbol_word_t* raw_symbols; //where the gotten symbols should go
-    size_t raw_sym_size; //size of the storage space for the raw symbols
-
-
-} tx_callback_datapack_t;
-
-static bool rx_done_callback(rmt_channel_handle_t channel, const rmt_rx_done_event_data_t *edata, void *user_data)
-{
-	//init return value
-	//high task wakeup will be true if pushing data to the queue started a task with a higher priority than this inturrupt.
-    BaseType_t high_task_wakeup = pdFALSE;
-
-	//get pointer to the settings passed in by us when we initialized the callback
-	//rx_callback_datapack_t* config = (rx_callback_datapack_t*)user_data;
-
-	//rx_frame_data_t out_data = {};
-
-	//copy the edata symbols to the frame data
-	//size_t sym_count = edata->num_symbols > RX_SYMBOL_MAX ? RX_SYMBOL_MAX : edata->num_symbols; //cap copy size to 11
-	//memcpy(&out_data.received_symbols, edata->received_symbols, sym_count * sizeof(rmt_symbol_word_t));
-	//out_data.num_symbols = sym_count;
-
-	//TEST
-	//Serial.printf("~%d\n", edata->num_symbols);
-	//for(int i = 0; i < edata->num_symbols; ++i)
-	//	Serial.printf("%d,%d|%d,%d\n",edata->received_symbols[i].duration0,edata->received_symbols[i].level0,
-	//			edata->received_symbols[i].duration1,edata->received_symbols[i].level1);
-
-	//we're getting a packet back whose last symbol does not end in the terminating value (which is a symbol with 0 length values)
-	size_t last_sym = edata->num_symbols - 1;
-	if(edata->received_symbols[last_sym].duration0 != 0
-		&& edata->received_symbols[last_sym].duration1 != 0)
-	{
-		//this results in a guru meditation error, but we shouldn't be getting these anyway... I wonder what the packet looks like...
-		//Serial.printf("~\n");
-		//out_data.non_termination = true;
-	}
-
-
-
-
-    //send the received RMT symbols to the parser task
-	//xQueueSendFromISR(config->receive_queue, &out_data, &high_task_wakeup);
-
-    return high_task_wakeup == pdTRUE; //return xQueueSendFromISR result (does it wake up a higher task?)
-}
-
-static bool tx_done_callback(rmt_channel_handle_t tx_chan, const rmt_tx_done_event_data_t *edata, void *user_ctx)
-{
-	BaseType_t high_task_wakeup = pdFALSE;
-	tx_callback_datapack_t* config = (tx_callback_datapack_t*)user_ctx;
-	//size_t symbol_count = edata->num_symbols; //we don't need to know how many symbols we sent
-
-	//restart rx channel
-	rmt_enable(config->channel_handle);
-
-	//enable open drain mode before listening for a response (no need for snap logic here, we only do callbacks in bidirectional mode)
-	gpio_ll_od_enable(GPIO_LL_GET_HW(GPIO_PORT_0), config->gpio_num);
-
-	//start listening for a response
-	rmt_receive(config->channel_handle, config->raw_symbols, config->raw_sym_size, &config->channel_config);
-	
-	return high_task_wakeup; //nothing to wake up; no data needs to be sent back
-}
 
 /* configure timings for rmt data */
 esp_err_t Dshot600::rmt_new_dshot_esc_encoder(const dshot_esc_encoder_config_t *config, rmt_encoder_handle_t *ret_encoder)
@@ -940,16 +1054,9 @@ esp_err_t Dshot600::rmt_new_dshot_esc_encoder(const dshot_esc_encoder_config_t *
     uint32_t delay_ticks = config->resolution / 1e6 * config->post_delay_us;
     printf("delay_ticks: %lu\n", delay_ticks); 
 
-    	//rmt_tx_event_callbacks_t callback = 
-		//{
-		//	.on_trans_done = tx_done_callback
-		//};
+    
+	//handle_error(rmt_tx_register_event_callbacks(dshot_config.tx_chan, &callback, &dshot_config.tx_callback_datapack));
 
-        //	rmt_rx_event_callbacks_t callback = 
-		//{
-		//	.on_recv_done = rx_done_callback
-		//};
-	
 
     rmt_symbol_word_t dshot_delay_symbol{};
 
@@ -962,6 +1069,9 @@ esp_err_t Dshot600::rmt_new_dshot_esc_encoder(const dshot_esc_encoder_config_t *
 
 
     dshot_encoder->dshot_delay_symbol = dshot_delay_symbol;
+
+
+
     // different dshot protocol have its own timing requirements,
     float period_ticks = (float)config->resolution / config->baud_rate;
     printf("period_ticks: %f ns\n", (period_ticks / DSHOT_ESC_RESOLUTION_HZ) * 1e9);

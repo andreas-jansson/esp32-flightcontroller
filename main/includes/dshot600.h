@@ -69,6 +69,7 @@ namespace Dshot{
         bool telemetry_req; /*!< Telemetry request */
     } dshot_esc_throttle_t;
 
+    /*
     typedef struct {
         rmt_encoder_t base;
         rmt_encoder_t *bytes_encoder;
@@ -76,6 +77,16 @@ namespace Dshot{
         rmt_symbol_word_t dshot_delay_symbol;
         int state;
     } rmt_dshot_esc_encoder_t;
+    */
+
+    struct rmt_dshot_esc_encoder_t {
+    rmt_encoder_t base;
+    rmt_encoder_handle_t bytes_encoder;
+    rmt_encoder_handle_t copy_encoder;
+    rmt_symbol_word_t dshot_delay_symbol;
+    int state;
+    gpio_num_t pin;    // <-- add pin here
+    };
 
     typedef union {
         struct {
@@ -179,6 +190,14 @@ class Dshot600{
         const void *primary_data, 
         size_t data_size, 
         rmt_encode_state_t *ret_state);
+
+    static size_t rmt_encode_dshot_esc_old(
+        rmt_encoder_t *encoder, 
+        rmt_channel_handle_t channel, 
+        const void *primary_data, 
+        size_t data_size, 
+        rmt_encode_state_t *ret_state);
+
     esp_err_t rmt_new_dshot_esc_encoder(const Dshot::dshot_esc_encoder_config_t *config, rmt_encoder_handle_t *ret_encoder);
     static esp_err_t rmt_del_dshot_encoder(rmt_encoder_t *encoder);
     static esp_err_t rmt_dshot_encoder_reset(rmt_encoder_t *encoder);
