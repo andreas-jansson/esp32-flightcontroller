@@ -153,6 +153,14 @@ enum DSHOTCODES{
 };
 
 
+struct cb_dshot_ctx{
+    rmt_channel_handle_t tx_handle;
+    rmt_channel_handle_t rx_handle;
+    gpio_num_t pin;
+    motor_type_t motor;
+    rmt_receive_config_t rx_chan_config;
+};
+
 
 class Dshot600{
 
@@ -161,9 +169,12 @@ class Dshot600{
     static bool m_isBidi;
 
     rmt_sync_manager_handle_t synchro{};
-    rmt_channel_handle_t esc_motor_chan[4]{};
-    rmt_channel_handle_t rmt_rx_handle[4]{};
+    rmt_channel_handle_t esc_motor_chan[Dshot::maxChannels]{};
+    rmt_channel_handle_t rmt_rx_handle[Dshot::maxChannels]{};
     rmt_encoder_handle_t dshot_encoder{};
+
+    cb_dshot_ctx m_ctx[Dshot::maxChannels]{};
+
 
     gpio_num_t m_gpioMotorPin[4]{};
 

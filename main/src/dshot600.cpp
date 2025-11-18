@@ -1,6 +1,7 @@
 
 #include <chrono>
 #include <cstring>
+#include <algorithm>
 
 #include "dshot600.h"
 #include "common_data.h"
@@ -16,11 +17,47 @@
 
 
 
-
 static constexpr gpio_num_t DSHOT_DEBUG_PIN = GPIO_NUM_25; // or any free pin
+
+SemaphoreHandle_t s_newData = nullptr;
+
+#include "esp_cpu.h"
+#include "esp_private/esp_clk.h"
+#include "esp_attr.h"
+
+static inline void IRAM_ATTR delay_ns(uint32_t ns)
+{
+    // CPU frequency in Hz (e.g. 240000000)
+    uint32_t cpu_hz = esp_clk_cpu_freq();
+    // Convert ns -> cycles: cycles = cpu_hz * ns / 1e9
+    uint32_t cycles = (uint32_t)(((uint64_t)cpu_hz * ns) / 1000000000ULL);
+
+    uint32_t start = esp_cpu_get_cycle_count();
+    while ((uint32_t)(esp_cpu_get_cycle_count() - start) < cycles) {
+        __asm__ __volatile__("nop");
+    }
+}
+
+
+void foo(){
+    xSemaphoreTake( s_newData, portMAX_DELAY);
+    gpio_set_level(DSHOT_DEBUG_PIN, 0);
+    //ets_delay_us(1);
+    delay_ns(2);
+    gpio_set_level(DSHOT_DEBUG_PIN, 1);
+    //ets_delay_us(1);
+    delay_ns(2);
+    gpio_set_level(DSHOT_DEBUG_PIN, 0);
+    //ets_delay_us(1);
+    delay_ns(2);
+    gpio_set_level(DSHOT_DEBUG_PIN, 1);
+}
+
 
 void init_dshot_debug_pin()
 {
+    vSemaphoreCreateBinary(s_newData);
+    xSemaphoreTake( s_newData, portMAX_DELAY);
     gpio_config_t io_conf = {};
     io_conf.pin_bit_mask = 1ULL << DSHOT_DEBUG_PIN;
     io_conf.mode = GPIO_MODE_OUTPUT;
@@ -220,13 +257,7 @@ using namespace Dshot;
 Dshot600* Dshot600::dshot = nullptr;
 bool Dshot600::m_isBidi{};
 
-struct cb_dshot_ctx{
-    rmt_channel_handle_t tx_handle;
-    rmt_channel_handle_t rx_handle;
-    gpio_num_t pin;
-    motor_type_t motor;
-    rmt_receive_config_t rx_chan_config;
-};
+
 
 // Could argue to remove 0 values and handle that seperately
 constexpr TickType_t dshotWaitLookup[48] = {
@@ -343,22 +374,11 @@ static bool IRAM_ATTR example_rmt_rx_done_callback(rmt_channel_handle_t channel,
     return  pdTRUE;
 }
 
-auto start_us = std::chrono::steady_clock::now();
-auto now_us = std::chrono::steady_clock::now();
-volatile bool done_measure{};
-volatile uint64_t elapsed_us{};
 
 static bool IRAM_ATTR tx_done_callback(rmt_channel_handle_t tx_chan, const rmt_tx_done_event_data_t *edata, void *user_ctx)
 {
     cb_dshot_ctx* ctx = reinterpret_cast<cb_dshot_ctx*>(user_ctx);
-    static bool once{true};
-
-    if(once && ctx->pin == static_cast<gpio_num_t>(12)){
-        now_us = std::chrono::steady_clock::now();
-        elapsed_us = std::chrono::duration_cast<std::chrono::microseconds>(now_us - start_us).count();
-        once = false;
-        done_measure = true;
-    }
+    xSemaphoreGive(s_newData);
     //gpio_ll_od_enable(GPIO_LL_GET_HW(GPIO_PORT_0), ctx->pin);
     //rmt_receive(ctx->rx_handle, raw_symbols, 64, const_cast<rmt_receive_config_t*>(&ctx->rx_chan_config));
 	return true; 
@@ -405,7 +425,6 @@ Dshot600::Dshot600(gpio_num_t motorPin[Dshot::maxChannels], bool isBidi){
         baud_rate = DSHOT_600 * 1000;
     }
     
-    init_dshot_debug_pin();
 
     dshot_esc_encoder_config_t encoder_config = {
         .resolution = DSHOT_ESC_RESOLUTION_HZ,
@@ -434,6 +453,7 @@ Dshot600::Dshot600(gpio_num_t motorPin[Dshot::maxChannels], bool isBidi){
 
     }
 
+    init_dshot_debug_pin();
 
     rmt_rx_event_callbacks_t rx_callback = 
     {
@@ -444,10 +464,7 @@ Dshot600::Dshot600(gpio_num_t motorPin[Dshot::maxChannels], bool isBidi){
         .on_trans_done = tx_done_callback
     };
 
-    rmt_receive_config_t rx_config{};
-
-
-    rx_config = {
+    rmt_receive_config_t rx_config = {
         .signal_range_min_ns = 	uint32_t(200),
         .signal_range_max_ns = uint32_t(3000),
     };
@@ -461,6 +478,12 @@ Dshot600::Dshot600(gpio_num_t motorPin[Dshot::maxChannels], bool isBidi){
         ctx->pin = m_gpioMotorPin[i];
         ctx->motor = static_cast<motor_type_t>(i);
         ctx->rx_chan_config = rx_config;
+
+        m_ctx[i].tx_handle = esc_motor_chan[i];
+        m_ctx[i].rx_handle = rmt_rx_handle[i];
+        m_ctx[i].pin = m_gpioMotorPin[i];
+        m_ctx[i].motor = static_cast<motor_type_t>(i);
+        m_ctx[i].rx_chan_config = rx_config;
 
         ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_rx_register_event_callbacks(rmt_rx_handle[i], &rx_callback, ctx));
         ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_tx_register_event_callbacks(esc_motor_chan[i], &tx_callback, ctx));
@@ -516,7 +539,6 @@ void Dshot600::dshot_task(void* args){
             status = get_message(msg, waitMs);
             ESP_ERROR_CHECK_WITHOUT_ABORT(status);
         }
-
    
         if(status == ESP_OK){
             status = parse_dshot_message(msg);
@@ -574,24 +596,25 @@ esp_err_t Dshot600::get_message(struct Dshot::DshotMessage& msg, TickType_t tick
 #include "driver/gpio.h"
 #include "hal/gpio_hal.h"
 
+
+double average(int64_t a[], uint64_t n)
+{
+    // Find sum of array element
+    int64_t sum = 0;
+    for (int i = 0; i < n; i++)
+        sum += a[i];
+
+    return (double)sum / n;
+}
+
+
 esp_err_t Dshot600::write_speed(struct Dshot::DshotMessage& msg){
     using namespace std::chrono_literals;
-    
+
     esp_err_t status = 0;
     dshot_esc_throttle_t throttle[Dshot::maxChannels]{};
     rmt_transmit_config_t tx_config[Dshot::maxChannels]{};
-
-    static uint64_t cntr{};
-    static auto next_point = std::chrono::steady_clock::now() + 1s;
-    auto now = std::chrono::steady_clock::now();
-    if(now >= next_point){
-        cntr = 0;
-        next_point = std::chrono::steady_clock::now() + 1s;
-    }
-    cntr++;
-
-  
-
+    std::chrono::_V2::steady_clock::time_point rx_ready_us[Dshot::maxChannels]{};
 
     for(int i=0;i<Dshot::maxChannels;i++){
         throttle[i] = {
@@ -601,59 +624,100 @@ esp_err_t Dshot600::write_speed(struct Dshot::DshotMessage& msg){
 
         tx_config[i].loop_count = msg.loops[i] == -1? -1 : 0;
         //tx_config[i].flags.eot_level = m_isBidi? 1 : 0;
-
-    
     }
 
-    static bool once{true};
-    static bool print_once{false};
 
-    static auto start = std::chrono::steady_clock::now();
 
-    rmt_receive_config_t rx_config = {
-        .signal_range_min_ns = 	uint32_t(200),
-        .signal_range_max_ns = uint32_t(3000),
-    };
+    const uint64_t bm_max{10000};
+    static uint64_t bm_cntr{};
+    static std::chrono::_V2::steady_clock::time_point bm_start{};
+    static std::chrono::_V2::steady_clock::time_point bm_end{};
+    static int64_t bm_elapsed[10000]{};
+
+    //if(bm_cntr < bm_max){
+    //      bm_start = std::chrono::steady_clock::now();
+    //
+    //      bm_end = std::chrono::steady_clock::now();
+    //      bm_elapsed[bm_cntr] = std::chrono::duration_cast<std::chrono::microseconds>(bm_end - bm_start).count(); 
+    //      bm_cntr++;
+    //}
+    //else{
+    //    
+    //}
+
 
 
     if(m_isBidi){
+
+        uint8_t rx_done{};
+        bool rx_done_complete[Dshot::maxChannels]{};
+
         for(int i=0;i<Dshot::maxChannels;i++){
+            gpio_ll_od_disable(GPIO_LL_GET_HW(GPIO_PORT_0), m_gpioMotorPin[i]);
 
-                gpio_ll_od_disable(GPIO_LL_GET_HW(GPIO_PORT_0), m_gpioMotorPin[i]);
-                if(once){
-                    printf("freq: %llu\n", cntr);
-                    printf("*************** pre tx gpio[%d] ****************\n", m_gpioMotorPin[i]);
-                    my_gpio_dump(m_gpioMotorPin[i]);
+            auto tx_called = std::chrono::steady_clock::now();
+            // median 11us avg 10us min 6us max 122us (first)
+            ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_transmit(this->esc_motor_chan[i], this->dshot_encoder, &throttle[i], sizeof(throttle[i]), &tx_config[i]));
+            auto tx_done =  std::chrono::steady_clock::now();
+            rx_ready_us[i] = std::chrono::steady_clock::now() + (65us - (tx_done - tx_called));      
+            foo();         
+            //auto delay = std::chrono::duration_cast<std::chrono::microseconds>(65us - (tx_done - tx_called)).count();
+            //if(delay > 0)
+            //{
+            //    ets_delay_us(static_cast<uint32_t>(delay));
+            //    gpio_ll_od_enable(GPIO_LL_GET_HW(GPIO_PORT_0), m_gpioMotorPin[i]);
+            //}
+
+            /*  trigger rx when time window is correct instead of busy waiting */
+            /*
+            for(uint8_t j=rx_done;j<Dshot::maxChannels;j++){
+                auto now = std::chrono::steady_clock::now();
+                if(now >= rx_ready_us[j] && now <= rx_ready_us[j] + 40us){
+                    rx_done = j + 1;
                 }
-                ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_transmit(this->esc_motor_chan[i], this->dshot_encoder, &throttle[i], sizeof(throttle[i]), &tx_config[i])); 
-                
-                //if(m_gpioMotorPin[i] == 12){
-                //    ets_delay_us(60);
-                //    gpio_set_level(DSHOT_DEBUG_PIN, 0);
-                //    ets_delay_us(5);
-                //    gpio_set_level(DSHOT_DEBUG_PIN, 1);
-                //}
-      
-
-                ets_delay_us(65);
-                gpio_ll_od_enable(GPIO_LL_GET_HW(GPIO_PORT_0), m_gpioMotorPin[i]);
-
-                cb_dshot_ctx ctx;
-
-                ctx.tx_handle = esc_motor_chan[i];
-                ctx.rx_handle = rmt_rx_handle[i];
-                ctx.pin = m_gpioMotorPin[i];
-                ctx.motor = static_cast<motor_type_t>(i);
-                ctx.rx_chan_config = rx_config;
-
-                rmt_receive(ctx.rx_handle, raw_symbols, 64, const_cast<rmt_receive_config_t*>(&ctx.rx_chan_config));
-
-                if(once){
-                    once = false;
-                    print_once = true;
-                    start_us = std::chrono::steady_clock::now();
+                else if(now < rx_ready_us[j] && i == Dshot::maxChannels - 1){ //if last motor, wait for window
+                    auto delay = std::chrono::duration_cast<std::chrono::microseconds>(rx_ready_us[j] - now).count();
+                    if(delay>0)
+                        ets_delay_us(delay);
                 }
+                else{
+                    break;
+                }
+
+                gpio_ll_od_enable(GPIO_LL_GET_HW(GPIO_PORT_0), m_gpioMotorPin[j]);
+                // median 5us avg 5s min 4us max 183us (first)
+                rmt_receive(m_ctx[j].rx_handle, raw_symbols, 64, const_cast<rmt_receive_config_t*>(&m_ctx[j].rx_chan_config));
+
+                rx_done_complete[j] = true;
             }
+            */
+            
+        }
+
+        for(int i=0;i<Dshot::maxChannels;i++){
+            ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_tx_wait_all_done(this->esc_motor_chan[i], pdMS_TO_TICKS(20)));
+        }
+        ets_delay_us(100);
+
+        if(bm_cntr == bm_max){
+            uint64_t n = sizeof(bm_elapsed) / sizeof(bm_elapsed[0]);
+            std::sort(bm_elapsed, bm_elapsed + static_cast<int64_t>(n));
+            double avg = average(bm_elapsed, static_cast<int64_t>(n));
+
+            printf("**** all results ****\n");
+            for(uint64_t i=0;i<bm_max;i++){
+                printf("[%llu]    us: %-3lld\n", i, bm_elapsed[i]);
+            }
+
+            printf("****** stats ******\n");
+            printf("avg    us: %f\n", avg);
+            printf("median us: %lld\n", bm_elapsed[(bm_max-1) / 2]);
+            printf("min    us: %lld\n", bm_elapsed[0]);
+            printf("max    us: %lld\n", bm_elapsed[bm_max-1]);
+
+            bm_cntr = bm_max + 100; // to prevent multiple prints
+        }
+
     }
     else{
         for(int i=0;i<Dshot::maxChannels;i++){
@@ -661,27 +725,13 @@ esp_err_t Dshot600::write_speed(struct Dshot::DshotMessage& msg){
                 ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_transmit(this->esc_motor_chan[i], this->dshot_encoder, &throttle[i], sizeof(throttle[i]), &tx_config[i])); 
                 //ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_tx_wait_all_done(this->esc_motor_chan[i], pdMS_TO_TICKS(1)));
         }
-        int64_t start[4]{};
-        int64_t end[4]{};
+
 
         for(int i=0;i<Dshot::maxChannels;i++){
-            //start[i] = esp_timer_get_time();
             ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_tx_wait_all_done(this->esc_motor_chan[i], pdMS_TO_TICKS(20)));
-            //end[i] = esp_timer_get_time();
         }
-
-        //printf("rmt_tx_wait_all_done took [%llu] [%llu] [%llu] [%llu] us\n", end[0]-start[0], end[1]-start[1], end[2]-start[2], end[3]-start[3]);
-
-        //print_debug(DEBUG_DSHOT, DEBUG_DATA, "\n");
     }
 
-    auto now_dd = std::chrono::steady_clock::now();
-    if(print_once && now_dd >= start + 5s){
-        printf("tx cb called after %llu us\n", elapsed_us);
-        print_once = false;
-    }
-
-//    vTaskDelay(pdMS_TO_TICKS(2));
     return status;
 }
 
@@ -885,7 +935,7 @@ esp_err_t Dshot600::rmt_del_dshot_encoder(rmt_encoder_t *encoder)
     return ESP_OK;
 }
 
-esp_err_t Dshot600::rmt_dshot_encoder_reset(rmt_encoder_t *encoder)
+esp_err_t IRAM_ATTR Dshot600::rmt_dshot_encoder_reset(rmt_encoder_t *encoder)
 {
     rmt_dshot_esc_encoder_t *dshot_encoder = __containerof(encoder, rmt_dshot_esc_encoder_t, base);
     rmt_encoder_reset(dshot_encoder->bytes_encoder);
@@ -894,7 +944,7 @@ esp_err_t Dshot600::rmt_dshot_encoder_reset(rmt_encoder_t *encoder)
     return ESP_OK;
 }
 
-void Dshot600::make_dshot_frame(dshot_esc_frame_t *frame, uint16_t throttle, bool telemetry)
+void IRAM_ATTR Dshot600::make_dshot_frame(dshot_esc_frame_t *frame, uint16_t throttle, bool telemetry)
 {
     frame->throttle = throttle;
     frame->telemetry = telemetry;
@@ -906,7 +956,7 @@ void Dshot600::make_dshot_frame(dshot_esc_frame_t *frame, uint16_t throttle, boo
     frame->val = ((val & 0xFF) << 8) | ((val & 0xFF00) >> 8);
 }
 
-void Dshot600::make_bidi_dshot_frame(dshot_esc_frame_t *frame, uint16_t throttle, bool telemetry)
+void IRAM_ATTR Dshot600::make_bidi_dshot_frame(dshot_esc_frame_t *frame, uint16_t throttle, bool telemetry)
 {
     frame->throttle = throttle;
     frame->telemetry = telemetry;
@@ -918,7 +968,7 @@ void Dshot600::make_bidi_dshot_frame(dshot_esc_frame_t *frame, uint16_t throttle
     frame->val = ((val & 0xFF) << 8) | ((val & 0xFF00) >> 8);
 }
 
-size_t Dshot600::rmt_encode_dshot_esc(
+size_t IRAM_ATTR Dshot600::rmt_encode_dshot_esc(
     rmt_encoder_t *encoder,
     rmt_channel_handle_t channel,
     const void *primary_data,
@@ -1042,7 +1092,7 @@ size_t Dshot600::rmt_encode_dshot_esc_old(rmt_encoder_t *encoder, rmt_channel_ha
 
 
 /* configure timings for rmt data */
-esp_err_t Dshot600::rmt_new_dshot_esc_encoder(const dshot_esc_encoder_config_t *config, rmt_encoder_handle_t *ret_encoder)
+esp_err_t IRAM_ATTR Dshot600::rmt_new_dshot_esc_encoder(const dshot_esc_encoder_config_t *config, rmt_encoder_handle_t *ret_encoder)
 {
     esp_err_t ret = ESP_OK;
     rmt_dshot_esc_encoder_t *dshot_encoder = NULL;
@@ -1069,7 +1119,7 @@ esp_err_t Dshot600::rmt_new_dshot_esc_encoder(const dshot_esc_encoder_config_t *
 
 
     dshot_encoder->dshot_delay_symbol = dshot_delay_symbol;
-
+ 
 
 
     // different dshot protocol have its own timing requirements,
@@ -1110,4 +1160,9 @@ esp_err_t Dshot600::rmt_new_dshot_esc_encoder(const dshot_esc_encoder_config_t *
     return ret;
 } 
 
+
+
+
+
+/*********************** Bit Banger **********************************/
 

@@ -155,8 +155,8 @@ esp_err_t WebClient::init(RingbufHandle_t dmp_buf_handle, RingbufHandle_t web_bu
         },
     };
 
-    strncpy((char*)wifi_config.sta.ssid, this->wifiName.c_str(), sizeof(wifi_config.sta.ssid));
-    strncpy((char*)wifi_config.sta.password, this->wifiPassword.c_str(), sizeof(wifi_config.sta.password));
+    strncpy((char*)wifi_config.sta.ssid, this->wifiName.c_str(), sizeof(wifi_config.sta.ssid)+1);
+    strncpy((char*)wifi_config.sta.password, this->wifiPassword.c_str(), sizeof(wifi_config.sta.password)+1);
 
     printf("<<<<<< %s %s >>>>>>>>\n", wifi_config.sta.ssid, wifi_config.sta.password);
 
