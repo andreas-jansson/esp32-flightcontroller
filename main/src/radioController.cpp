@@ -16,7 +16,7 @@
 
 
 RadioController* RadioController::radio = nullptr;
-uart_port_t RadioController::s_uartNum{2};
+uart_port_t RadioController::s_uartNum{UART_NUM_1}; //FIXME WAS 2 before??
 
 
 

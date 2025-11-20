@@ -1,5 +1,4 @@
 idf_component_register(SRCS         
-                         "src/esp_crsf.cpp" 
                          "src/i2c.cpp" 
                          "src/main.cpp"
                          "src/radioController.cpp"
@@ -35,6 +34,7 @@ idf_component_register(SRCS
                          esp_wifi
                          esp_rom
                          nvs_flash
+                         TFT_eSPI
                          "driver"
                          "nvs_flash" 
                        )

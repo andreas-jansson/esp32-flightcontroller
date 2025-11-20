@@ -47,7 +47,7 @@ static esp_err_t set_bits_8(uint8_t& data, uint8_t value, uint8_t lsb){
 }
 
 Mpu6050_stub::Mpu6050_stub(enum Mpu6050Addr address, I2cHandler* i2c){
-    print_debug(DEBUG_MPU6050, DEBUG_ARGS, "addr 0x%x\n", this->address);
+    print_debug(DEBUG_MPU6050, DEBUG_ARGS, "addr 0x%x\n", address);
 
     // multiple of dmpPacketsize 
     dmp_buf_handle = xRingbufferCreate(sizeof(YawPitchRoll)*5, RINGBUF_TYPE_NOSPLIT);

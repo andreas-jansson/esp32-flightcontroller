@@ -85,7 +85,7 @@ class Drone{
     uint32_t m_radioFreq{};
     uint32_t m_loopFreq{};
 
-    uart_port_t uartNum{1};
+    uart_port_t uartNum{UART_NUM_1};
     QueueHandle_t uart_queue{};
 
     /* battery info */

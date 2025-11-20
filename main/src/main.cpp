@@ -178,43 +178,6 @@ void altitude_task(void *args){
     }
 }
 
-void crsf_task(void *args){
-    crsf_config_t config = {
-        .uart_num = UART_NUM_1,
-        .tx_pin = 32,
-        .rx_pin = 33};
-    CRSF_init(&config);
-
-    crsf_channels_t channels = {0};
-    crsf_battery_t battery = {0};
-    crsf_gps_t gps = {0};
-    while (1)
-    {
-
-        CRSF_receive_channels(&channels);
-        printf("Channel 1: %d Channel 2: %d Channel 3: %d Channel 4: %d Channel 5: %d Channel 6: %d\n",
-               channels.ch1, channels.ch2, channels.ch3, channels.ch4, channels.ch5, channels.ch6);
-
-        battery.voltage = 120;   // voltage 10*V
-        battery.current = 100;   // current 10*A
-        battery.capacity = 1000; // capacity
-        battery.remaining = 50;  // remaining % of battery
-
-        CRSF_send_battery_data(CRSF_DEST_FC, &battery);
-
-        gps.latitude = 42.4242 * 10000000;  // 42.4242 deg
-        gps.longitude = 56.5656 * 10000000; // 56.5656 deg
-        gps.altitude = 5 + 1000;            // 5m
-        gps.groundspeed = 420;              // 42km/h
-        gps.heading = 90 * 100;             // 90 deg NOT WORKING WELL NOW
-        gps.satellites = 8;                 // 8 satellites
-
-        CRSF_send_gps_data(CRSF_DEST_FC, &gps);
-
-        vTaskDelay(100 / portTICK_PERIOD_MS);
-    }
-}
-
 void dispatch_radio(void *args){
     #ifdef STUB_RADIOCONTROLLER
     RadioController_stub *radio = RadioController_stub::GetInstance();

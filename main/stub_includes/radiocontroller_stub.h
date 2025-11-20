@@ -13,7 +13,7 @@ class RadioController_stub{
      static RadioController_stub* radio;
      //RingbufHandle_t radio_queue_handle;
      CircularHandle_t radio_queue_handle; 
-     uart_port_t uartNum{2};
+     uart_port_t uartNum{UART_NUM_0};
      QueueHandle_t uart_queue{};
      Channel channel{};
      int id{0x69};

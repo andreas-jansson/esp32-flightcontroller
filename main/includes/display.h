@@ -3,9 +3,8 @@
 #include <string>
 #include <map>
 
-//#include "Arduino.h"
+#include "Arduino.h"
 #include <TFT_eSPI.h>
-//#include <SPI.h>
 
 #include "freertos/task.h"
 #include "freertos/semphr.h"
