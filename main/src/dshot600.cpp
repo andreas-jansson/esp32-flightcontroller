@@ -40,16 +40,9 @@ static inline void IRAM_ATTR delay_ns(uint32_t ns)
 
 
 void foo(){
-    xSemaphoreTake( s_newData, portMAX_DELAY);
+    //xSemaphoreTake( s_newData, portMAX_DELAY);
     gpio_set_level(DSHOT_DEBUG_PIN, 0);
-    //ets_delay_us(1);
-    delay_ns(2);
-    gpio_set_level(DSHOT_DEBUG_PIN, 1);
-    //ets_delay_us(1);
-    delay_ns(2);
-    gpio_set_level(DSHOT_DEBUG_PIN, 0);
-    //ets_delay_us(1);
-    delay_ns(2);
+    ets_delay_us(1);
     gpio_set_level(DSHOT_DEBUG_PIN, 1);
 }
 
@@ -57,7 +50,7 @@ void foo(){
 void init_dshot_debug_pin()
 {
     vSemaphoreCreateBinary(s_newData);
-    xSemaphoreTake( s_newData, portMAX_DELAY);
+    xSemaphoreTake( s_newData, 0);
     gpio_config_t io_conf = {};
     io_conf.pin_bit_mask = 1ULL << DSHOT_DEBUG_PIN;
     io_conf.mode = GPIO_MODE_OUTPUT;
@@ -364,12 +357,24 @@ constexpr uint16_t dshotLoopsLookup[48] = {
 
 
 rmt_symbol_word_t raw_symbols[64];
+uint64_t rx_cntr[4]{};
+static bool once_rx{true};
+static rmt_rx_done_event_data_t edata_rx{};
+
+
 /*          rmt RX          */
 
 static bool IRAM_ATTR example_rmt_rx_done_callback(rmt_channel_handle_t channel, const rmt_rx_done_event_data_t *edata, void *user_ctx){
 
     cb_dshot_ctx* ctx = reinterpret_cast<cb_dshot_ctx*>(user_ctx);
-    gpio_ll_od_disable(GPIO_LL_GET_HW(GPIO_PORT_0), ctx->pin);
+    //gpio_ll_od_disable(GPIO_LL_GET_HW(GPIO_PORT_0), ctx->pin);
+    rx_cntr[ctx->motor]++;
+
+    if(once_rx && rx_cntr[0] > 1000){
+        memcpy(&edata_rx, edata, sizeof(rmt_rx_done_event_data_t));
+        once_rx = false;
+
+    }
 
     return  pdTRUE;
 }
@@ -378,9 +383,10 @@ static bool IRAM_ATTR example_rmt_rx_done_callback(rmt_channel_handle_t channel,
 static bool IRAM_ATTR tx_done_callback(rmt_channel_handle_t tx_chan, const rmt_tx_done_event_data_t *edata, void *user_ctx)
 {
     cb_dshot_ctx* ctx = reinterpret_cast<cb_dshot_ctx*>(user_ctx);
-    xSemaphoreGive(s_newData);
+    //xSemaphoreGive(s_newData);
     //gpio_ll_od_enable(GPIO_LL_GET_HW(GPIO_PORT_0), ctx->pin);
     //rmt_receive(ctx->rx_handle, raw_symbols, 64, const_cast<rmt_receive_config_t*>(&ctx->rx_chan_config));
+
 	return true; 
 }
 
@@ -400,8 +406,10 @@ Dshot600::Dshot600(gpio_num_t motorPin[Dshot::maxChannels], bool isBidi){
     tx_chan_config.clk_src = RMT_CLK_SRC_DEFAULT;               // select source clock
     tx_chan_config.mem_block_symbols = 64;                     // memory block size, 64 * 4 = 256Bytes
     tx_chan_config.resolution_hz = DSHOT_ESC_RESOLUTION_HZ;     // 1MHz tick resolution, i.e. 1 tick = 1us
-    tx_chan_config.trans_queue_depth = 2;                       // set the number of transactions that can pend in the background
-   
+    tx_chan_config.trans_queue_depth = 1;                       // set the number of transactions that can pend in the background
+    //tx_chan_config.intr_priority = 3;
+    //tx_chan_config.flags.with_dma = 0;
+
     if(isBidi)
     {
         tx_chan_config.flags.invert_out = 1;
@@ -412,6 +420,7 @@ Dshot600::Dshot600(gpio_num_t motorPin[Dshot::maxChannels], bool isBidi){
     rx_chan_config.mem_block_symbols = 64;
     rx_chan_config.resolution_hz = DSHOT_ESC_RESOLUTION_HZ;
     rx_chan_config.flags.invert_in = 1;
+
 
     uint32_t baud_rate{};
     switch(DSHOT_SPEED){
@@ -608,6 +617,17 @@ double average(int64_t a[], uint64_t n)
 }
 
 
+#include "hal/rmt_ll.h"
+#include "soc/rmt_struct.h"
+#include "soc/rmt_periph.h"
+#include "esp_rom_sys.h"
+#include "rom/gpio.h"
+
+#define NR_SAMPLES 10000
+static uint64_t elapsed[NR_SAMPLES]{};
+static uint64_t cntr{};
+
+
 esp_err_t Dshot600::write_speed(struct Dshot::DshotMessage& msg){
     using namespace std::chrono_literals;
 
@@ -619,119 +639,156 @@ esp_err_t Dshot600::write_speed(struct Dshot::DshotMessage& msg){
     for(int i=0;i<Dshot::maxChannels;i++){
         throttle[i] = {
             .throttle = msg.speed[i],
-            .telemetry_req = true,//msg.telemetryReq[i], 
+            .telemetry_req = false,
         };
 
         tx_config[i].loop_count = msg.loops[i] == -1? -1 : 0;
-        //tx_config[i].flags.eot_level = m_isBidi? 1 : 0;
+        //tx_config[i].flags.queue_nonblocking = 1;
     }
 
 
-
-    const uint64_t bm_max{10000};
-    static uint64_t bm_cntr{};
-    static std::chrono::_V2::steady_clock::time_point bm_start{};
-    static std::chrono::_V2::steady_clock::time_point bm_end{};
-    static int64_t bm_elapsed[10000]{};
-
-    //if(bm_cntr < bm_max){
-    //      bm_start = std::chrono::steady_clock::now();
-    //
-    //      bm_end = std::chrono::steady_clock::now();
-    //      bm_elapsed[bm_cntr] = std::chrono::duration_cast<std::chrono::microseconds>(bm_end - bm_start).count(); 
-    //      bm_cntr++;
-    //}
-    //else{
-    //    
-    //}
-
-
+    static bool once{true}; 
 
     if(m_isBidi){
 
         uint8_t rx_done{};
-        bool rx_done_complete[Dshot::maxChannels]{};
 
         for(int i=0;i<Dshot::maxChannels;i++){
+            int rmt_tx_sig = rmt_periph_signals.groups[0].channels[i].tx_sig;
+
+            //gpio_matrix_out(m_gpioMotorPin[i], static_cast<uint32_t>(rmt_tx_sig), m_isBidi, false);
             gpio_ll_od_disable(GPIO_LL_GET_HW(GPIO_PORT_0), m_gpioMotorPin[i]);
 
-            auto tx_called = std::chrono::steady_clock::now();
+
+            if(once && i == 0){
+                printf("********************************'\n");
+                printf("********** pre tx **************'\n");
+                my_gpio_dump(m_gpioMotorPin[0]);
+            }
+
+
+            auto tx_called =  std::chrono::steady_clock::now();
             // median 11us avg 10us min 6us max 122us (first)
             ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_transmit(this->esc_motor_chan[i], this->dshot_encoder, &throttle[i], sizeof(throttle[i]), &tx_config[i]));
-            auto tx_done =  std::chrono::steady_clock::now();
-            rx_ready_us[i] = std::chrono::steady_clock::now() + (65us - (tx_done - tx_called));      
-            foo();         
-            //auto delay = std::chrono::duration_cast<std::chrono::microseconds>(65us - (tx_done - tx_called)).count();
-            //if(delay > 0)
-            //{
-            //    ets_delay_us(static_cast<uint32_t>(delay));
-            //    gpio_ll_od_enable(GPIO_LL_GET_HW(GPIO_PORT_0), m_gpioMotorPin[i]);
-            //}
+            auto tx_done = std::chrono::steady_clock::now(); 
+            rx_ready_us[i] = std::chrono::steady_clock::now() + (65us - (tx_done - tx_called));
+
+            if(once && i == 0){
+                printf("********************************'\n");
+                printf("********** post tx **************'\n");
+                my_gpio_dump(m_gpioMotorPin[0]);
+            }
 
             /*  trigger rx when time window is correct instead of busy waiting */
             /*
-            for(uint8_t j=rx_done;j<Dshot::maxChannels;j++){
+            for(uint8_t j=rx_done;j<=i;j++){
                 auto now = std::chrono::steady_clock::now();
                 if(now >= rx_ready_us[j] && now <= rx_ready_us[j] + 40us){
                     rx_done = j + 1;
+
+                    if(cntr < NR_SAMPLES){
+                        elapsed[cntr] = std::chrono::duration_cast<std::chrono::microseconds>(now-tx_called).count();
+                        cntr++;
+                    }
                 }
                 else if(now < rx_ready_us[j] && i == Dshot::maxChannels - 1){ //if last motor, wait for window
                     auto delay = std::chrono::duration_cast<std::chrono::microseconds>(rx_ready_us[j] - now).count();
+
+                    if(cntr < NR_SAMPLES){
+                        elapsed[cntr] = std::chrono::duration_cast<std::chrono::microseconds>(now-tx_called).count();
+                        cntr++;
+                    }
+
                     if(delay>0)
                         ets_delay_us(delay);
                 }
                 else{
                     break;
                 }
-
+                
+            
+                //gpio_matrix_out(m_gpioMotorPin[i], SIG_GPIO_OUT_IDX, false, false);
                 gpio_ll_od_enable(GPIO_LL_GET_HW(GPIO_PORT_0), m_gpioMotorPin[j]);
                 // median 5us avg 5s min 4us max 183us (first)
                 rmt_receive(m_ctx[j].rx_handle, raw_symbols, 64, const_cast<rmt_receive_config_t*>(&m_ctx[j].rx_chan_config));
 
-                rx_done_complete[j] = true;
             }
+
             */
+            //auto now = std::chrono::steady_clock::now();
+            //auto delay = 65 - std::chrono::duration_cast<std::chrono::microseconds>(now-tx_called).count();
+            //ets_delay_us(delay);
+            //gpio_ll_od_enable(GPIO_LL_GET_HW(GPIO_PORT_0), m_gpioMotorPin[i]);
+            // median 5us avg 5s min 4us max 183us (first)
+
+            //rmt_receive(m_ctx[i].rx_handle, raw_symbols, 64, const_cast<rmt_receive_config_t*>(&m_ctx[i].rx_chan_config));
+
+            //if(once){
+            //        ets_delay_us(200);
+            //        printf("********************************'\n");
+            //        printf("******** post recieve **********'\n");
+            //        my_gpio_dump(m_gpioMotorPin[0]);
+            //}
             
         }
 
-        for(int i=0;i<Dshot::maxChannels;i++){
-            ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_tx_wait_all_done(this->esc_motor_chan[i], pdMS_TO_TICKS(20)));
-        }
-        ets_delay_us(100);
+        if(cntr == NR_SAMPLES){
+            uint64_t n = sizeof(elapsed) / sizeof(elapsed[0]);
+            std::sort(elapsed, elapsed + n);
 
-        if(bm_cntr == bm_max){
-            uint64_t n = sizeof(bm_elapsed) / sizeof(bm_elapsed[0]);
-            std::sort(bm_elapsed, bm_elapsed + static_cast<int64_t>(n));
-            double avg = average(bm_elapsed, static_cast<int64_t>(n));
+            uint64_t avg{};
 
-            printf("**** all results ****\n");
-            for(uint64_t i=0;i<bm_max;i++){
-                printf("[%llu]    us: %-3lld\n", i, bm_elapsed[i]);
+             for (int i=0;i<NR_SAMPLES;i++){
+                avg += elapsed[i];
             }
 
-            printf("****** stats ******\n");
-            printf("avg    us: %f\n", avg);
-            printf("median us: %lld\n", bm_elapsed[(bm_max-1) / 2]);
-            printf("min    us: %lld\n", bm_elapsed[0]);
-            printf("max    us: %lld\n", bm_elapsed[bm_max-1]);
+            for (int i=0;i<20;i++){
+                printf("[%-2d] %-4llu\n", i, elapsed[i]);
+            }
 
-            bm_cntr = bm_max + 100; // to prevent multiple prints
+            printf("...\n");
+            printf("...\n");
+            printf("...\n");
+
+            for (int i=(NR_SAMPLES-20);i<NR_SAMPLES;i++){
+                printf("[%-4d] %-4llu\n", i, elapsed[i]);
+            }
+
+            avg /= NR_SAMPLES;
+
+            printf("avg: %llu\n", avg);
+            printf("med: %llu\n", elapsed[NR_SAMPLES/2]);
+            printf("min: %llu\n", elapsed[0]);
+            printf("max: %llu\n", elapsed[NR_SAMPLES-1]);
+
+            for(int i=0;i<Dshot::maxChannels;i++){
+                printf("channel[%d] rx recived[%llu]\n", i, rx_cntr[i]);
+            }
+
+            printf("recieved sym val[0x%lx]\n", edata_rx.received_symbols->val);
+            printf("num sym[%u]\n", edata_rx.num_symbols);
+            printf("is last[%u]\n", edata_rx.flags.is_last);
+            printf("dur 0[%u]\n", edata_rx.received_symbols->duration0);
+            printf("dur 1[%u]\n", edata_rx.received_symbols->duration1);
+            printf("lvl 0[%u]\n", edata_rx.received_symbols->level0);
+            printf("lvl 1[%u]\n", edata_rx.received_symbols->level1);
+
+            cntr++;
         }
-
     }
     else{
         for(int i=0;i<Dshot::maxChannels;i++){
                 print_debug(DEBUG_DSHOT, DEBUG_DATA, "m%d throttle: %u telemetry: %d channel: 0x%x", i, throttle[i].throttle, throttle[i].telemetry_req, this->esc_motor_chan[i]);
                 ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_transmit(this->esc_motor_chan[i], this->dshot_encoder, &throttle[i], sizeof(throttle[i]), &tx_config[i])); 
-                //ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_tx_wait_all_done(this->esc_motor_chan[i], pdMS_TO_TICKS(1)));
+                ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_tx_wait_all_done(this->esc_motor_chan[i], pdMS_TO_TICKS(1)));
         }
-
 
         for(int i=0;i<Dshot::maxChannels;i++){
             ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_tx_wait_all_done(this->esc_motor_chan[i], pdMS_TO_TICKS(20)));
         }
     }
-
+    vTaskDelay(pdMS_TO_TICKS(1));
+    once = false;
     return status;
 }
 
@@ -959,13 +1016,17 @@ void IRAM_ATTR Dshot600::make_dshot_frame(dshot_esc_frame_t *frame, uint16_t thr
 void IRAM_ATTR Dshot600::make_bidi_dshot_frame(dshot_esc_frame_t *frame, uint16_t throttle, bool telemetry)
 {
     frame->throttle = throttle;
-    frame->telemetry = telemetry;
-    uint16_t val = frame->val;
-    uint8_t crc = (~(val ^ (val >> 4) ^ (val >> 8))) & 0x0F;
+    frame->telemetry = 0; //telemetry;
+    uint16_t val = (throttle <<1) | telemetry;
+    //uint8_t crc = (~(val ^ (val >> 4) ^ (val >> 8))) & 0x0F;
+    uint8_t crc  = (~(val ^ (val >> 4) ^ (val >> 8))) & 0x0F;
     frame->crc = crc;
     val = frame->val;
     // change the endian
     frame->val = ((val & 0xFF) << 8) | ((val & 0xFF00) >> 8);
+
+    //printf("throttle[%u] swapped[0x%x] crc 0x%x\n", throttle, frame->val, crc);
+
 }
 
 size_t IRAM_ATTR Dshot600::rmt_encode_dshot_esc(
@@ -1040,54 +1101,6 @@ out:
     return encoded_symbols;
 }
 
-
-size_t Dshot600::rmt_encode_dshot_esc_old(rmt_encoder_t *encoder, rmt_channel_handle_t channel,
-    const void *primary_data, size_t data_size, rmt_encode_state_t *ret_state)
-{
-    rmt_dshot_esc_encoder_t *dshot_encoder = __containerof(encoder, rmt_dshot_esc_encoder_t, base);
-    rmt_encoder_handle_t bytes_encoder = dshot_encoder->bytes_encoder;
-    rmt_encoder_handle_t copy_encoder = dshot_encoder->copy_encoder;
-    rmt_encode_state_t session_state = RMT_ENCODING_RESET;
-    rmt_encode_state_t state = RMT_ENCODING_RESET;
-    size_t encoded_symbols = 0;
-
-    // convert user data into dshot frame
-    dshot_esc_throttle_t *throttle = (dshot_esc_throttle_t *)primary_data;
-    dshot_esc_frame_t frame = {};
-    if(m_isBidi){
-        make_bidi_dshot_frame(&frame, throttle->throttle, throttle->telemetry_req);
-    }
-    else{
-        make_dshot_frame(&frame, throttle->throttle, throttle->telemetry_req);
-    }
-
-    switch (dshot_encoder->state) {
-        case 0: // send the dshot frame
-            encoded_symbols += bytes_encoder->encode(bytes_encoder, channel, &frame, sizeof(frame), &session_state);
-            if (session_state & RMT_ENCODING_COMPLETE) {
-                dshot_encoder->state = 1; // switch to next state when current encoding session finished
-            }
-            if (session_state & RMT_ENCODING_MEM_FULL) {
-                state = static_cast<rmt_encode_state_t>(static_cast<int>(state) | static_cast<int>(RMT_ENCODING_MEM_FULL));           
-                goto out; // yield if there's no free space for encoding artifacts
-            }
-        // fall-through
-        case 1:
-            encoded_symbols += copy_encoder->encode(copy_encoder, channel, &dshot_encoder->dshot_delay_symbol,
-                            sizeof(rmt_symbol_word_t), &session_state);
-            if (session_state & RMT_ENCODING_COMPLETE) {
-                state = static_cast<rmt_encode_state_t>(static_cast<int>(state) | static_cast<int>(RMT_ENCODING_COMPLETE));           
-                dshot_encoder->state = RMT_ENCODING_RESET; // switch to next state when current encoding session finished
-            }
-            if (session_state & RMT_ENCODING_MEM_FULL) {
-                state = static_cast<rmt_encode_state_t>(static_cast<int>(state) | static_cast<int>(RMT_ENCODING_MEM_FULL));           
-                goto out; // yield if there's no free space for encoding artifacts
-            }
-    }
-    out:
-    *ret_state = state;
-    return encoded_symbols;
-}
 
 
 

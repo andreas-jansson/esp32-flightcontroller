@@ -87,7 +87,7 @@ namespace Dshot{
     int state;
     gpio_num_t pin;    // <-- add pin here
     };
-
+    
     typedef union {
         struct {
             uint16_t crc: 4;       /*!< CRC checksum */
@@ -96,6 +96,8 @@ namespace Dshot{
         };
         uint16_t val;
     } dshot_esc_frame_t;
+    
+
 
 }
 
@@ -196,13 +198,6 @@ class Dshot600{
     esp_err_t set_idle();
 
     static size_t rmt_encode_dshot_esc(
-        rmt_encoder_t *encoder, 
-        rmt_channel_handle_t channel, 
-        const void *primary_data, 
-        size_t data_size, 
-        rmt_encode_state_t *ret_state);
-
-    static size_t rmt_encode_dshot_esc_old(
         rmt_encoder_t *encoder, 
         rmt_channel_handle_t channel, 
         const void *primary_data, 
