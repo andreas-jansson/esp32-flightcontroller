@@ -24,7 +24,6 @@
 #include "dshot600.h"
 #include "i2c.h"
 #include "quaternion.h"
-#include "esp_crsf.h"
 #include "webClient.h"
 #include "development.h"
 #include "drone.h"
@@ -46,6 +45,7 @@
 // uncomment to add back tasks
 #define WEB_TASK
 #define TELEMETRY_TASK
+
 //#define STUB_RADIOCONTROLLER
 //#define STUB_MPU6050
 
@@ -313,7 +313,7 @@ void main_task(void *args){
     /* start tasks */
     print_debug(DEBUG_MAIN, DEBUG_LOGIC, "starting tasks\n");
     xTaskCreatePinnedToCore(dispatch_display, "display_task", 8096, nullptr,  PRIO_BG, &display_handle, 0);
-    vTaskDelay(pdMS_TO_TICKS(100));
+    vTaskDelay(pdMS_TO_TICKS(250));
     Display::set_display_state(BOOTING);
 
     xTaskCreatePinnedToCore(dispatch_drone, "drone_task", 4048, nullptr,  PRIO_CONTROL, &drone_handle, 1);

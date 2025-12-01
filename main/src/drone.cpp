@@ -397,7 +397,7 @@ esp_err_t Drone::verify_components_process()
             radioValidCounter++;
 
         /* if 90% of 300 sampels are valid, approve component*/
-        if (yprCounter1 > 300)
+        if (yprCounter1 > 100)
         {
             if ((yprValidCounter1 / yprCounter1) > 0.9){
                 Display::set_verify_mpu1_status(PASS);
@@ -409,7 +409,7 @@ esp_err_t Drone::verify_components_process()
             }
         }
 
-        if (yprCounter2 > 300)
+        if (yprCounter2 > 100)
         {
             if ((yprValidCounter2 / yprCounter2) > 0.9){
                 Display::set_verify_mpu2_status(PASS);
@@ -701,6 +701,9 @@ void Drone::drone_task(void *args){
 
         if(m_state.isControllerArmed && radio_ok && !pid_config_running){
             m_state.isDroneArmed = true;
+        }
+        else{
+            m_state.isDroneArmed = false;
         }
 
         //vTaskDelay(pdMS_TO_TICKS(1000));

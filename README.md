@@ -1,6 +1,6 @@
 
 # ESP32 Flight Controller (ongoing)
-Built using IDF 5.1.1, using custom implementation of DSHOT600, MPU6050 and CRFS parsing.
+Built using IDF 5.5.1, using custom implementation of DSHOT600, MPU6050 and CRFS parsing.
 
 ## Key Points
 * 2x MPU6050 

@@ -69,15 +69,7 @@ namespace Dshot{
         bool telemetry_req; /*!< Telemetry request */
     } dshot_esc_throttle_t;
 
-    /*
-    typedef struct {
-        rmt_encoder_t base;
-        rmt_encoder_t *bytes_encoder;
-        rmt_encoder_t *copy_encoder;
-        rmt_symbol_word_t dshot_delay_symbol;
-        int state;
-    } rmt_dshot_esc_encoder_t;
-    */
+   
 
     struct rmt_dshot_esc_encoder_t {
     rmt_encoder_t base;
@@ -96,8 +88,37 @@ namespace Dshot{
         };
         uint16_t val;
     } dshot_esc_frame_t;
-    
 
+    typedef struct {
+        uint64_t sym[32] {};
+        uint8_t num_symbols{};
+        uint8_t total_us{};
+        struct {
+            float period_us{};
+            int sym_lvl{};
+        } bit_info[32];
+
+        uint32_t gcr{};
+        uint32_t data_bits{};
+    } rx_symbol_t;
+
+    inline std::map<uint16_t, uint16_t> unmapGcr = {
+    {0x19,0}, 
+    {0x1B,1}, 
+    {0x12,2}, 
+    {0x13,3},
+    {0x1D,4},
+    {0x15,5},
+    {0x16,6},
+    {0x17,7},
+    {0x1A,8},
+    {0x09,9},
+    {0x0A,10},
+    {0x0B,11},
+    {0x1E,12},
+    {0x0D,13},
+    {0x0E,14},
+    {0x0F,15}};
 
 }
 
@@ -175,10 +196,13 @@ class Dshot600{
     rmt_channel_handle_t rmt_rx_handle[Dshot::maxChannels]{};
     rmt_encoder_handle_t dshot_encoder{};
 
-    cb_dshot_ctx m_ctx[Dshot::maxChannels]{};
-
+    cb_dshot_ctx* m_ctx[Dshot::maxChannels]{};
 
     gpio_num_t m_gpioMotorPin[4]{};
+    
+    int c_cpuFreq{};
+    float c_cycleToUs{};
+
 
     Dshot600(gpio_num_t motorPin[Dshot::maxChannels], bool isBidi);
 
@@ -195,7 +219,6 @@ class Dshot600{
 
     esp_err_t get_message(struct Dshot::DshotMessage& msg, TickType_t ticks);
 
-    esp_err_t set_idle();
 
     static size_t rmt_encode_dshot_esc(
         rmt_encoder_t *encoder, 
@@ -210,6 +233,12 @@ class Dshot600{
     static void make_dshot_frame(Dshot::dshot_esc_frame_t *frame, uint16_t throttle, bool telemetry);
     static void make_bidi_dshot_frame(Dshot::dshot_esc_frame_t *frame, uint16_t throttle, bool telemetry);
 
+    int decode_gcr_timings_to_bits(Dshot::rx_symbol_t& rx_sym);
+    int extract_nibbles(uint32_t& gcr, uint16_t& word16);
+    int crc_4(uint16_t& word16);
+    int decode_msg(uint16_t& word16);
+    int process_erpm_data(Dshot::rx_symbol_t& rx_sym);
+    uint32_t gray_to_gcr(uint32_t gray);
 
     public:
 
@@ -226,7 +255,6 @@ class Dshot600{
     // Commands
     esp_err_t beep_cmd(enum Dshot::BeepNum num);
     esp_err_t blink_led_cmd();
-    esp_err_t arm_esc_cmd();
 
     // not implemented 
     esp_err_t set_motor_spin_cmd(enum Motor motorNum, enum MotorDirection direction);
@@ -235,7 +263,6 @@ class Dshot600{
     esp_err_t set_3d_mode_cmd(bool on);
     esp_err_t save_settings_cmd();
 
-
-
+    esp_err_t set_extended_telemetry(bool enable);
 
 };

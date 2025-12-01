@@ -215,7 +215,7 @@ void Display::boot_menu(){
         }
 
         s_backgroundSprite.pushSprite(0, 0);
-        xSemaphoreTake(s_newData, pdMS_TO_TICKS(1000));
+        xSemaphoreTake(s_newData, portMAX_DELAY);
     }
     cleanup();
 }
