@@ -617,11 +617,14 @@ void Drone::drone_task(void *args){
     auto next_log_time = std::chrono::steady_clock::now() + telemetry_period_ms;
 #endif
 
+    m_dshotObj->set_extended_telemetry(true);
+
+    vTaskDelay(pdMS_TO_TICKS(50));
 
     status = calibrate_gyro();
 
     verify_components_process();
-    
+
     Display::set_display_state(DRONE);
 
     while (true)

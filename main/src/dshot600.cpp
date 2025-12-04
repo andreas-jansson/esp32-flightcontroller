@@ -17,6 +17,7 @@
 #include "rom/ets_sys.h"
 #include "freertos/queue.h"
 #include "driver/gpio.h"
+#include "esp_intr_alloc.h"
 
 #include "esp_cpu.h"
 #include "esp_private/esp_clk.h"
@@ -34,7 +35,7 @@
 #define DSHOT_150 150 
 #define DSHOT_300 300 
 #define DSHOT_600 600 
-#define DSHOT_SPEED DSHOT_150 
+#define DSHOT_SPEED DSHOT_600 
 
 #define DSHOT_ESC_RESOLUTION_HZ 80000000 
 static const char *TAG = "dshot_encoder";
@@ -172,14 +173,11 @@ rx_symbol_t rx_sym_data_good[20]{};
 
 static void IRAM_ATTR rx_handler(void *args)
 {
-    
-    rx_sym_data.sym[rx_sym_data.num_symbols] = esp_cpu_get_cycle_count();
-    rx_sym_data.bit_info[rx_sym_data.num_symbols].sym_lvl = gpio_ll_get_level(GPIO_LL_GET_HW(GPIO_PORT_0), 12);    
-    if(rx_sym_data.num_symbols == 0){
-        //gpio_set_level(static_cast<gpio_num_t>(25), 0);
-        //gpio_set_level(static_cast<gpio_num_t>(25), 1);
-    }
+    if(rx_sym_data.num_symbols<32){
+        rx_sym_data.sym[rx_sym_data.num_symbols] = esp_cpu_get_cycle_count();
+        rx_sym_data.bit_info[rx_sym_data.num_symbols].sym_lvl = gpio_ll_get_level(GPIO_LL_GET_HW(GPIO_PORT_0), 12);    
         rx_sym_data.num_symbols++;
+    }
 }
 
 static bool IRAM_ATTR rx_done_callback(rmt_channel_handle_t channel, const rmt_rx_done_event_data_t *edata, void *user_ctx){
@@ -211,11 +209,53 @@ static bool IRAM_ATTR tx_done_callback(rmt_channel_handle_t tx_chan, const rmt_t
     cb_dshot_ctx* ctx = reinterpret_cast<cb_dshot_ctx*>(user_ctx);
     //gpio_ll_od_enable(GPIO_LL_GET_HW(GPIO_PORT_0), ctx->pin);
     //rmt_receive(ctx->rx_handle, raw_symbols, 64, const_cast<rmt_receive_config_t*>(&ctx->rx_chan_config));
-
 	return true; 
 }
 
+static intr_handle_t s_my_rmt_intr = nullptr;
+static volatile bool s_rmt_ch0_tx_done = false;
 
+static void IRAM_ATTR my_rmt_tx_isr(void *arg)
+{
+    uint32_t status = RMT.int_raw.val;
+
+    //RMT.int_clr.val = status;
+
+    if (status) {
+        s_rmt_ch0_tx_done = true;
+        gpio_set_level(static_cast<gpio_num_t>(25), 0);
+        gpio_set_level(static_cast<gpio_num_t>(25), 1);
+    }
+
+}
+
+void Dshot600::attach_my_rmt_tx_isr(void)
+{
+    int group_id{0};  
+    int isr_flags{0x50e};
+    int chanId{};
+
+    // rmt_channel_handle_t == rmt_channel_t, first int is channel id in rmt_private.h
+    memcpy(&chanId, esc_motor_chan[0], sizeof(int));
+
+    esp_err_t err = esp_intr_alloc_intrstatus(
+        rmt_periph_signals.groups[group_id].irq,               
+        ESP_INTR_FLAG_IRAM | ESP_INTR_FLAG_SHARED,
+        (uint32_t)rmt_ll_get_interrupt_status_reg(&RMT),       
+        RMT_LL_EVENT_TX_MASK(chanId),
+        my_rmt_tx_isr,
+        nullptr,
+        &s_my_rmt_intr
+    );
+
+    printf("********** my isr ********\n");
+    printf("rmt_periph_signals.groups[group_id].irq\t\t[%d]\n", rmt_periph_signals.groups[group_id].irq);
+    printf("ESP_INTR_FLAG_IRAM | ESP_INTR_FLAG_SHARED\t\t[0x%x]\n", ESP_INTR_FLAG_IRAM | ESP_INTR_FLAG_SHARED);
+    printf("rmt_ll_get_interrupt_status_reg(&RMT)\t\t[%p]\n", rmt_ll_get_interrupt_status_reg(&RMT));
+    printf("RMT_LL_EVENT_TX_MASK(%d)\t\t[0x%x]\n", chanId, RMT_LL_EVENT_TX_MASK(chanId));
+
+    ESP_ERROR_CHECK_WITHOUT_ABORT(err);
+}
 
 
 Dshot600::Dshot600(gpio_num_t motorPin[Dshot::maxChannels], bool isBidi){
@@ -327,8 +367,8 @@ Dshot600::Dshot600(gpio_num_t motorPin[Dshot::maxChannels], bool isBidi){
         m_ctx[i]->rx_chan_config = rx_config;
 
 
-        ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_rx_register_event_callbacks(rmt_rx_handle[i], &rx_callback, reinterpret_cast<void*>(m_ctx[i])));
-        ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_tx_register_event_callbacks(esc_motor_chan[i], &tx_callback, reinterpret_cast<void*>(m_ctx[i])));
+        //ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_rx_register_event_callbacks(rmt_rx_handle[i], &rx_callback, reinterpret_cast<void*>(m_ctx[i])));
+        //ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_tx_register_event_callbacks(esc_motor_chan[i], &tx_callback, reinterpret_cast<void*>(m_ctx[i])));
 
         /* start up RMT channels*/
         ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_enable(this->rmt_rx_handle[i]));
@@ -339,6 +379,8 @@ Dshot600::Dshot600(gpio_num_t motorPin[Dshot::maxChannels], bool isBidi){
     my_gpio_dump(m_gpioMotorPin[0]);
 
     init_dshot_debug_pin(25);
+
+    attach_my_rmt_tx_isr();
 
 }
 
@@ -427,7 +469,7 @@ esp_err_t Dshot600::get_message(struct Dshot::DshotMessage& msg, TickType_t tick
     //return status;
     return ESP_FAIL;
 }
-
+//extern rmt_dev_t RMT;
 
 esp_err_t Dshot600::write_speed(struct Dshot::DshotMessage& msg){
     using namespace std::chrono_literals;
@@ -442,7 +484,7 @@ esp_err_t Dshot600::write_speed(struct Dshot::DshotMessage& msg){
     for(int i=0;i<Dshot::maxChannels;i++){
         throttle[i] = {
             .throttle = msg.speed[i],
-            .telemetry_req = false,
+            .telemetry_req = true,
         };
 
         tx_config[i].loop_count = msg.loops[i] == -1? -1 : 0;
@@ -464,19 +506,45 @@ esp_err_t Dshot600::write_speed(struct Dshot::DshotMessage& msg){
             auto tx_called =  std::chrono::steady_clock::now();
             rx_ready_us[i] = tx_called + 65us;
 
-      
-
-
             // median 11us avg 10us min 6us max 122us (first)
-            ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_transmit(this->esc_motor_chan[i], this->dshot_encoder, &throttle[i], sizeof(throttle[i]), &tx_config[i]));
-   
-            if(i==0 && msg.speed[0] > 50){
+            //ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_transmit(this->esc_motor_chan[i], this->dshot_encoder, &throttle[i], sizeof(throttle[i]), &tx_config[i]));
+
+
+            //printf("motor %d starting tx done measurement...raw[0x%lx]\n", i, RMT.int_raw.val);
+            //ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_transmit(this->esc_motor_chan[i], this->dshot_encoder, &throttle[i], sizeof(throttle[i]), &tx_config[i]));
+            //esp_cpu_cycle_count_t cycles_start = esp_cpu_get_cycle_count();
+            //while (!RMT.int_raw.val);
+            //esp_cpu_cycle_count_t cycles_end = esp_cpu_get_cycle_count();
+            //constexpr float c_cycleToUs = (1.0/240000000.0) * 1000000;
+            //float tx_done_us = static_cast<float>(( cycles_end - cycles_start ) * c_cycleToUs);
+            //printf("motor %d took %f us for tx done, raw[0x%lx]\n", i, tx_done_us, RMT.int_raw.val);
+            
+            if(i==0){
+                printf("motor %d starting tx done measurement...raw[0x%lx]\n", i, RMT.int_raw.val);
+                ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_transmit(this->esc_motor_chan[i], this->dshot_encoder, &throttle[i], sizeof(throttle[i]), &tx_config[i]));
+                esp_cpu_cycle_count_t cycles_start = esp_cpu_get_cycle_count();
+
+                while (!s_rmt_ch0_tx_done) {
+                    __asm__ __volatile__("nop");
+                }
+                esp_cpu_cycle_count_t cycles_end = esp_cpu_get_cycle_count();
+                constexpr float c_cycleToUs = (1.0/240000000.0) * 1000000;
+                float tx_done_us = static_cast<float>(( cycles_end - cycles_start ) * c_cycleToUs);
+                printf("motor %d took %f us for tx done, raw[0x%lx]\n", i, tx_done_us, RMT.int_raw.val);
+            }            
+            s_rmt_ch0_tx_done = false;
+
+
+            
+
+            if(i==0 && msg.speed[0] > 50 && false){                
+
                 ets_delay_us(110);
                 gpio_ll_od_enable(GPIO_LL_GET_HW(GPIO_PORT_0), m_gpioMotorPin[0]);
                 ets_delay_us(15);
                 gpio_intr_enable(static_cast<gpio_num_t>(m_gpioMotorPin[0]));
-                gpio_set_level(static_cast<gpio_num_t>(25), 0);
-                gpio_set_level(static_cast<gpio_num_t>(25), 1);
+                //gpio_set_level(static_cast<gpio_num_t>(25), 0);
+                //gpio_set_level(static_cast<gpio_num_t>(25), 1);
                 uint32_t mini_counter = 0;
                 while(rx_sym_data.num_symbols<16 && mini_counter<200){
                     ets_delay_us(1);
@@ -492,6 +560,7 @@ esp_err_t Dshot600::write_speed(struct Dshot::DshotMessage& msg){
                 gpio_intr_disable(static_cast<gpio_num_t>(m_gpioMotorPin[0]));
 
             }
+            
             //printf("***** post isr enable isr setup ******\n");
             //my_gpio_dump(m_gpioMotorPin[0]);
         }
@@ -566,27 +635,34 @@ esp_err_t Dshot600::write_command(struct Dshot::DshotMessage& msg){
     esp_err_t status = 0;
     dshot_esc_throttle_t throttle[Dshot::maxChannels]{};
     rmt_transmit_config_t tx_config[Dshot::maxChannels]{};
-
+    
     for(int i=0;i<Dshot::maxChannels;i++){
         throttle[i] = {
             .throttle = msg.cmd[i],
-            .telemetry_req = msg.telemetryReq[i], 
         };
 
         tx_config[i] = {
-            .loop_count = msg.loops[i] == -1? -1 : 0,
+            .loop_count = msg.loops[i]  == -1? -1 : 0,
         };    
     }
-    
-    for(int i=0;i<Dshot::maxChannels;i++){
 
-        for(uint16_t j=0;j<dshotLoopsLookup[msg.cmd[i]];j++){
+    for(int i=0;i<Dshot::maxChannels;i++){
+        for(uint16_t j=0;j<dshotLoopsLookup[msg.cmd[i]] * 2;j++){ //send more than specified incase jitter etc
             print_debug(DEBUG_DSHOT, DEBUG_DATA, "m%d command: %u  channel: 0x%x ", i, throttle[i].throttle, this->esc_motor_chan[i]);
+            
+            if(m_isBidi)
+                gpio_ll_od_disable(GPIO_LL_GET_HW(GPIO_PORT_0), m_gpioMotorPin[i]);
+
             ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_transmit(this->esc_motor_chan[i], this->dshot_encoder, &throttle[i], sizeof(throttle[i]), &tx_config[i]));
+            ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_tx_wait_all_done(this->esc_motor_chan[i], pdMS_TO_TICKS(20)));
+
+            if(m_isBidi)
+                gpio_ll_od_enable(GPIO_LL_GET_HW(GPIO_PORT_0), m_gpioMotorPin[0]);
+
             if(dshotWaitLookup[msg.cmd[i]] > 0) 
                 vTaskDelay(dshotWaitLookup[msg.cmd[i]]);
+         
         }
-
     }
     print_debug(DEBUG_DSHOT, DEBUG_DATA, "\n");
 
@@ -844,7 +920,6 @@ esp_err_t IRAM_ATTR Dshot600::rmt_new_dshot_esc_encoder(const dshot_esc_encoder_
     dshot_encoder->dshot_delay_symbol = dshot_delay_symbol;
  
 
-
     // different dshot protocol have its own timing requirements,
     float period_ticks = (float)config->resolution / config->baud_rate;
     printf("period_ticks: %f ns\n", (period_ticks / DSHOT_ESC_RESOLUTION_HZ) * 1e9);
@@ -884,15 +959,14 @@ esp_err_t IRAM_ATTR Dshot600::rmt_new_dshot_esc_encoder(const dshot_esc_encoder_
 } 
 
 
-int Dshot600::decode_gcr_timings_to_bits(rx_symbol_t& rx_sym){
+int Dshot600::decode_timings_to_gcr(rx_symbol_t& rx_sym){
     const float max_thld{1.3};
     const float min_thld{0.7};
     float total_msg_us{};
     constexpr float c_cycleToUs = (1.0/240000000.0) * 1000000;
     constexpr float bit_period_us{6.67}; //dshot150
     constexpr float single_bit_us{(4.0/5) * bit_period_us};
-    rx_sym.data_bits = 0;
-
+    rx_sym.gcr_data = 0;
 
     for(uint8_t i=0; i<rx_sym.num_symbols-1; i++) {
         rx_sym.bit_info[i].period_us = static_cast<float>(( rx_sym.sym[i+1] - rx_sym.sym[i] ) * c_cycleToUs);
@@ -913,7 +987,7 @@ int Dshot600::decode_gcr_timings_to_bits(rx_symbol_t& rx_sym){
         uint8_t level = rx_sym.bit_info[i].sym_lvl ? 0 : 1;
 
         for (uint8_t b = 0; b < nr_bits; ++b) {
-            rx_sym.data_bits |= (uint32_t(level) << (20 - bit_index));
+            rx_sym.gcr_data |= (uint32_t(level) << (20 - bit_index));
             ++bit_index;
         }
     }
@@ -921,11 +995,11 @@ int Dshot600::decode_gcr_timings_to_bits(rx_symbol_t& rx_sym){
 }
 
 
-int Dshot600::extract_nibbles(uint32_t& gcr, uint16_t& word16){
-    uint8_t s0 = (gcr >> 15) & 0x1F;
-    uint8_t s1 = (gcr >> 10) & 0x1F;
-    uint8_t s2 = (gcr >>  5) & 0x1F;
-    uint8_t s3 = (gcr >>  0) & 0x1F;
+int Dshot600::extract_nibbles(rx_symbol_t& rx_sym){
+    uint8_t s0 = (rx_sym.gcr_data >> 15) & 0x1F;
+    uint8_t s1 = (rx_sym.gcr_data >> 10) & 0x1F;
+    uint8_t s2 = (rx_sym.gcr_data >>  5) & 0x1F;
+    uint8_t s3 = (rx_sym.gcr_data >>  0) & 0x1F;
 
     if(!unmapGcr.contains(s0) || !unmapGcr.contains(s1) || !unmapGcr.contains(s2) || !unmapGcr.contains(s3)){
         rx_fail_gcr_cntr++;
@@ -937,10 +1011,10 @@ int Dshot600::extract_nibbles(uint32_t& gcr, uint16_t& word16){
     uint8_t n2 = unmapGcr.at(s2);
     uint8_t n3 = unmapGcr.at(s3);
 
-    word16 = (uint16_t(n0) << 12) |
-             (uint16_t(n1) <<  8) |
-             (uint16_t(n2) <<  4) |
-             (uint16_t(n3) <<  0);
+    rx_sym.data_bits = (static_cast<uint16_t>(n0) << 12) |
+                       (static_cast<uint16_t>(n1) <<  8) |
+                       (static_cast<uint16_t>(n2) <<  4) |
+                       (static_cast<uint16_t>(n3) <<  0);
 
     return 0;
 }
@@ -950,7 +1024,6 @@ int Dshot600::crc_4(uint16_t& word16){
     uint16_t payload = word16 >> 4;   // upper 12 bits
     uint8_t crc = payload ^ (payload >> 4) ^ (payload >> 8);
 
-    // for bidirectional DShot the CRC is inverted:
     crc = ~crc;
     crc &= 0x0F;
 
@@ -964,122 +1037,111 @@ int Dshot600::crc_4(uint16_t& word16){
 }
 
 
-int Dshot600::decode_msg(uint16_t& word16){
-    if(crc_4(word16) == -1)
+int Dshot600::decode_msg(rx_symbol_t& rx_sym){
+    if(crc_4(rx_sym.data_bits) == -1)
         return -1;
 
-    uint8_t exponent  = (word16 >> 13) & 0x07;      // 3 bits
+    if(rx_sym.data_bits & 0x1000) {
+        if(rx_sym.data_bits == 0xFFF0) {
+          rx_sym.data = 0;
+        }else{
+            rx_sym.msgType = RPM;
+            uint8_t exponent  = (rx_sym.data_bits >> 13) & 0x07;      // 3 bits
+            uint16_t mantissa = (rx_sym.data_bits >> 4) & 0x01FF;     // 9 bits (value field)
+            rx_sym.data = 1e6 / (mantissa << exponent);
+        }
+    }
+    else{
+        // pppp mmmmmmmm
+        uint8_t type = rx_sym.data_bits >> 12;
+        if(type == TEMP){
+            rx_sym.msgType = TEMP;
+        }
+        else if(type == VOLT){
+            rx_sym.msgType = VOLT;
+        }
+        else if(type == AMP){
+            rx_sym.msgType = AMP;
+        }
+        else if(type == DEBUG1){
+            rx_sym.msgType = DEBUG1;
+        }
+        else if(type == DEBUG2){
+            rx_sym.msgType = DEBUG2;
+        }
+        else if(type == DEBUG3){
+            rx_sym.msgType = DEBUG3;
+        }
+        else if(type == EVENT){
+            rx_sym.msgType = EVENT;
+        }
 
-    uint16_t mantissa = (word16 >> 4) & 0x01FF;     // 9 bits (value field)
-
-    uint16_t erpm = mantissa << exponent;
-
+        if(rx_sym.msgType == RPM)
+            rx_sym.data = (rx_sym.data_bits & 0x1FF0) >> 4;
+        else
+            rx_sym.data = (rx_sym.data_bits & 0x0FF0) >> 4;
+    }
+    
+    if(rx_sym.msgType == RPM){
+        //printf("rpm: %u\n", rx_sym.data);
+    }
+    else if(rx_sym.msgType == TEMP){
+         printf("temp: %u\n", rx_sym.data);
+    }
+    else if(rx_sym.msgType == VOLT){
+         printf("voltage: %f\n", static_cast<float>(rx_sym.data * 0.25));
+    }
+    else if(rx_sym.msgType == AMP){
+         printf("AMP: %f\n", rx_sym.data / 100.0);
+    }
+    else if(rx_sym.msgType == DEBUG1){
+        rx_sym.msgType = DEBUG1;
+        printf("debug1: %u\n", rx_sym.data);
+    }
+    else if(rx_sym.msgType == DEBUG2){
+        printf("debug2: %u\n", rx_sym.data);
+    }
+    else if(rx_sym.msgType == DEBUG3){
+        printf("debug3: %u\n", rx_sym.data);
+    }
+    else if(rx_sym.msgType == EVENT){
+        printf("event: %u\n", rx_sym.data);
+    }
+    
     return 0;
 }
-
 
 
 int Dshot600::process_erpm_data(rx_symbol_t& rx_sym) {
 
-    if(decode_gcr_timings_to_bits(rx_sym) == -1)
+    if(decode_timings_to_gcr(rx_sym) == -1)
         return -1;
 
-    uint32_t gcr = rx_sym.data_bits & 0x1FFFFF;
+    uint32_t gcr = rx_sym.gcr_data & 0x1FFFFF;
+    rx_sym.gcr_data = gcr ^ (gcr >> 1);
 
-    rx_sym.gcr = gcr ^ (gcr >> 1);
-
-    uint16_t word16{};
-
-    if(extract_nibbles(rx_sym.gcr, word16) == -1)
+    if(extract_nibbles(rx_sym) == -1)
         return -1;
 
+    if(decode_msg(rx_sym) == -1)
+        return -1;
     
-    static uint16_t cntr{};
-    static uint16_t cntr_good{};
-
-    if(decode_msg(word16) == -1){
-        /*
-        if(cntr < 20 && rx_ok_cntr > 10000){
-            rx_sym_data_bac_crc[cntr] = rx_sym;
-            cntr++;
-        }
-        if(cntr == 20){
-            for(int i=0;i<20;i++){
-                printf("***** fail sample nr %d ****\n", i);
-                printf("num symbols[%u]\n", rx_sym_data_bac_crc[i].num_symbols);
-                for(int j=0;j<rx_sym_data_bac_crc[i].num_symbols - 1;j++){
-                    printf("num period[%f] lvl[%d]\n", rx_sym_data_bac_crc[i].bit_info[j].period_us, rx_sym_data_bac_crc[i].bit_info[j].sym_lvl);
-                }
-
-                std::bitset<21> bits(rx_sym_data_bac_crc[i].data_bits);
-                std::cout<<"data bits: "<<bits<<"\n";
-
-                std::bitset<21> gcrBits(rx_sym_data_bac_crc[i].gcr);
-                std::cout<<"gcr  bits: "<<gcrBits<<"\n";
-            }
-
-            printf("**************************************\n");
-            printf("**************************************\n");
-            printf("**************************************\n");
-            cntr++;
-        }*/
-        return -1;
-    }
-
-    /*
-    if(cntr_good < 20 && rx_ok_cntr > 10000 && rx_sym.num_symbols < 16){
-        rx_sym_data_good[cntr_good] = rx_sym;
-        cntr_good++;
-    }
-    if(cntr == 20){
-        for(int i=0;i<20;i++){
-            printf("***** good sample nr %d ****\n", i);
-            printf("num symbols[%u]\n", rx_sym_data_good[i].num_symbols);
-
-            for(int j=0;j<rx_sym_data_good[i].num_symbols - 1;j++){
-                printf("num period[%f] lvl[%d]\n", rx_sym_data_good[i].bit_info[j].period_us, rx_sym_data_good[i].bit_info[j].sym_lvl);
-            }
-
-            std::bitset<21> bits(rx_sym_data_good[i].data_bits);
-            std::cout<<"data bits: "<<bits<<"\n";
-
-            std::bitset<21> gcrBits(rx_sym_data_good[i].gcr);
-            std::cout<<"gcr  bits: "<<gcrBits<<"\n";
-        }
-    }
-    */
-
     return 0;
 }
 
-uint32_t Dshot600::gray_to_gcr(uint32_t gray)
-{
-    uint32_t g = gray;
-    g ^= g >> 1;
-    g ^= g >> 2;
-    g ^= g >> 4;
-    g ^= g >> 8;
-    g ^= g >> 16;
-    return g & 0xFFFFF;
-}
-
 esp_err_t Dshot600::set_extended_telemetry(bool enable){
-
-
 
     Dshot::DshotMessage msg{};
 
      for(int i=0;i<Dshot::maxChannels;i++){
             msg.msgType = COMMAND;
             msg.loops[i] = 0;
-            msg.cmd[i] = DSHOT_EXTENDED_TELEMETRY_ENABLE;
+            msg.cmd[i] = enable? DSHOT_EXTENDED_TELEMETRY_ENABLE : DSHOT_EXTENDED_TELEMETRY_DISABLE;
     }
 
-
-
-    for(int i=0;i<dshotLoopsLookup[DSHOT_EXTENDED_TELEMETRY_ENABLE]*2;i++){
-        write_command(msg);
-    }
-
+    write_command(msg);
+    
     return ESP_OK;
 }
+
+

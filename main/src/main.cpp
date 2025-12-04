@@ -274,9 +274,13 @@ void main_task(void *args){
 
     /******* wifi *******/
     #ifdef WEB_TASK
-    std::string ssid{"Ubiquity 2"};
-    std::string wpa{"#SuperDuper66!"};
-    std::string ip{"192.168.1.245"};
+    // std::string ssid{"Ubiquity 2"};
+    // std::string wpa{"#SuperDuper66!"};
+    // std::string ip{"192.168.1.245"};
+
+    std::string ssid{"wajfaj 2"};
+    std::string wpa{"##FortSomFan666!!"};
+    std::string ip{"192.168.1.130"};
 
     init_telemetry_buffer();
     ringBuffer_web = get_telemetry_handle();
@@ -313,7 +317,7 @@ void main_task(void *args){
     /* start tasks */
     print_debug(DEBUG_MAIN, DEBUG_LOGIC, "starting tasks\n");
     xTaskCreatePinnedToCore(dispatch_display, "display_task", 8096, nullptr,  PRIO_BG, &display_handle, 0);
-    vTaskDelay(pdMS_TO_TICKS(250));
+    vTaskDelay(pdMS_TO_TICKS(100));
     Display::set_display_state(BOOTING);
 
     xTaskCreatePinnedToCore(dispatch_drone, "drone_task", 4048, nullptr,  PRIO_CONTROL, &drone_handle, 1);

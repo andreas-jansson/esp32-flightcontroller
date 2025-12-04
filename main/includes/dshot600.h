@@ -89,7 +89,19 @@ namespace Dshot{
         uint16_t val;
     } dshot_esc_frame_t;
 
+    typedef enum{
+        RPM = 0x1,
+        TEMP = 0x2,
+        VOLT = 0x4,
+        AMP = 0x6,
+        DEBUG1 = 0x8,
+        DEBUG2 = 0xA,
+        DEBUG3 = 0xC,
+        EVENT = 0xE,
+    } bidi_telemetry_type_t;
+
     typedef struct {
+        gpio_num_t motor_pin{};
         uint64_t sym[32] {};
         uint8_t num_symbols{};
         uint8_t total_us{};
@@ -98,8 +110,11 @@ namespace Dshot{
             int sym_lvl{};
         } bit_info[32];
 
-        uint32_t gcr{};
-        uint32_t data_bits{};
+        uint32_t gcr_data{};   // symbols decodede to gcr bits
+        uint16_t data_bits{};  // data bits eeemmmmmmmmmcrc4
+        bidi_telemetry_type_t msgType;
+        uint16_t data{};
+  
     } rx_symbol_t;
 
     inline std::map<uint16_t, uint16_t> unmapGcr = {
@@ -233,12 +248,13 @@ class Dshot600{
     static void make_dshot_frame(Dshot::dshot_esc_frame_t *frame, uint16_t throttle, bool telemetry);
     static void make_bidi_dshot_frame(Dshot::dshot_esc_frame_t *frame, uint16_t throttle, bool telemetry);
 
-    int decode_gcr_timings_to_bits(Dshot::rx_symbol_t& rx_sym);
-    int extract_nibbles(uint32_t& gcr, uint16_t& word16);
+    int decode_timings_to_gcr(Dshot::rx_symbol_t& rx_sym);
+    int extract_nibbles(Dshot::rx_symbol_t& rx_sym);
     int crc_4(uint16_t& word16);
-    int decode_msg(uint16_t& word16);
+    int decode_msg(Dshot::rx_symbol_t& rx_sym);
     int process_erpm_data(Dshot::rx_symbol_t& rx_sym);
-    uint32_t gray_to_gcr(uint32_t gray);
+
+    void attach_my_rmt_tx_isr();
 
     public:
 

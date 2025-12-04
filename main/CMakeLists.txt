@@ -37,6 +37,8 @@ idf_component_register(SRCS
                          TFT_eSPI
                          "driver"
                          "nvs_flash" 
+                      PRIV_REQUIRES
+                         esp_driver_rmt
                        )
 
 #SET(CMAKE_CXX_STANDARD 17)
