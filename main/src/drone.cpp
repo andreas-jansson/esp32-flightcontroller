@@ -74,7 +74,6 @@ Drone::Drone(Dshot600* dshotObj, Mpu6050* mpu1, Mpu6050* mpu2, CircularHandle_t 
 
     const esp_timer_create_args_t oneshot_timer_args = {
             .callback = &oneshot_timer_callback,
-            /* argument specified here will be passed to timer callback function */
             .arg = nullptr,
             .name = "one-shot"
     };

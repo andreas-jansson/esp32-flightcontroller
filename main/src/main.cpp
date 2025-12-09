@@ -274,10 +274,6 @@ void main_task(void *args){
 
     /******* wifi *******/
     #ifdef WEB_TASK
-    // std::string ssid{"Ubiquity 2"};
-    // std::string wpa{"#SuperDuper66!"};
-    // std::string ip{"192.168.1.245"};
-
     std::string ssid{"wajfaj 2"};
     std::string wpa{"##FortSomFan666!!"};
     std::string ip{"192.168.1.130"};

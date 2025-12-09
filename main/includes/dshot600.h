@@ -58,15 +58,15 @@ namespace Dshot{
     /* Data types for borrowed logic */
 
     typedef struct {
-        uint32_t resolution;    /*!< Encoder resolution, in Hz */
-        uint32_t baud_rate;     /*!< Dshot protocol runs at several different baud rates, e.g. DSHOT300 = 300k baud rate */
-        uint32_t post_delay_us; /*!< Delay time after one Dshot frame, in microseconds */
+        uint32_t resolution;    
+        uint32_t baud_rate;     
+        uint32_t post_delay_us; 
     } dshot_esc_encoder_config_t;
 
 
     typedef struct {
-        uint16_t throttle;  /*!< Throttle value */
-        bool telemetry_req; /*!< Telemetry request */
+        uint16_t throttle;  
+        bool telemetry_req; 
     } dshot_esc_throttle_t;
 
    
@@ -77,14 +77,14 @@ namespace Dshot{
     rmt_encoder_handle_t copy_encoder;
     rmt_symbol_word_t dshot_delay_symbol;
     int state;
-    gpio_num_t pin;    // <-- add pin here
+    gpio_num_t pin;    
     };
     
     typedef union {
         struct {
-            uint16_t crc: 4;       /*!< CRC checksum */
-            uint16_t telemetry: 1; /*!< Telemetry request */
-            uint16_t throttle: 11; /*!< Throttle value */
+            uint16_t crc: 4;       
+            uint16_t telemetry: 1;
+            uint16_t throttle: 11; 
         };
         uint16_t val;
     } dshot_esc_frame_t;
@@ -101,20 +101,12 @@ namespace Dshot{
     } bidi_telemetry_type_t;
 
     typedef struct {
-        gpio_num_t motor_pin{};
-        uint64_t sym[32] {};
-        uint8_t num_symbols{};
-        uint8_t total_us{};
-        struct {
-            float period_us{};
-            int sym_lvl{};
-        } bit_info[32];
-
-        uint32_t gcr_data{};   // symbols decodede to gcr bits
+        rmt_rx_done_event_data_t rmt_data;
+        uint8_t motor_pin{};
+        uint32_t gcr_data{};   // symbols decode to gcr bits
         uint16_t data_bits{};  // data bits eeemmmmmmmmmcrc4
         bidi_telemetry_type_t msgType;
         uint16_t data{};
-  
     } rx_symbol_t;
 
     inline std::map<uint16_t, uint16_t> unmapGcr = {
@@ -191,14 +183,19 @@ enum DSHOTCODES{
 };
 
 
-struct cb_dshot_ctx{
+struct cb_dshot_channel_ctx{
     rmt_channel_handle_t tx_handle;
     rmt_channel_handle_t rx_handle;
     gpio_num_t pin;
-    motor_type_t motor;
+    motor_type_t motorIdx;
     rmt_receive_config_t rx_chan_config;
+    uint32_t rmt_tx_done_mask;
+    uint32_t rmt_rx_done_mask;
 };
 
+struct cb_dshot_all_channel_ctx{
+    cb_dshot_channel_ctx ch_ctx[Dshot::maxChannels];
+};
 
 class Dshot600{
 
@@ -206,18 +203,22 @@ class Dshot600{
     static Dshot600* dshot;
     static bool m_isBidi;
 
-    rmt_sync_manager_handle_t synchro{};
-    rmt_channel_handle_t esc_motor_chan[Dshot::maxChannels]{};
+    rmt_channel_handle_t rmt_tx_handle[Dshot::maxChannels]{};
     rmt_channel_handle_t rmt_rx_handle[Dshot::maxChannels]{};
     rmt_encoder_handle_t dshot_encoder{};
+    int m_rmt_tx_channel_id[Dshot::maxChannels]{};
+    int m_rmt_rx_channel_id[Dshot::maxChannels]{};
+    static esp_timer_handle_t oneshot_timer_tx_handle[Dshot::maxChannels];
+    static esp_timer_handle_t oneshot_timer_rx_handle[Dshot::maxChannels];
+    static SemaphoreHandle_t s_rmt_rx_done[Dshot::maxChannels];
+    static Dshot::rx_symbol_t rx_sym_data[Dshot::maxChannels];
 
-    cb_dshot_ctx* m_ctx[Dshot::maxChannels]{};
+    cb_dshot_all_channel_ctx m_ctx_all_ch{};
+    static gpio_num_t m_gpioMotorPin[Dshot::maxChannels];
 
-    gpio_num_t m_gpioMotorPin[4]{};
-    
-    int c_cpuFreq{};
-    float c_cycleToUs{};
-
+    static int c_cpuFreq;
+    static float c_cycleToUsFloat;
+    static uint32_t c_cycleToUsU32;
 
     Dshot600(gpio_num_t motorPin[Dshot::maxChannels], bool isBidi);
 
@@ -234,7 +235,13 @@ class Dshot600{
 
     esp_err_t get_message(struct Dshot::DshotMessage& msg, TickType_t ticks);
 
+    static void IRAM_ATTR rmt_tx_done_cb(void* user_ctx);
+    static void oneshot_timer_cb_tx_done(void* user_ctx);
+    static void oneshot_timer_cb_rx_done(void* user_ctx);
+    static void IRAM_ATTR rx_handler(void *user_ctx);
+    static bool IRAM_ATTR rmt_rx_done_cb(rmt_channel_handle_t channel, const rmt_rx_done_event_data_t *edata, void *user_ctx);
 
+    
     static size_t rmt_encode_dshot_esc(
         rmt_encoder_t *encoder, 
         rmt_channel_handle_t channel, 
@@ -247,14 +254,15 @@ class Dshot600{
     static esp_err_t rmt_dshot_encoder_reset(rmt_encoder_t *encoder);
     static void make_dshot_frame(Dshot::dshot_esc_frame_t *frame, uint16_t throttle, bool telemetry);
     static void make_bidi_dshot_frame(Dshot::dshot_esc_frame_t *frame, uint16_t throttle, bool telemetry);
+ 
+    static int process_erpm_data(Dshot::rx_symbol_t& rx_sym);
+    static int decode_timings_to_gcr_isr(Dshot::rx_symbol_t& rx_sym);
+    static int decode_timings_to_gcr(Dshot::rx_symbol_t& rx_sym);
+    static int extract_nibbles(Dshot::rx_symbol_t& rx_sym);
+    static int crc_4(uint16_t& word16);
+    static int decode_msg(Dshot::rx_symbol_t& rx_sym);
 
-    int decode_timings_to_gcr(Dshot::rx_symbol_t& rx_sym);
-    int extract_nibbles(Dshot::rx_symbol_t& rx_sym);
-    int crc_4(uint16_t& word16);
-    int decode_msg(Dshot::rx_symbol_t& rx_sym);
-    int process_erpm_data(Dshot::rx_symbol_t& rx_sym);
-
-    void attach_my_rmt_tx_isr();
+    void IRAM_ATTR attach_my_rmt_tx_isr();
 
     public:
 

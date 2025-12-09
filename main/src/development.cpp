@@ -121,7 +121,7 @@ void telemetry_task(void* args){
         #ifdef WEB_TASK
         BaseType_t res = xRingbufferSend(ringBuffer_web, &telemetry, sizeof(TelemetryData), 0);
         if (res != pdTRUE) {
-            printf("Failed to send telemetry item: handle %p size %u\n", ringBuffer_web, sizeof(TelemetryData));
+            //printf("Failed to send telemetry item: handle %p size %u\n", ringBuffer_web, sizeof(TelemetryData));
         } 
         #endif
         
