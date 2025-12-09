@@ -208,8 +208,6 @@ class Dshot600{
     rmt_encoder_handle_t dshot_encoder{};
     int m_rmt_tx_channel_id[Dshot::maxChannels]{};
     int m_rmt_rx_channel_id[Dshot::maxChannels]{};
-    static esp_timer_handle_t oneshot_timer_tx_handle[Dshot::maxChannels];
-    static esp_timer_handle_t oneshot_timer_rx_handle[Dshot::maxChannels];
     static SemaphoreHandle_t s_rmt_rx_done[Dshot::maxChannels];
     static Dshot::rx_symbol_t rx_sym_data[Dshot::maxChannels];
 
@@ -236,9 +234,6 @@ class Dshot600{
     esp_err_t get_message(struct Dshot::DshotMessage& msg, TickType_t ticks);
 
     static void IRAM_ATTR rmt_tx_done_cb(void* user_ctx);
-    static void oneshot_timer_cb_tx_done(void* user_ctx);
-    static void oneshot_timer_cb_rx_done(void* user_ctx);
-    static void IRAM_ATTR rx_handler(void *user_ctx);
     static bool IRAM_ATTR rmt_rx_done_cb(rmt_channel_handle_t channel, const rmt_rx_done_event_data_t *edata, void *user_ctx);
 
     
@@ -256,7 +251,6 @@ class Dshot600{
     static void make_bidi_dshot_frame(Dshot::dshot_esc_frame_t *frame, uint16_t throttle, bool telemetry);
  
     static int process_erpm_data(Dshot::rx_symbol_t& rx_sym);
-    static int decode_timings_to_gcr_isr(Dshot::rx_symbol_t& rx_sym);
     static int decode_timings_to_gcr(Dshot::rx_symbol_t& rx_sym);
     static int extract_nibbles(Dshot::rx_symbol_t& rx_sym);
     static int crc_4(uint16_t& word16);

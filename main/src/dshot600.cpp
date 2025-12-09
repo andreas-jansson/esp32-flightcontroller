@@ -44,8 +44,6 @@ static const char *TAG = "dshot_encoder";
 
 Dshot600* Dshot600::dshot = nullptr;
 bool Dshot600::m_isBidi{};
-esp_timer_handle_t Dshot600::oneshot_timer_tx_handle[Dshot::maxChannels]{};
-esp_timer_handle_t Dshot600::oneshot_timer_rx_handle[Dshot::maxChannels]{};
 int Dshot600::c_cpuFreq{};
 float Dshot600::c_cycleToUsFloat{};
 uint32_t Dshot600::c_cycleToUsU32{};
@@ -60,6 +58,7 @@ static rmt_rx_done_event_data_t edata_rx[4]{};
 static rmt_rx_done_event_data_t edata_rx_copy[4]{};
 static intr_handle_t s_my_rmt_intr = nullptr;
 static volatile bool s_rmt_ch0_tx_done = false;
+static volatile bool rmt_busy[Dshot::maxChannels]{};
 
 
 // erpm stats
@@ -177,8 +176,6 @@ constexpr uint16_t dshotLoopsLookup[48] = {
 
 
 /*          rmt RX          */
-
-
 bool IRAM_ATTR Dshot600::rmt_rx_done_cb(rmt_channel_handle_t channel, const rmt_rx_done_event_data_t *edata, void *user_ctx){
     cb_dshot_channel_ctx* ctx = reinterpret_cast<cb_dshot_channel_ctx*>(user_ctx);
 
@@ -186,100 +183,28 @@ bool IRAM_ATTR Dshot600::rmt_rx_done_cb(rmt_channel_handle_t channel, const rmt_
         gpio_set_level(static_cast<gpio_num_t>(25), 0);
         gpio_set_level(static_cast<gpio_num_t>(25), 1);
     }
-   
 
     rx_sym_data[ctx->motorIdx].data = 0;
     rx_sym_data[ctx->motorIdx].data_bits = 0;
     rx_sym_data[ctx->motorIdx].gcr_data = 0;
     rx_sym_data[ctx->motorIdx].rmt_data.num_symbols = edata->num_symbols;
-    //rx_sym_data[ctx->motorIdx].rmt_data.flags = edata->flags;
 
     for(int i=0;i<edata->num_symbols;i++){
         rx_sym_data[ctx->motorIdx].rmt_data.received_symbols[i].val = edata->received_symbols[i].val;
-        if(!edata->flags.is_last){
-            printf("ERROR");
-        }
     }
-    gpio_ll_od_disable(GPIO_LL_GET_HW(GPIO_PORT_0), ctx->pin);
 
+    gpio_ll_od_disable(GPIO_LL_GET_HW(GPIO_PORT_0), ctx->pin);
     xSemaphoreGive(s_rmt_rx_done[ctx->motorIdx]);
+
+    rmt_busy[ctx->motorIdx] = false;
     return true;
-}
-
-void IRAM_ATTR Dshot600::rx_handler(void *user_ctx)
-{
-    /*
-    cb_dshot_channel_ctx* ctx = reinterpret_cast<cb_dshot_channel_ctx*>(user_ctx);
-
-    constexpr uint64_t telemetry_max_dur_us = 160; //600:50.0? 150:150? 
-    constexpr uint64_t telemetry_min_dur_us = 140; // 600:20? 150:80?
-    const uint32_t motorIdx = ctx->motorIdx;
-
-    if(rx_sym_data[motorIdx].num_symbols<32){
-        rx_sym_data[motorIdx].sym[rx_sym_data[motorIdx].num_symbols] = esp_cpu_get_cycle_count();
-        rx_sym_data[motorIdx].bit_info[rx_sym_data[motorIdx].num_symbols].sym_lvl = gpio_ll_get_level(GPIO_LL_GET_HW(GPIO_PORT_0), ctx->pin);    
-        rx_sym_data[motorIdx].num_symbols++;
-    }
-    
-    if(rx_sym_data[motorIdx].num_symbols == 1){
-        esp_timer_start_once(oneshot_timer_rx_handle[motorIdx], telemetry_min_dur_us);
-    }
-    */
-}
-
-void Dshot600::oneshot_timer_cb_tx_done(void* user_ctx)
-{
-    cb_dshot_channel_ctx* ctx = reinterpret_cast<cb_dshot_channel_ctx*>(user_ctx);
-    if(ctx->motorIdx == MOTOR1)
-        rmt_receive(ctx->rx_handle, raw_symbols, 64, const_cast<rmt_receive_config_t*>(&ctx->rx_chan_config));
-    gpio_ll_od_enable(GPIO_LL_GET_HW(GPIO_PORT_0), ctx->pin);
-    //gpio_intr_enable(static_cast<gpio_num_t>(ctx->pin));
-}
-
-void Dshot600::oneshot_timer_cb_rx_done(void* user_ctx)
-{
-    /*
-    cb_dshot_channel_ctx* ctx = reinterpret_cast<cb_dshot_channel_ctx*>(user_ctx);
-    rx_symbol_t rx_sym{};
-
-    gpio_ll_od_disable(GPIO_LL_GET_HW(GPIO_PORT_0), ctx->pin);
-    //gpio_intr_disable(static_cast<gpio_num_t>(ctx->pin));
-
-    memcpy(&rx_sym, &rx_sym_data[ctx->motorIdx], sizeof(rx_symbol_t));
-
-
-    static uint64_t cntr{};
-    if(process_erpm_data(rx_sym) == -1){
-        total_fail++;
-    }
-    else{
-        total_ok++;
-    }
-
-    if(cntr % 5000 == 0){
-        printf("dshot sent[%llu] recieved[%f] -  ok[%lu] fail[%lu] [%f]   -   bad crc[%lu] bad gcr[%lu] bad timing[%lu]\n",
-        total_dshot_sent, static_cast<float>(total_ok + total_fail)/static_cast<float>(total_dshot_sent),total_ok, total_fail, static_cast<float>(total_ok) / static_cast<float>(total_fail + total_ok), 
-        bad_crc, bad_grc, bad_timing);
-    }
-
-    cntr++;
-
-    //if(ctx->motorIdx==0){
-    //    gpio_set_level(static_cast<gpio_num_t>(25), 0);
-    //    gpio_set_level(static_cast<gpio_num_t>(25), 1);
-    //}
-
-    xSemaphoreGive(s_rmt_rx_done[ctx->motorIdx]);
-    */
 }
 
 
 void IRAM_ATTR Dshot600::rmt_tx_done_cb(void *user_ctx)
 {
-
     cb_dshot_all_channel_ctx* ctx_all = reinterpret_cast<cb_dshot_all_channel_ctx*>(user_ctx);
     uint32_t status = RMT.int_raw.val;
-
 
     for(int i=0;i<Dshot::maxChannels;i++){
         if(status & ctx_all->ch_ctx[i].rmt_tx_done_mask){
@@ -289,7 +214,10 @@ void IRAM_ATTR Dshot600::rmt_tx_done_cb(void *user_ctx)
             }
             gpio_ll_od_enable(GPIO_LL_GET_HW(GPIO_PORT_0), ctx_all->ch_ctx[i].pin);
             RMT.int_clr.val &= ctx_all->ch_ctx[i].rmt_tx_done_mask;
-            rmt_receive(ctx_all->ch_ctx[i].rx_handle, raw_symbols, 64, const_cast<rmt_receive_config_t*>(&ctx_all->ch_ctx[i].rx_chan_config));
+            if(!rmt_busy[ctx_all->ch_ctx[i].motorIdx]){
+                rmt_busy[ctx_all->ch_ctx[i].motorIdx] = true;
+                rmt_receive(ctx_all->ch_ctx[i].rx_handle, raw_symbols, 64, const_cast<rmt_receive_config_t*>(&ctx_all->ch_ctx[i].rx_chan_config));
+            }
         }
     }
     
@@ -333,12 +261,11 @@ Dshot600::Dshot600(gpio_num_t motorPin[Dshot::maxChannels], bool isBidi){
     rmt_tx_channel_config_t tx_chan_config{};
     rmt_rx_channel_config_t rx_chan_config{};
     uint32_t baud_rate{};
-
     m_isBidi = isBidi;  
-
     c_cpuFreq = esp_clk_cpu_freq();
     c_cycleToUsFloat = (1.0 / c_cpuFreq) * 1000'000;
     c_cycleToUsU32 = std::round(c_cycleToUsFloat);
+
 
     switch(DSHOT_SPEED){
         case DSHOT_600:
@@ -385,8 +312,6 @@ Dshot600::Dshot600(gpio_num_t motorPin[Dshot::maxChannels], bool isBidi){
     };
 
 
-    gpio_install_isr_service(ESP_INTR_FLAG_IRAM);
-
     for(int i=0;i<Dshot::maxChannels;i++){
 
         m_gpioMotorPin[i]= motorPin[i];
@@ -415,21 +340,6 @@ Dshot600::Dshot600(gpio_num_t motorPin[Dshot::maxChannels], bool isBidi){
         // store channel id for callback handling, first int in 
         memcpy(&m_rmt_tx_channel_id[i], rmt_tx_handle[i], sizeof(int));
         memcpy(&m_rmt_rx_channel_id[i], rmt_rx_handle[i], sizeof(int));
-
-        const esp_timer_create_args_t oneshot_timer_args_tx = {
-            .callback = &oneshot_timer_cb_tx_done,
-            .arg = static_cast<void*>(&m_ctx_all_ch.ch_ctx[i]),
-            .name = "one-shot-tx"
-        };
-    
-        const esp_timer_create_args_t oneshot_timer_args_rx = {
-            .callback = &oneshot_timer_cb_rx_done,
-            .arg = static_cast<void*>(&m_ctx_all_ch.ch_ctx[i]),
-            .name = "one-shot-rx"
-        };
-        
-        ESP_ERROR_CHECK_WITHOUT_ABORT(esp_timer_create(&oneshot_timer_args_tx, &oneshot_timer_tx_handle[i]));
-        ESP_ERROR_CHECK_WITHOUT_ABORT(esp_timer_create(&oneshot_timer_args_rx, &oneshot_timer_rx_handle[i]));
 
         vSemaphoreCreateBinary(s_rmt_rx_done[i]);
         ESP_ERROR_CHECK_WITHOUT_ABORT((s_rmt_rx_done[i] == nullptr));
@@ -559,8 +469,10 @@ esp_err_t Dshot600::write_speed(struct Dshot::DshotMessage& msg){
         for(int i=0;i<Dshot::maxChannels;i++){
             gpio_ll_od_disable(GPIO_LL_GET_HW(GPIO_PORT_0), m_gpioMotorPin[i]);
 
-            if(xSemaphoreTake(s_rmt_rx_done[i], pdMS_TO_TICKS(3)) == pdTRUE){
+            ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_transmit(this->rmt_tx_handle[i], this->dshot_encoder, &throttle[i], sizeof(throttle[i]), &tx_config[i]));
 
+            if(xSemaphoreTake(s_rmt_rx_done[i], pdMS_TO_TICKS(1)) == pdTRUE){
+            
                 if(process_erpm_data(rx_sym_data[i]) == -1){
                     total_fail++;
                 }
@@ -568,25 +480,12 @@ esp_err_t Dshot600::write_speed(struct Dshot::DshotMessage& msg){
                     total_ok++;
                 }
             }
-  
-            ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_transmit(this->rmt_tx_handle[i], this->dshot_encoder, &throttle[i], sizeof(throttle[i]), &tx_config[i]));
-
        
             static uint64_t cntr{};
-            if(cntr % 20000 == 0){
+            if(cntr % 60000 == 0){
                 printf("dshot sent[%llu] recieved[%f] -  ok[%lu] fail[%lu] [%f]   -   bad crc[%lu] bad gcr[%lu] bad timing[%lu]\n",
                 total_dshot_sent, static_cast<float>(total_ok + total_fail)/static_cast<float>(total_dshot_sent),total_ok, total_fail, static_cast<float>(total_ok) / static_cast<float>(total_fail + total_ok), 
                 bad_crc, bad_grc, bad_timing);
-
-                //printf("******* nr: %u *******'\n", rx_sym_data[i].rmt_data.num_symbols);
-                //for(int j=0;j<rx_sym_data[j].rmt_data.num_symbols;j++){
-                //    printf("%d:[1st] lvl[%u] cycles[%u]\n", j, rx_sym_data[i].rmt_data.received_symbols[j].level0, rx_sym_data[i].rmt_data.received_symbols[j].duration0);
-                //    printf("%d:[2nd] lvl[%u] cycles[%u]\n", j, rx_sym_data[i].rmt_data.received_symbols[j].level1, rx_sym_data[i].rmt_data.received_symbols[j].duration1);
-                //    printf("-------\n");
-                //}
-                //std::bitset<21> gcr(rx_sym_data[i].gcr_data);
-                //std::cout<<"gcr: "<<gcr<<"\n";
-                //printf("**************'\n");
             }
             cntr++;
             total_dshot_sent++;
@@ -974,72 +873,6 @@ int Dshot600::decode_timings_to_gcr(Dshot::rx_symbol_t& rx_sym){
     return 0;
 }
 
-
-int Dshot600::decode_timings_to_gcr_isr(rx_symbol_t& rx_sym){
-   /* const float max_thld{1.3};
-    const float min_thld{0.7};
-    float total_msg_us{};
-    constexpr float bit_period_us{6.67}; //dshot150
-    constexpr float single_bit_us{(4.0/5) * bit_period_us};
-    rx_sym.gcr_data = 0;
-
-    for(uint8_t i=0; i<rx_sym.num_symbols-1; i++) {
-        rx_sym.bit_info[i].period_us = static_cast<float>(( rx_sym.sym[i+1] - rx_sym.sym[i] ) * c_cycleToUsFloat);
-    }
-
-    static uint64_t cntr{};
-    if(cntr % 2000 == 0){
-        //printf("**************'\n");
-        //for(int i=0;i<rx_sym.num_symbols-1;i++){
-        //   printf("[%llu]us lvl[%d]\n", rx_sym.sym[i], rx_sym.bit_info[i].sym_lvl);
-        //}
-        //printf("**************'\n");
-
-        printf("******* nr: %u *******'\n", edata_rx_copy[0].num_symbols);
-        for(int i=0;i<edata_rx_copy[0].num_symbols;i++){
-            printf("%d: [%u]us lvl[%u]\n", i, edata_rx_copy[0].received_symbols[i].level0, edata_rx_copy[0].received_symbols[i].duration0);
-            printf("%d: [%u]us lvl[%u]\n", i, edata_rx_copy[0].received_symbols[i].level1, edata_rx_copy[0].received_symbols[i].duration1);
-            printf("-------\n");
-        }
-        printf("**************'\n");
-
-    }
-    cntr++;
-
-    uint8_t bit_index = 0;
-
-    for(uint8_t i=0;i<rx_sym.num_symbols-1;i++) {
-
-        float bits_f = rx_sym.bit_info[i].period_us / single_bit_us;
-        uint8_t nr_bits = static_cast<uint8_t>(std::round(bits_f));
-
-        if (nr_bits < 1 || nr_bits > 4) {
-
-            //static uint64_t cntr{};
-            //if(cntr % 1000 == 0){
-            //    printf("bad timings [%f]\n", bits_f);
-            //    printf("**************'\n");
-            //    for(int i=0;i<rx_sym.num_symbols-1;i++){
-            //        printf("[%f]us lvl[%d]\n", rx_sym.bit_info[i].period_us, rx_sym.bit_info[i].sym_lvl);
-            //    }
-            //    printf("**************'\n");
-            //}
-            //cntr++;
-
-            bad_timing++;
-            return -1;
-        }
-
-        uint8_t level = rx_sym.bit_info[i].sym_lvl ? 0 : 1;
-
-        for (uint8_t b = 0; b < nr_bits; ++b) {
-            rx_sym.gcr_data |= (uint32_t(level) << (20 - bit_index));
-            ++bit_index;
-        }
-    }
-        */
-    return 0;
-}
 
 
 int Dshot600::extract_nibbles(rx_symbol_t& rx_sym){
