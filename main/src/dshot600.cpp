@@ -35,7 +35,7 @@
 #define DSHOT_150 150 
 #define DSHOT_300 300 
 #define DSHOT_600 600 
-#define DSHOT_SPEED DSHOT_150
+#define DSHOT_SPEED DSHOT_600
 #define DSHOT_ESC_RESOLUTION_HZ 80000000 
 
 using namespace Dshot;
@@ -307,8 +307,8 @@ Dshot600::Dshot600(gpio_num_t motorPin[Dshot::maxChannels], bool isBidi){
     rx_chan_config.flags.invert_in = 1;
 
     rmt_receive_config_t rx_config = {
-        .signal_range_min_ns = 	uint32_t(2000),
-        .signal_range_max_ns = uint32_t(25000),
+        .signal_range_min_ns = 	uint32_t(200), // dshot150: 2000
+        .signal_range_max_ns = uint32_t(8000), // dshot150: 25000
     };
 
 
@@ -350,7 +350,6 @@ Dshot600::Dshot600(gpio_num_t motorPin[Dshot::maxChannels], bool isBidi){
         };
 
         rmt_rx_register_event_callbacks(rmt_rx_handle[i], &rx_event, static_cast<void*>(&m_ctx_all_ch.ch_ctx[i]));
-
         rx_sym_data[i].rmt_data.received_symbols = static_cast<rmt_symbol_word_t*>(calloc(32, sizeof(rmt_symbol_word_t)));
     }
 
@@ -825,8 +824,9 @@ esp_err_t IRAM_ATTR Dshot600::rmt_new_dshot_esc_encoder(const dshot_esc_encoder_
 
 int Dshot600::decode_timings_to_gcr(Dshot::rx_symbol_t& rx_sym){
 
- constexpr float bit_period_us{6.67}; //dshot150
-    constexpr float single_bit_us{4.775};
+    //constexpr float bit_period_us{6.67}; //dshot150
+    //constexpr float single_bit_us{4.775};
+    constexpr float single_bit_us{1.33};
     uint16_t idxOffset{21};
 
     for(int i=0;i<rx_sym.rmt_data.num_symbols;i++){
@@ -857,18 +857,7 @@ int Dshot600::decode_timings_to_gcr(Dshot::rx_symbol_t& rx_sym){
         idxOffset -= (ones);
         rx_sym.gcr_data |= mask << idxOffset;
         idxOffset -= zeros;
-
-        //std::bitset<21> gcr(rx_sym.gcr_data);
-        //std::cout<<"ones: "<<ones<<" shift: "<<idxOffset<<" - "<<gcr<<"\n";
     }
-
-    //for(int i=idxOffset;i>=0;--i){
-    //    idxOffset--;
-    //    rx_sym.gcr_data |= 0x1 << idxOffset;
-    //}
-
-    //std::bitset<21> gcr(rx_sym.gcr_data);
-    //std::cout<<"gcr: "<<gcr<<"\n";
 
     return 0;
 }
