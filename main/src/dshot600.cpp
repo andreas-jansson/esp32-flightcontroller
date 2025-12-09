@@ -558,8 +558,6 @@ esp_err_t Dshot600::write_speed(struct Dshot::DshotMessage& msg){
 
         for(int i=0;i<Dshot::maxChannels;i++){
             gpio_ll_od_disable(GPIO_LL_GET_HW(GPIO_PORT_0), m_gpioMotorPin[i]);
-  
-            ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_transmit(this->rmt_tx_handle[i], this->dshot_encoder, &throttle[i], sizeof(throttle[i]), &tx_config[i]));
 
             if(xSemaphoreTake(s_rmt_rx_done[i], pdMS_TO_TICKS(3)) == pdTRUE){
 
@@ -570,26 +568,28 @@ esp_err_t Dshot600::write_speed(struct Dshot::DshotMessage& msg){
                     total_ok++;
                 }
             }
+  
+            ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_transmit(this->rmt_tx_handle[i], this->dshot_encoder, &throttle[i], sizeof(throttle[i]), &tx_config[i]));
 
+       
             static uint64_t cntr{};
-            if(cntr % 5000 == 0){
+            if(cntr % 20000 == 0){
                 printf("dshot sent[%llu] recieved[%f] -  ok[%lu] fail[%lu] [%f]   -   bad crc[%lu] bad gcr[%lu] bad timing[%lu]\n",
                 total_dshot_sent, static_cast<float>(total_ok + total_fail)/static_cast<float>(total_dshot_sent),total_ok, total_fail, static_cast<float>(total_ok) / static_cast<float>(total_fail + total_ok), 
                 bad_crc, bad_grc, bad_timing);
 
-                printf("******* nr: %u *******'\n", rx_sym_data[i].rmt_data.num_symbols);
-                for(int j=0;j<rx_sym_data[j].rmt_data.num_symbols;j++){
-                    printf("%d:[1st] lvl[%u] cycles[%u]\n", j, rx_sym_data[i].rmt_data.received_symbols[j].level0, rx_sym_data[i].rmt_data.received_symbols[j].duration0);
-                    printf("%d:[2nd] lvl[%u] cycles[%u]\n", j, rx_sym_data[i].rmt_data.received_symbols[j].level1, rx_sym_data[i].rmt_data.received_symbols[j].duration1);
-                    printf("-------\n");
-                }
-                std::bitset<21> gcr(rx_sym_data[i].gcr_data);
-                std::cout<<"gcr: "<<gcr<<"\n";
-                printf("**************'\n");
+                //printf("******* nr: %u *******'\n", rx_sym_data[i].rmt_data.num_symbols);
+                //for(int j=0;j<rx_sym_data[j].rmt_data.num_symbols;j++){
+                //    printf("%d:[1st] lvl[%u] cycles[%u]\n", j, rx_sym_data[i].rmt_data.received_symbols[j].level0, rx_sym_data[i].rmt_data.received_symbols[j].duration0);
+                //    printf("%d:[2nd] lvl[%u] cycles[%u]\n", j, rx_sym_data[i].rmt_data.received_symbols[j].level1, rx_sym_data[i].rmt_data.received_symbols[j].duration1);
+                //    printf("-------\n");
+                //}
+                //std::bitset<21> gcr(rx_sym_data[i].gcr_data);
+                //std::cout<<"gcr: "<<gcr<<"\n";
+                //printf("**************'\n");
             }
             cntr++;
             total_dshot_sent++;
-            break;
         }
     }
     else{
@@ -603,7 +603,6 @@ esp_err_t Dshot600::write_speed(struct Dshot::DshotMessage& msg){
         }
     }
 
-    vTaskDelay(pdMS_TO_TICKS(2));
     return status;
 }
 

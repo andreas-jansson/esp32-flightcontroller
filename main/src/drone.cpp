@@ -726,6 +726,7 @@ void Drone::drone_task(void *args){
             radioCounter = 0;
             loopCounter = 0;
             start = std::chrono::system_clock::now();
+            printf("loopFreq[%lu]\n", m_state.loopFreq);
         }
 
         now = steady_clock::now();
