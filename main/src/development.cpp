@@ -178,28 +178,28 @@ void telemetry_task(void* args){
             telemetry.drone.escState[MOTOR3].voltage * 0.01, 
             telemetry.drone.escState[MOTOR3].current * 0.01, 
             telemetry.drone.escState[MOTOR3].consumption * 0.01, 
-            telemetry.drone.escState[MOTOR3].rpm * 100 / 7);
+            telemetry.drone.escState[MOTOR3].rpm);
 
         print_debug(DEBUG_TELEMETRY, DEBUG_DATA, "[K[Rear  Right] %4u °C     %4.2f V     %4.2f A     %4.2f mA    %6u rpm\n", 
             telemetry.drone.escState[MOTOR1].temperature, 
             telemetry.drone.escState[MOTOR1].voltage * 0.01, 
             telemetry.drone.escState[MOTOR1].current * 0.01, 
             telemetry.drone.escState[MOTOR1].consumption * 0.01, 
-            telemetry.drone.escState[MOTOR1].rpm * 100 / 7);
+            telemetry.drone.escState[MOTOR1].rpm);
 
         print_debug(DEBUG_TELEMETRY, DEBUG_DATA, "[K[Front  Left] %4u °C     %4.2f V     %4.2f A     %4.2f mA    %6u rpm\n", 
             telemetry.drone.escState[MOTOR4].temperature, 
             telemetry.drone.escState[MOTOR4].voltage * 0.01, 
             telemetry.drone.escState[MOTOR4].current * 0.01, 
             telemetry.drone.escState[MOTOR4].consumption * 0.01, 
-            telemetry.drone.escState[MOTOR4].rpm * 100 / 7);
+            telemetry.drone.escState[MOTOR4].rpm);
 
         print_debug(DEBUG_TELEMETRY, DEBUG_DATA, "[K[Front Right] %4u °C     %4.2f V     %4.2f A     %4.2f mA    %6u rpm\n", 
             telemetry.drone.escState[MOTOR2].temperature, 
             telemetry.drone.escState[MOTOR2].voltage * 0.01, 
             telemetry.drone.escState[MOTOR2].current * 0.01, 
             telemetry.drone.escState[MOTOR2].consumption * 0.01, 
-            telemetry.drone.escState[MOTOR2].rpm * 100 / 7);
+            telemetry.drone.escState[MOTOR2].rpm);
 
         print_debug(DEBUG_TELEMETRY, DEBUG_DATA, "[Kcurrent: %.2f A\n", telemetry.drone.currentDraw);  
 

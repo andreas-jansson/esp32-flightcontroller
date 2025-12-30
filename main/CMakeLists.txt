@@ -11,6 +11,7 @@ idf_component_register(SRCS
                          "src/display.cpp"
                          "src/ringbuffer.cpp"
                          "src/helpers.cpp"
+                         "src/djiO4Pro.cpp"
 
                          "icons/wifi_icon.cpp"
                          "icons/flight_icon.cpp"
@@ -23,6 +24,7 @@ idf_component_register(SRCS
                          "."
                          "includes"
                          "icons"
+                         "interfaces"
                          "src"
                          "stub_src"
                          "stub_includes"

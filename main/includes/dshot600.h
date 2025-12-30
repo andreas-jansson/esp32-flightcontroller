@@ -197,9 +197,15 @@ struct cb_dshot_all_channel_ctx{
     cb_dshot_channel_ctx ch_ctx[Dshot::maxChannels];
 };
 
+typedef struct BidiTelemetry{
+    uint16_t rpm[Dshot::maxChannels]{};
+    uint16_t voltage[Dshot::maxChannels]{};
+    uint16_t amp[Dshot::maxChannels]{};
+    uint16_t temp[Dshot::maxChannels]{};
+} bidi_telemetry_t;
+
 class Dshot600{
 
-    //CircularHandle_t m_dshot_queue_handle{};
     static Dshot600* dshot;
     static bool m_isBidi;
 
@@ -213,6 +219,8 @@ class Dshot600{
 
     cb_dshot_all_channel_ctx m_ctx_all_ch{};
     static gpio_num_t m_gpioMotorPin[Dshot::maxChannels];
+
+    bidi_telemetry_t m_bidiTelemetry{};
 
     static int c_cpuFreq;
     static float c_cycleToUsFloat;
@@ -258,6 +266,8 @@ class Dshot600{
 
     void IRAM_ATTR attach_my_rmt_tx_isr();
 
+    void set_bidi_telemetry();
+
     public:
 
     Dshot600(Dshot600 &other) = delete;
@@ -282,5 +292,7 @@ class Dshot600{
     esp_err_t save_settings_cmd();
 
     esp_err_t set_extended_telemetry(bool enable);
+
+    bidi_telemetry_t get_bidi_telemetry();
 
 };

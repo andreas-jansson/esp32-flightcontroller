@@ -20,6 +20,7 @@ enum DebugFileLevel{
     DEBUG_TELEMETRY = 0x40,
     DEBUG_DSHOT     = 0x80,
     DEBUG_DRONE     = 0x100,
+    DEBUG_DJIO4PRO  = 0x200,
 };
 
 enum DebugPrio{

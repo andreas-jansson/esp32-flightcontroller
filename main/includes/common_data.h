@@ -159,7 +159,7 @@ struct EscTelemetry{
                std::to_string(voltage * 0.10) + "," + 
                std::to_string(current * 0.10) + "," + 
                std::to_string(consumption * 0.10)  + "," + 
-               std::to_string(rpm * 100 / 7); // erpm per 100 to rpm
+               std::to_string(rpm);
     }
 
 };

@@ -262,11 +262,8 @@ Mpu6050* Mpu6050::GetInstance(){
 
 void Mpu6050::dmp_task(void* args){
     esp_err_t status = 0;
-    YawPitchRoll ypr{};
-    YawPitchRoll yprPrev{};
 
-    constexpr TickType_t xDelay = 2 / portTICK_PERIOD_MS;
-
+    
     /////// MPU setup /////////
 
     status = this->mpu6050_init();
@@ -394,15 +391,14 @@ void Mpu6050::dmp_task(void* args){
         this->get_gravity(vec, quaternion);
         this->get_yaw_pitch_roll(quaternion,vec, ypr);
 
-        if(ypr != yprPrev){ 
-            BaseType_t res = xRingbufferSend(dmp_buf_handle, &ypr, sizeof(YawPitchRoll), 1);
-
-        //if (res != pdTRUE) {
-        //        printf("Failed to send dmp item\n");
-        //    } 
-        }
+        send_ypr_data(ypr);
     }
 }
+
+esp_err_t Mpu6050::send_ypr_data(YawPitchRoll ypr){
+    return xRingbufferSend(dmp_buf_handle, &ypr, sizeof(YawPitchRoll), 1) == pdTRUE? ESP_OK : ESP_FAIL;
+}
+
 
 void Mpu6050::raw_task(void* args){
     esp_err_t status = 0;

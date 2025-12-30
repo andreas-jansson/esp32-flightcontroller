@@ -4,13 +4,10 @@
 #include <memory>
 #include <mutex>
 
-
 #include "esp_check.h"
-
-
 #include "radioController.h"
-#include "mpu6050.h"
 #include "dshot600.h"
+#include "imuIf.h"
 
 
 typedef enum ToggleState{
@@ -36,25 +33,40 @@ struct MotorLaneMapping{
 
 };
 
+struct FwVersion{
+    uint8_t major{};
+    uint8_t minor{};
+    uint8_t patch{};
+};
 
-
+struct BatteryInfo{
+    uint8_t cellCount;
+    uint16_t capacityMah;
+    // uint8_t voltage; legacy
+    uint16_t mahDrawn;
+    int16_t current;
+    //uint8_t alerts;
+    uint16_t voltage;
+};
 
 class Drone{
 
     static Drone* drone;
     static Channel channel;
     static Pid m_pid[3];
+    static char* s_name;
 
-    DroneState m_state{};
+    static DroneState m_state;
     MotorLaneMapping m_motorLaneMapping{};
 
     YawPitchRoll m_ypr1{};
-    YawPitchRoll m_ypr2{};
     RadioStatistics radio_statistics{};
 
     Dshot600* m_dshotObj;
-    Mpu6050* m_mpuObj1;
-    Mpu6050* m_mpuObj2;
+    std::vector<ImuIf*> m_mpuObj1;
+
+    static FwVersion m_fwVersion;
+    static BatteryInfo m_batInfo;
 
     const float m_maxPitch{45};
     const float m_minPitch{-45};
@@ -72,7 +84,7 @@ class Drone{
     std::atomic<uint8_t> m_telemetryReqIdx{};
     bool m_motorTelemetryRequest[Dshot::maxChannels];
 
-    RingbufHandle_t m_dmp_queue_handle1{};
+    std::vector<RingbufHandle_t> m_dmp_queue_handle{};
     RingbufHandle_t m_dmp_queue_handle2{};
     CircularHandle_t m_radio_queue_handle{};
     CircularHandle_t m_radio_statistics_queue_handle{};
@@ -85,18 +97,19 @@ class Drone{
     uint32_t m_radioFreq{};
     uint32_t m_loopFreq{};
 
+    bidi_telemetry_t m_bidiTelemetry{};
+
     uart_port_t uartNum{UART_NUM_1};
     QueueHandle_t uart_queue{};
 
-    /* battery info */
-    float m_battert_max_voltage;
-    float m_battert_max_mah;
-    float m_battert_max_wh;
+    // delete this probably
+    float m_battert_max_voltage{};
+    float m_battert_max_mah{};
+    float m_battert_max_wh{};
 
     Drone(
         Dshot600* dshot_obj, 
-        Mpu6050* mpu1,
-        Mpu6050* mpu2,
+        std::vector<ImuIf*> mpu,
         CircularHandle_t radio_queue_handle,
         CircularHandle_t radio_statistics_queue_handle);
 
@@ -130,7 +143,6 @@ class Drone{
     esp_err_t toggle_motor_direction(); //not working 
     esp_err_t blink_led(uint16_t newChannelValue); //not working, no led?
 
-    void set_imu_data(bool newImuData1, bool newImuData2);
     esp_err_t get_imu_data(int imuNr, YawPitchRoll& newData, TickType_t ticks);
     esp_err_t get_radio_data(Channel& newData, TickType_t ticks);
     esp_err_t get_radio_statistics(RadioStatistics &newData, TickType_t ticks);
@@ -161,8 +173,7 @@ class Drone{
     void operator=(const Drone &) = delete;
     static Drone *GetInstance(
         Dshot600* dshot_obj, 
-        Mpu6050* mpu1, 
-        Mpu6050* mpu2,
+        std::vector<ImuIf*> mpu,
         CircularHandle_t radio_queue_handle,
         CircularHandle_t radio_statistics_queue_handle
     );
@@ -174,7 +185,7 @@ class Drone{
 
     void esc_telemetry_task(void* args);
 
-    esp_err_t init_uart(int rxPin, int txPin, int baudrate);
+    esp_err_t init_esc_telemetry_uart(int rxPin, int txPin, int baudrate);
 
     CircularHandle_t get_telemetry_handle(){return m_telemetry_queue_handle;}
 
@@ -184,7 +195,19 @@ class Drone{
         m_battert_max_wh = max_wh;
     };
 
+    static const char* get_name(){
+        return s_name;
+    }
 
     esp_err_t set_motor_direction(enum Motor motorNum, enum MotorDirection direction);  // TODO
     esp_err_t get_motor_direction(enum Motor motorNum, enum MotorDirection& direction); // TODO
+
+
+    static void set_fw_version(uint8_t major, uint8_t minor, uint8_t patch);
+    static void get_fw_version(uint8_t& major, uint8_t& minor, uint8_t& patch);
+    static void get_osd_status();
+    static void get_channel_values(Channel& ch);
+    static void set_battery_status(uint8_t cellCount, uint16_t capacityMah);
+    static void get_battery_status(BatteryInfo& info);
+
 };

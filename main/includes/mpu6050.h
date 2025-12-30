@@ -8,6 +8,7 @@
 #include "freertos/ringbuf.h"
 #include "freertos/semphr.h"
 
+#include "imuIf.h"
 #include "common_data.h"
 #include "i2c.h"
 #include "quaternion.h"
@@ -54,22 +55,11 @@ struct imuOffsets{
     int16_t z_gyro{};
 };
 
-enum YawPitchRollEnum{
-	YAW,
-	PITCH,
-	ROLL,
-};
-
-enum MpuRotation{
-	ROTATE_0,
-	ROTATE_90,
-	ROTATE_180,
-	ROTATE_270
-};
 
 
 
-class Mpu6050{
+
+class Mpu6050 : public ImuIf {
 
 	static SemaphoreHandle_t dmp_avail_sem1;
 	static SemaphoreHandle_t dmp_avail_sem2;
@@ -80,7 +70,6 @@ class Mpu6050{
 
 	int m_interruptPin{};
 
-    //enum Mpu6050Addr address;
 	enum MpuRotation rotation{ROTATE_0};
 
     uint8_t sda_pin;
@@ -114,6 +103,9 @@ class Mpu6050{
 	RingbufHandle_t get_queue_handle(){
 		return dmp_buf_handle;
 	}
+
+	esp_err_t send_ypr_data(YawPitchRoll ypr);
+
 
 	esp_err_t store_offsets(imuOffsets& offset_data);
 	esp_err_t load_offsets();

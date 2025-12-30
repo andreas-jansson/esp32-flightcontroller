@@ -23,6 +23,7 @@
 #include "mpu6050_stub.h"
 #include "dshot600.h"
 #include "i2c.h"
+#include "imuIf.h"
 #include "quaternion.h"
 #include "webClient.h"
 #include "development.h"
@@ -30,6 +31,8 @@
 #include "display.h"
 #include "ringbuffer.h"
 #include "radioController.h"
+#include "djiO4Pro.h"
+#include "vtxIf.h"
 
 // battery info
 // battery 4000 mah
@@ -69,16 +72,9 @@ enum {
 };
 
 
-SemaphoreHandle_t cfg_btn_sem = nullptr;
-
 extern "C"
 {
     void app_main(void);
-}
-
-static void IRAM_ATTR cfg_btn_handler(void *args)
-{
-    xSemaphoreGive(cfg_btn_sem);
 }
 
 
@@ -195,33 +191,38 @@ void dispatch_dmp(void *args){
     //Mpu6050 *mpu = Mpu6050::GetInstance();
 
     #endif
-    Mpu6050* mpu = reinterpret_cast<Mpu6050*>(args);
+    ImuIf* mpu = reinterpret_cast<ImuIf*>(args);
     mpu->dmp_task(nullptr);
 }
 
-void dispatch_webClient(void *args){
+void dispatch_webClient(void* args){
     WebClient *client = WebClient::GetInstance();
     client->web_task2(nullptr);
 }
 
-void dispatch_drone(void *args){
+void dispatch_drone(void* args){
     Drone *drone = Drone::GetInstance();
     drone->drone_task(nullptr);
 }
 
-void dispatch_dshot(void *args){
+void dispatch_dshot(void* args){
     Dshot600 *dshot = Dshot600::GetInstance();
     dshot->dshot_task(nullptr);
 }
 
-void dispatch_display(void *args){
+void dispatch_display(void* args){
     Display *display = Display::GetInstance();
     display->display_task(nullptr);
 }
 
-void dispatch_esc_telemetry(void *args){
+void dispatch_esc_telemetry(void* args){
     Drone *drone = Drone::GetInstance();
     drone->esc_telemetry_task(nullptr);
+}
+
+void dispatch_vtx(void* args){
+    VtxIf* vtx = reinterpret_cast<VtxIf*>(args);
+    vtx->vtx_task(nullptr);
 }
 
 void main_task(void *args){
@@ -236,6 +237,7 @@ void main_task(void *args){
     TaskHandle_t drone_handle{};
     TaskHandle_t esc_telemetry_handle{};
     TaskHandle_t display_handle{};
+    TaskHandle_t vtx_handle{};
 
     RingbufHandle_t  ringBuffer_dmp1{};
     RingbufHandle_t  ringBuffer_dmp2{};
@@ -244,6 +246,7 @@ void main_task(void *args){
     RingbufHandle_t  ringBuffer_web{};
 
     constexpr bool isBidiDshot{true};
+    std::vector<ImuIf*> mpuVector;
 
     /******* I2C setup *******/
     I2cHandler *i2c = new I2cHandler(I2C_MASTER_SDA_IO, I2C_MASTER_SCL_IO, I2C_MASTER_FREQ_HZ);
@@ -262,14 +265,17 @@ void main_task(void *args){
     #ifdef STUB_MPU6050
     Mpu6050_stub *mpu = Mpu6050_stub::GetInstance(ADDR_68, i2c);
     #else
-    Mpu6050 *mpu1 = new Mpu6050(ADDR_68, i2c, 27);
+    ImuIf *mpu1 = new Mpu6050(ADDR_68, i2c, 27);
+    mpuVector.emplace_back(mpu1);
     #endif
 
    /******* MPU 2 setup *******/
    #ifdef STUB_MPU6050
    Mpu6050_stub *mpu = Mpu6050_stub::GetInstance(ADDR_68, i2c);
    #else
-   Mpu6050 *mpu2 = new Mpu6050(ADDR_69, i2c, 26);
+   //Mpu6050 *mpu2 = new Mpu6050(ADDR_69, i2c, 26);
+   //mpuVector.emplace_back(mpu1);
+
    #endif
 
     /******* wifi *******/
@@ -301,13 +307,19 @@ void main_task(void *args){
         .frontRightlane = MOTOR2
     };
 
-    Drone* drone = Drone::GetInstance(dshot, mpu1, mpu2, ringBuffer_radio, ringBuffer_radio_statistics);
-    drone->init_uart(UART_ESC_RX_IO, ESC_CURRENT_PIN, UART_ESC_BAUDRATE);
+    Drone* drone = Drone::GetInstance(dshot, mpuVector, ringBuffer_radio, ringBuffer_radio_statistics);
+    drone->init_esc_telemetry_uart(UART_ESC_RX_IO, 25, UART_ESC_BAUDRATE);
     drone->set_motor_lane_mapping(motorLanes);
     drone->set_battery_data(BATTERY_MAX_MAH, BATTERY_MAX_V, BATTERY_MAX_WH);
 
     esp_err_t status = gpio_install_isr_service(0);
     ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+
+    Drone::set_fw_version(1, 1, 0);
+    Drone::set_battery_status(6u, 3500u);
+
+    /* Dji o4 Pro */
+    VtxIf* vtx = new DjiO4Pro();
 
 
     /* start tasks */
@@ -328,14 +340,15 @@ void main_task(void *args){
     vTaskDelay(pdMS_TO_TICKS(200));
     xTaskCreatePinnedToCore(dispatch_radio, "radio_task", 4048, nullptr,  PRIO_SENSORS, &radio_handle, 0);
     xTaskCreatePinnedToCore(dispatch_dmp, "dmp_task1", 4048, mpu1,  PRIO_SENSORS, &dmp_handle1, 0);
-    xTaskCreatePinnedToCore(dispatch_dmp, "dmp_task2", 4048, mpu2,  PRIO_SENSORS, &dmp_handle2, 0);
+    //xTaskCreatePinnedToCore(dispatch_dmp, "dmp_task2", 4048, mpu2,  PRIO_SENSORS, &dmp_handle2, 0);
     xTaskCreatePinnedToCore(dispatch_esc_telemetry, "esc_telemetry_task", 4048, nullptr,  PRIO_BG, &esc_telemetry_handle, 0);
+    xTaskCreatePinnedToCore(dispatch_vtx, "vtx_task", 4048, vtx,  PRIO_BG, &vtx_handle, 0);
 
     char buffer[500]{};
     while (true)
     {
         // enable CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=y
-        vTaskDelay(pdMS_TO_TICKS(5000));
+        vTaskDelay(pdMS_TO_TICKS(50000));
         //vTaskGetRunTimeStats(buffer);
         //printf("%s", buffer);
     }
@@ -348,8 +361,6 @@ void app_main(void){
 
     set_loglevel(files, prio);
 
-    vSemaphoreCreateBinary(cfg_btn_sem);
-    ESP_ERROR_CHECK_WITHOUT_ABORT((cfg_btn_sem == nullptr));
 
     printf("*****************************************************************\n");
     printf("*****************************************************************\n");

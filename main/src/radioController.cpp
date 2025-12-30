@@ -16,7 +16,7 @@
 
 
 RadioController* RadioController::radio = nullptr;
-uart_port_t RadioController::s_uartNum{UART_NUM_1}; //FIXME WAS 2 before??
+uart_port_t RadioController::s_uartNum{UART_NUM_2}; 
 
 
 
@@ -30,7 +30,7 @@ RadioController::RadioController(){
     constexpr int rtsPin = UART_PIN_NO_CHANGE;
     constexpr int ctsPin = UART_PIN_NO_CHANGE;
     constexpr int uart_buffer_size = (512);
-    uart_config_t uart_config;
+    uart_config_t uart_config{};
 
     uart_config.baud_rate = 420000;
     uart_config.data_bits = UART_DATA_8_BITS;
@@ -146,8 +146,6 @@ void RadioController::radio_task(void* args){
                     continue;
                 }
 
-    
-
                 if(data[c_addrIdx] == flightControllerAddr){
                     uint8_t frameLen = data[c_frameLenIdx];
                     uint8_t type = data[c_dataIdx];
@@ -184,8 +182,6 @@ void RadioController::radio_task(void* args){
 
                         send_statistics(data);
                     
-   
- 
                         // TODO send a specific channel message so that drone attempts to land safely.
                         // uplink_Link_quality: 0x0, detect loss of controller
                     }
@@ -404,12 +400,6 @@ esp_err_t RadioController::set_telemetry_data(enum radio::crsfFrameType type, ui
     uint8_t len = (*r_crsf_frame)[1]; // total = type + payload + crc
     uint8_t crc = crc8_dvb_s2(&(*r_crsf_frame)[2], len - 1);
     (*r_crsf_frame)[2 + len - 1] = crc;
-
-    //printf("sync[0x%x] len[0x%x] type[0x%x] data[", (*r_crsf_frame)[0], (*r_crsf_frame)[1], (*r_crsf_frame)[2]);
-    //for(int i=0;i<radio::crsfMsgSize[type];i++){
-    //    printf("0x%x ", (*r_crsf_frame)[i+3]);
-    //}
-    //printf("] crc[0x%x]\n", (*r_crsf_frame)[frame_size - 1]);
 
     return 0;
 }
