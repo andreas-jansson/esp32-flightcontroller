@@ -48,15 +48,10 @@ namespace Dshot{
         uint16_t speed[Dshot::maxChannels]{};
         int32_t loops[Dshot::maxChannels]{};
         uint8_t cmd[Dshot::maxChannels]{};
-    
         bool telemetryReq[Dshot::maxChannels]{};
-        //bool writeTo[Dshot::maxChannels]{};
     };
 
-
-
     /* Data types for borrowed logic */
-
     typedef struct {
         uint32_t resolution;    
         uint32_t baud_rate;     
@@ -90,6 +85,7 @@ namespace Dshot{
     } dshot_esc_frame_t;
 
     typedef enum{
+        INVALID = 0x0,
         RPM = 0x1,
         TEMP = 0x2,
         VOLT = 0x4,

@@ -92,7 +92,6 @@ void telemetry_task(void* args){
     constexpr char hideCursor[] = "\033[?25l";
     std::map<int, std::string> mode = {{ACRO_MODE, "Acro mode"}, {SELFLEVL_MODE, "Self level mode"}, {ANGLE_MODE, "Angle mode"}};
 
-
     Channel ch{}, chPrev{};
     YawPitchRoll yprPrev{};
     size_t item_size2 = sizeof(TelemetryData);
@@ -104,12 +103,8 @@ void telemetry_task(void* args){
     printf("%d\n", __LINE__);
     fflush(stdout);
 
-
-
     while (true)
     {
-
-
         TelemetryData telemetry{};
         TelemetryData data{};
         esp_err_t status = CircularBufDequeue(ringBuffer_telemetry, &data, portMAX_DELAY);
@@ -156,7 +151,6 @@ void telemetry_task(void* args){
         draw_channels("10", telemetry.channel.ch10, chPrev.ch10, counter);
         draw_channels("11", telemetry.channel.ch11, chPrev.ch11, counter);
 
-
         print_debug(DEBUG_TELEMETRY, DEBUG_DATA,"[KArmed: %3s mode: %-17s (%d) dmp: %lu Hz radio: %lu Hz loop Hz: %lu\n", 
             telemetry.drone.isControllerArmed? "Yes" : "No", 
             mode[telemetry.drone.mode].c_str(), 
@@ -165,8 +159,6 @@ void telemetry_task(void* args){
             telemetry.drone.radioFreq,
             telemetry.drone.loopFreq
         );
-
-
 
         print_debug(DEBUG_TELEMETRY, DEBUG_DATA, "[Ktarget: %5.2f curr: %5.2f\n", telemetry.drone.targetPitch, telemetry.drone.currPitch);
         print_debug(DEBUG_TELEMETRY, DEBUG_DATA, "[Ktarget: %5.2f curr: %5.2f\n", telemetry.drone.targetRoll, telemetry.drone.currRoll);

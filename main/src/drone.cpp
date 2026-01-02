@@ -35,6 +35,7 @@ char* Drone::s_name{};
 DroneState Drone::m_state{};
 FwVersion Drone::m_fwVersion{};
 BatteryInfo Drone::m_batInfo{};
+RadioStatistics Drone::radio_statistics{};
 
 
 static void oneshot_timer_callback(void *arg)
@@ -651,14 +652,16 @@ void Drone::drone_task(void *args)
 
     while (true)
     {
+        esp_cpu_cycle_count_t cycles_start = esp_cpu_get_cycle_count();
         Dshot::DshotMessage msg{};
         Channel channelNew{};
         RadioStatistics radioStatisticsNew{};
 
         bool newTelemetryReq{};
         bool newSpeedValues{};
-        bool newImuData1{};
         bool radio_ok{true};
+
+        m_newImuData = false;
 
         if(m_mpuObj1.size() > 1){
             
@@ -675,7 +678,7 @@ void Drone::drone_task(void *args)
 
                     nrOkSamples++;
                     yprCounter++;
-                    newImuData1 = true;
+                    m_newImuData = true;
                 }
             }
             tmp_ypr.yaw   /= nrOkSamples;
@@ -689,11 +692,11 @@ void Drone::drone_task(void *args)
             if (status == ESP_OK)
             {
                 yprCounter++;
-                newImuData1 = true;
+                m_newImuData = true;
             }
         }
    
-        if(newImuData1){
+        if(m_newImuData){
             m_state.currPitch = m_ypr1.pitch * RAD_TO_DEGREE;
             m_state.currYaw   = m_ypr1.yaw   * RAD_TO_DEGREE;
             m_state.currYaw   = m_ypr1.yaw   * RAD_TO_DEGREE; 
@@ -788,13 +791,28 @@ void Drone::drone_task(void *args)
 #endif
         loopCounter++;
 
+        esp_cpu_cycle_count_t delta = esp_cpu_get_cycle_count() - cycles_start;
+        float timeUs = 4.16e-9 * delta;
+
+        if(timeUs <= (1.0/2500)){
+            ESP_ERROR_CHECK(esp_timer_start_once(oneshot_timer, 1.0/2500 - timeUs));
+        }
+        else{
+            ESP_ERROR_CHECK(esp_timer_start_once(oneshot_timer, 2));
+        }
+
         // allows rmt things to run with while maintaing max loop freq ~2.5k Hz
-        ESP_ERROR_CHECK(esp_timer_start_once(oneshot_timer, 10));
+        //ESP_ERROR_CHECK(esp_timer_start_once(oneshot_timer, 10));
         xSemaphoreTake(timer_sem, portMAX_DELAY);
     }
 }
 
 void Drone::write_speed(Dshot::DshotMessage &msg)
+{
+        ESP_ERROR_CHECK_WITHOUT_ABORT(send_dshot_message(msg));
+}
+
+void Drone::get_speed(Dshot::DshotMessage &msg)
 {
     // send 0 throttle while not armed
     if (!m_state.isDroneArmed)
@@ -811,18 +829,18 @@ void Drone::write_speed(Dshot::DshotMessage &msg)
 
         send_dshot_message(msg);
     }
-    else
+    else if (channel.ch3 >= m_deadzone)
     {
-        ESP_ERROR_CHECK_WITHOUT_ABORT(send_dshot_message(msg));
-    }
-}
-
-void Drone::get_speed(Dshot::DshotMessage &msg)
-{
-    if (channel.ch3 >= m_deadzone)
-    {
-        /*  PID for new throttle values */
         get_new_speed(msg);
+        m_prevSpeedMsg = msg;
+    }
+    else if(!m_newImuData)
+    {
+        msg.msgType = Dshot::THROTTLE;
+        // avoid assigning telemetry requests
+        for(int i=0;i<Dshot::maxChannels;i++){
+            msg.speed[i] = m_prevSpeedMsg.speed[i];
+        }
     }
     else
     {
@@ -1040,13 +1058,13 @@ esp_err_t Drone::measure_current()
         gpio_config_t io_conf = {};
         io_conf.intr_type = GPIO_INTR_DISABLE;
         io_conf.mode = GPIO_MODE_INPUT;
-        io_conf.pin_bit_mask = (1ULL << 17) | (1ULL << 36);
+        io_conf.pin_bit_mask = (1ULL << 36);
         io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
         io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
         gpio_config(&io_conf);
 
         adc1_config_width(ADC_WIDTH_BIT_12);
-        adc1_config_channel_atten(ADC1_CHANNEL_0, ADC_ATTEN_DB_11); // GPIO36
+        adc1_config_channel_atten(ADC1_CHANNEL_0, ADC_ATTEN_DB_0); // GPIO36
 
         esp_adc_cal_characterize(
             ADC_UNIT_1, ADC_ATTEN_DB_11, ADC_WIDTH_BIT_12, DEFAULT_VREF, &adc_chars);
@@ -1059,8 +1077,10 @@ esp_err_t Drone::measure_current()
 
     uint64_t acc = 0;
     const int N = 10;
-    for (int i = 0; i < N; ++i)
+    for (int i = 0; i < N; ++i){
         acc += adc1_get_raw(ADC1_CHANNEL_0);   // GPIO36 (wired from 17)
+        //ets_delay_us(1);
+    }
 
     uint32_t avg_raw = acc / N;
     uint32_t mv = esp_adc_cal_raw_to_voltage(avg_raw, &adc_chars);
@@ -1331,8 +1351,10 @@ void Drone::pid(float target, float current, Pid &pid)
 
     kPOut = pid.kP * err;
 
-    integral = err * pid.dt;
-    kIOut = pid.kI * integral;
+    //integral = err * pid.dt;
+    pid.integral += err * pid.dt;
+    //kIOut = pid.kI * integral;
+    kIOut = pid.kI * pid.integral;
 
     derivative = (err - pid.prevErr) / pid.dt;
     kDOut = pid.kD * derivative;
@@ -1638,3 +1660,21 @@ void Drone::get_battery_status(BatteryInfo& info){
     info.current = static_cast<int16_t>(m_state.currentDraw);
 
 }
+
+esp_err_t Drone::get_pid(Pid* pid, uint8_t size){
+
+    if(size != 3){
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    for(int i=0;i<size;i++){
+        pid[i] = m_pid[i];
+    }
+
+    return ESP_OK;
+}
+
+void Drone::get_radio_status(RadioStatistics& radio){
+    radio = radio_statistics;
+}
+

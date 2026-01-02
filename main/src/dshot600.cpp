@@ -56,7 +56,9 @@ SemaphoreHandle_t Dshot600::s_rmt_rx_done[Dshot::maxChannels]{};
 rx_symbol_t Dshot600::rx_sym_data[Dshot::maxChannels]{};
 
 
-rmt_symbol_word_t raw_symbols[64];
+rmt_symbol_word_t raw_symbols_data[Dshot::maxChannels][64];
+
+
 volatile static esp_cpu_cycle_count_t tx_start_cycles[Dshot::maxChannels]{};
 static rmt_rx_done_event_data_t edata_rx[4]{};
 static rmt_rx_done_event_data_t edata_rx_copy[4]{};
@@ -183,6 +185,7 @@ constexpr uint16_t dshotLoopsLookup[48] = {
 bool IRAM_ATTR Dshot600::rmt_rx_done_cb(rmt_channel_handle_t channel, const rmt_rx_done_event_data_t *edata, void *user_ctx){
     cb_dshot_channel_ctx* ctx = reinterpret_cast<cb_dshot_channel_ctx*>(user_ctx);
 
+    rx_sym_data[ctx->motorIdx].msgType = INVALID;
     rx_sym_data[ctx->motorIdx].data = 0;
     rx_sym_data[ctx->motorIdx].data_bits = 0;
     rx_sym_data[ctx->motorIdx].gcr_data = 0;
@@ -211,7 +214,7 @@ void IRAM_ATTR Dshot600::rmt_tx_done_cb(void *user_ctx)
             RMT.int_clr.val &= ctx_all->ch_ctx[i].rmt_tx_done_mask;
             if(!rmt_busy[ctx_all->ch_ctx[i].motorIdx]){
                 rmt_busy[ctx_all->ch_ctx[i].motorIdx] = true;
-                rmt_receive(ctx_all->ch_ctx[i].rx_handle, raw_symbols, 64, const_cast<rmt_receive_config_t*>(&ctx_all->ch_ctx[i].rx_chan_config));
+                rmt_receive(ctx_all->ch_ctx[i].rx_handle, raw_symbols_data[i], 64, const_cast<rmt_receive_config_t*>(&ctx_all->ch_ctx[i].rx_chan_config));
             }
         }
     }
@@ -344,7 +347,7 @@ Dshot600::Dshot600(gpio_num_t motorPin[Dshot::maxChannels], bool isBidi){
             };
 
             rmt_rx_register_event_callbacks(rmt_rx_handle[i], &rx_event, static_cast<void*>(&m_ctx_all_ch.ch_ctx[i]));
-            rx_sym_data[i].rmt_data.received_symbols = static_cast<rmt_symbol_word_t*>(calloc(32, sizeof(rmt_symbol_word_t)));
+            rx_sym_data[i].rmt_data.received_symbols = static_cast<rmt_symbol_word_t*>(calloc(64, sizeof(rmt_symbol_word_t)));
         }
         else{
             ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_new_tx_channel(&tx_chan_config, &this->rmt_tx_handle[i]));
@@ -474,6 +477,11 @@ esp_err_t Dshot600::write_speed(struct Dshot::DshotMessage& msg){
             }
             else{
                 total_ok++;
+            }
+        }
+        else{
+            for(int i=0;i<Dshot::maxChannels;i++){
+                ESP_ERROR_CHECK_WITHOUT_ABORT(rmt_tx_wait_all_done(this->rmt_tx_handle[i], pdMS_TO_TICKS(20)));
             }
         }
     }
@@ -867,6 +875,10 @@ int Dshot600::decode_timings_to_gcr(Dshot::rx_symbol_t& rx_sym){
             return -1;
         }
 
+        if (ones < 1 || ones > 4) return -1;
+        if (zeros > idxOffset) return -1;
+        if (ones > idxOffset) return -1;
+
         uint16_t mask{};
         if(ones == 1){
             mask = 0x1;
@@ -1018,7 +1030,6 @@ esp_err_t Dshot600::set_extended_telemetry(bool enable){
 
 
 void Dshot600::set_bidi_telemetry(){
-
     for(int i=0;i<Dshot::maxChannels;i++){
 
         if(rx_sym_data[i].msgType == RPM)
@@ -1033,11 +1044,6 @@ void Dshot600::set_bidi_telemetry(){
 }
 
 bidi_telemetry_t Dshot600::get_bidi_telemetry(){
-
-    //for(int i=0;i<Dshot::maxChannels;i++){
-    //    printf("[%3u] ", m_bidiTelemetry.rpm[i]);
-    //}
-    //printf("\n");
     return m_bidiTelemetry;
 }
 

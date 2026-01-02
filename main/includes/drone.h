@@ -60,10 +60,13 @@ class Drone{
     MotorLaneMapping m_motorLaneMapping{};
 
     YawPitchRoll m_ypr1{};
-    RadioStatistics radio_statistics{};
+    static RadioStatistics radio_statistics;
 
     Dshot600* m_dshotObj;
     std::vector<ImuIf*> m_mpuObj1;
+
+    Dshot::DshotMessage m_prevSpeedMsg{};
+    bool m_newImuData{};
 
     static FwVersion m_fwVersion;
     static BatteryInfo m_batInfo;
@@ -209,5 +212,7 @@ class Drone{
     static void get_channel_values(Channel& ch);
     static void set_battery_status(uint8_t cellCount, uint16_t capacityMah);
     static void get_battery_status(BatteryInfo& info);
+    static esp_err_t get_pid(Pid* pid, uint8_t size_t);
+    static void get_radio_status(RadioStatistics& radio);
 
 };
