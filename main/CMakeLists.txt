@@ -32,6 +32,7 @@ idf_component_register(SRCS
                          arduino
                          bmp280
                          spi_flash
+                         esp_driver_gptimer
                          esp_partition
                          esp_wifi
                          esp_rom

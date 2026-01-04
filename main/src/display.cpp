@@ -21,10 +21,13 @@ enum DisplayState Display::m_state{};
 Pid Display::m_pid;
 
 
+Display::Display(){
+    vSemaphoreCreateBinary(s_newData);
+}
+
 Display *Display::GetInstance(){
     if (display == nullptr)
     {
-        vSemaphoreCreateBinary(s_newData)
         display = new Display();
     }
     return display;
@@ -458,11 +461,12 @@ void Display::draw_border(uint16_t color){
 
 void Display::recolor_icon(unsigned short icon[], uint16_t color){
 
-    for(int i=0;i<2304;i++){
+    for(int i=0;i<2304;i++)
+    {
         if(icon[i] != 0)
             icon[i] = color;
     }
-
+    
 }
 
 void Display::set_armed_status(bool isArmed){

@@ -54,7 +54,7 @@ class Display{
     const int32_t c_screenMidY{c_screenHeight/2};
 
     
-
+    Display();
     void init();
     void boot_menu();
     void cleanup();
@@ -71,7 +71,6 @@ class Display{
         const char* str, 
         uint16_t strColor);
 
-    Display() = default;
 
 
 public:

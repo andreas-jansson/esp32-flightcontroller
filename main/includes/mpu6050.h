@@ -63,7 +63,7 @@ class Mpu6050 : public ImuIf {
 
 	static SemaphoreHandle_t dmp_avail_sem1;
 	static SemaphoreHandle_t dmp_avail_sem2;
-	SemaphoreHandle_t calibrate_sem;
+	SemaphoreHandle_t calibrate_sem{};
 
 	RingbufHandle_t dmp_buf_handle;
 	static RingbufHandle_t web_buf_handle;

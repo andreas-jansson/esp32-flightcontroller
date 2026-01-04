@@ -7,6 +7,7 @@
 
 #include "esp_check.h"
 #include "esp_timer.h"
+#include "driver/gptimer.h"
 #include "hal/gpio_hal.h"
 #include "driver/adc.h"
 #include "esp_adc_cal.h"
@@ -38,9 +39,10 @@ BatteryInfo Drone::m_batInfo{};
 RadioStatistics Drone::radio_statistics{};
 
 
-static void oneshot_timer_callback(void *arg)
+static bool oneshot_timer_callback(gptimer_handle_t timer, const gptimer_alarm_event_data_t *edata, void *user_ctx)
 {
     xSemaphoreGive(timer_sem);
+    return true;
 }
 
 Drone::Drone(Dshot600 *dshotObj, std::vector<ImuIf*> mpu, CircularHandle_t radio_queue_handle, CircularHandle_t radio_statistics_queue_handle)
@@ -85,12 +87,47 @@ Drone::Drone(Dshot600 *dshotObj, std::vector<ImuIf*> mpu, CircularHandle_t radio
     ESP_ERROR_CHECK_WITHOUT_ABORT((timer_sem == nullptr));
     xSemaphoreTake(timer_sem, 0);
 
-    const esp_timer_create_args_t oneshot_timer_args = {
-        .callback = &oneshot_timer_callback,
-        .arg = nullptr,
-        .name = "one-shot"};
+    //const esp_timer_create_args_t oneshot_timer_args = {
+    //    .callback = &oneshot_timer_callback,
+    //    .arg = nullptr,
+    //    .name = "one-shot"};
 
-    ESP_ERROR_CHECK(esp_timer_create(&oneshot_timer_args, &oneshot_timer));
+    //ESP_ERROR_CHECK(esp_timer_create(&oneshot_timer_args, &oneshot_timer));
+
+    gptimer_handle_t gptimer = NULL;
+    gptimer_config_t timer_config = {
+        .clk_src = GPTIMER_CLK_SRC_DEFAULT, // Select the default clock source
+        .direction = GPTIMER_COUNT_UP,      // Counting direction is up
+        .resolution_hz = 1 * 1000 * 1000,   // Resolution is 1 MHz, i.e., 1 tick equals 1 microsecond
+    };
+    // Create a timer instance
+    ESP_ERROR_CHECK(gptimer_new_timer(&timer_config, &gptimer));
+
+
+    const uint32_t loop_hz = 2000;
+    const uint32_t alarm_ticks = timer_config.resolution_hz / loop_hz; // 1e6/2000 = 500
+
+    gptimer_alarm_config_t alarm_config = {
+        .alarm_count = alarm_ticks,
+        .reload_count = 0,      
+        .flags = {
+            .auto_reload_on_alarm = 1u,
+        }
+    };
+
+    ESP_ERROR_CHECK(gptimer_set_alarm_action(gptimer, &alarm_config));
+
+
+    gptimer_event_callbacks_t cbs = {
+        .on_alarm = oneshot_timer_callback,
+    };
+
+    ESP_ERROR_CHECK(gptimer_register_event_callbacks(gptimer, &cbs, timer_sem));
+
+    // Enable the timer
+    ESP_ERROR_CHECK(gptimer_enable(gptimer));
+    // Start the timer
+    ESP_ERROR_CHECK(gptimer_start(gptimer));
 }
 
 esp_err_t Drone::set_motor_lane_mapping(const MotorLaneMapping motorMapping)
@@ -622,9 +659,7 @@ esp_err_t Drone::signal_telemetry_request(Dshot::DshotMessage &msg, bool &newTel
     return status;
 }
 
-void Drone::drone_task(void *args)
-{
-
+void Drone::drone_task(void *args){
     using namespace std::chrono_literals;
     using namespace std::chrono;
 
@@ -641,18 +676,14 @@ void Drone::drone_task(void *args)
 #endif
 
     m_dshotObj->set_extended_telemetry(true);
-
     vTaskDelay(pdMS_TO_TICKS(50));
-
     status = calibrate_gyro();
-
     verify_components_process();
-
     Display::set_display_state(DRONE);
 
     while (true)
     {
-        esp_cpu_cycle_count_t cycles_start = esp_cpu_get_cycle_count();
+        xSemaphoreTake(timer_sem, portMAX_DELAY);
         Dshot::DshotMessage msg{};
         Channel channelNew{};
         RadioStatistics radioStatisticsNew{};
@@ -664,14 +695,14 @@ void Drone::drone_task(void *args)
         m_newImuData = false;
 
         if(m_mpuObj1.size() > 1){
-            
             YawPitchRoll tmp_ypr{};
             YawPitchRoll ypr{};
             uint8_t nrOkSamples{};
+
             for(const auto& m : m_mpuObj1){
                 status = get_imu_data(1, ypr, 0);
-                if (status == ESP_OK)
-                {
+
+                if (status == ESP_OK){
                     tmp_ypr.yaw   += ypr.yaw;
                     tmp_ypr.pitch += ypr.pitch;
                     tmp_ypr.roll  += ypr.roll;
@@ -681,6 +712,7 @@ void Drone::drone_task(void *args)
                     m_newImuData = true;
                 }
             }
+
             tmp_ypr.yaw   /= nrOkSamples;
             tmp_ypr.pitch /= nrOkSamples;
             tmp_ypr.roll  /= nrOkSamples;
@@ -689,8 +721,7 @@ void Drone::drone_task(void *args)
         }
         else{
             status = get_imu_data(1, m_ypr1, 0);
-            if (status == ESP_OK)
-            {
+            if (status == ESP_OK){
                 yprCounter++;
                 m_newImuData = true;
             }
@@ -705,8 +736,7 @@ void Drone::drone_task(void *args)
 
         /*********  Radio processing **********/
         status = get_radio_data(channelNew, 0);
-        if (status == ESP_OK)
-        {
+        if (status == ESP_OK){
             parse_channel_state(channelNew);
             this->channel = channelNew;
             radioCounter++;
@@ -714,32 +744,27 @@ void Drone::drone_task(void *args)
         }
 
         status = get_radio_statistics(radioStatisticsNew, 0);
-        if (status == ESP_OK)
-        {
+        if (status == ESP_OK){
             this->radio_statistics = radioStatisticsNew;
         }
 
         /* if more than 250ms since last radio msg, send 0 throttle */
         auto now = std::chrono::steady_clock::now();
         auto time_since_last_radio_msg = std::chrono::duration_cast<std::chrono::milliseconds>(now - ok_radio_timer).count();
-        if (time_since_last_radio_msg >= 250)
-        {
+        if (time_since_last_radio_msg >= 250){
             radio_ok = false;
         }
 
         /********* Launch PID config mode **********/
-        if (!m_state.isControllerArmed && configure_pid())
-        {
+        if (!m_state.isControllerArmed && configure_pid()){
             printf("PID config active!\n");
 
-            if (!pid_config_running)
-            {
+            if (!pid_config_running){
                 pid_config_running = true;
                 TaskHandle_t pid_configure_handle{};
                 xTaskCreatePinnedToCore(Drone::pid_configure_task, "pid_config_task", 4048, nullptr, 3, &pid_configure_handle, 0);
             }
-            else
-            {
+            else{
                 BaseType_t status = xSemaphoreTake(m_pid_conf_sem, pdMS_TO_TICKS(10));
                 if (status == pdTRUE)
                     pid_config_running = false;
@@ -751,12 +776,10 @@ void Drone::drone_task(void *args)
         ESP_ERROR_CHECK_WITHOUT_ABORT(signal_telemetry_request(msg, newTelemetryReq));
         startTel = std::chrono::steady_clock::now();
 
-        if (m_state.isControllerArmed && radio_ok && !pid_config_running)
-        {
+        if (m_state.isControllerArmed && radio_ok && !pid_config_running){
             m_state.isDroneArmed = true;
         }
-        else
-        {
+        else{
             m_state.isDroneArmed = false;
         }
 
@@ -790,66 +813,56 @@ void Drone::drone_task(void *args)
         }
 #endif
         loopCounter++;
-
-        esp_cpu_cycle_count_t delta = esp_cpu_get_cycle_count() - cycles_start;
-        float timeUs = 4.16e-9 * delta;
-
-        if(timeUs <= (1.0/2500)){
-            ESP_ERROR_CHECK(esp_timer_start_once(oneshot_timer, 1.0/2500 - timeUs));
-        }
-        else{
-            ESP_ERROR_CHECK(esp_timer_start_once(oneshot_timer, 2));
-        }
-
-        // allows rmt things to run with while maintaing max loop freq ~2.5k Hz
-        //ESP_ERROR_CHECK(esp_timer_start_once(oneshot_timer, 10));
-        xSemaphoreTake(timer_sem, portMAX_DELAY);
     }
 }
 
 void Drone::write_speed(Dshot::DshotMessage &msg)
 {
-        ESP_ERROR_CHECK_WITHOUT_ABORT(send_dshot_message(msg));
+    ESP_ERROR_CHECK_WITHOUT_ABORT(send_dshot_message(msg));
 }
 
 void Drone::get_speed(Dshot::DshotMessage &msg)
 {
+    bool zeroThrottle{};
+
     // send 0 throttle while not armed
-    if (!m_state.isDroneArmed)
-    {
-        Dshot::DshotMessage msg{};
+    if (!m_state.isDroneArmed){
         msg.msgType = Dshot::COMMAND;
-
-        for (int i = 0; i < Dshot::maxChannels; i++)
-        {
-            msg.speed[i] = 0;
-            msg.loops[i] = 0;
-            msg.telemetryReq[i] = false;
-        }
-
-        send_dshot_message(msg);
+        zeroThrottle = true;
     }
-    else if (channel.ch3 >= m_deadzone)
-    {
+    else if (channel.ch3 >= m_deadzone && m_newImuData){
         get_new_speed(msg);
         m_prevSpeedMsg = msg;
     }
-    else if(!m_newImuData)
-    {
+    else if(channel.ch3 >= m_deadzone && !m_newImuData){
         msg.msgType = Dshot::THROTTLE;
         // avoid assigning telemetry requests
         for(int i=0;i<Dshot::maxChannels;i++){
             msg.speed[i] = m_prevSpeedMsg.speed[i];
         }
     }
-    else
-    {
-        /* send 0 if thottle close to bottom*/
-        for (int i = 0; i < Dshot::maxChannels; i++)
-        {
+    else{
+        /* send 0 if thottle close to bottom */
+        zeroThrottle = true;
+    }
+
+    if(zeroThrottle){
+        auto reset_pid = [](Pid& p){ p.integral = 0; p.prevErr = 0; p.c = 0; };
+
+        reset_pid(m_pid[PITCH]);
+        reset_pid(m_pid[ROLL]);
+        reset_pid(m_pid[YAW]);
+
+        m_state.motorRlSpeed = 0;
+        m_state.motorRrSpeed = 0;
+        m_state.motorFlSpeed = 0;
+        m_state.motorFrSpeed = 0;
+
+        for (int i = 0; i < Dshot::maxChannels; i++){
             msg.speed[i] = 0;
             msg.loops[i] = 0;
         }
+
     }
 }
 
@@ -967,31 +980,16 @@ esp_err_t Drone::init_esc_telemetry_uart(int rxPin, int txPin, int baudrate)
 
 void Drone::get_new_speed(Dshot::DshotMessage &msg)
 {
-
-    constexpr uint8_t minStepSize{2};
     const uint16_t maxThrottleValue = c_saftyParams ? 1000u : Dshot::maxThrottleValue;
-
     msg.msgType = Dshot::THROTTLE;
 
-    static uint16_t prevMotorRlSpeed{c_minThrottleValue};
-    static uint16_t prevMotorRrSpeed{c_minThrottleValue};
-    static uint16_t prevMotorFlSpeed{c_minThrottleValue};
-    static uint16_t prevMotorFrSpeed{c_minThrottleValue};
-
-    /* PID calculations*/
-    pid(m_state.targetPitch, m_state.currPitch, m_pid[PITCH]);
-    pid(m_state.targetRoll, m_state.currRoll, m_pid[ROLL]);
-    pid(m_state.targetYaw, m_state.currYaw, m_pid[YAW]);
-    // printf("targetYaw: %f currentYay: %f m_pid[YAW]: %f\n", m_state.targetYaw, m_state.currYaw, m_pid[YAW].c);
+    // Single PID update that includes I-term clamp + output clamp
+    update_pids(0.20f); // max 20% authority
 
     int _rlSpeed = m_state.throttle + m_pid[PITCH].c + m_pid[ROLL].c + m_pid[YAW].c;
     int _rrSpeed = m_state.throttle + m_pid[PITCH].c - m_pid[ROLL].c - m_pid[YAW].c;
     int _flSpeed = m_state.throttle - m_pid[PITCH].c + m_pid[ROLL].c - m_pid[YAW].c;
     int _frSpeed = m_state.throttle - m_pid[PITCH].c - m_pid[ROLL].c + m_pid[YAW].c;
-    // printf("_rlSpeed: %u = throttle: %u + pitch: %.2f + roll: %.2f + yaw: %.2f\n", _rlSpeed, m_state.throttle, m_pid[PITCH].c, m_pid[ROLL].c, m_pid[YAW].c);
-    // printf("_rrSpeed: %u = throttle: %u + pitch: %.2f - roll: %.2f - yaw: %.2f\n", _rrSpeed, m_state.throttle, m_pid[PITCH].c, m_pid[ROLL].c, m_pid[YAW].c);
-    // printf("_flSpeed: %u = throttle: %u - pitch: %.2f + roll: %.2f + yaw: %.2f\n", _flSpeed, m_state.throttle, m_pid[PITCH].c, m_pid[ROLL].c, m_pid[YAW].c);
-    // printf("_frSpeed: %u = throttle: %u - pitch: %.2f - roll: %.2f - yaw: %.2f\n", _frSpeed, m_state.throttle, m_pid[PITCH].c, m_pid[ROLL].c, m_pid[YAW].c);
 
     // avoid underflow
     uint16_t rlSpeed = _rlSpeed >= 0 ? static_cast<uint16_t>(_rlSpeed) : 0u;
@@ -999,8 +997,7 @@ void Drone::get_new_speed(Dshot::DshotMessage &msg)
     uint16_t flSpeed = _flSpeed >= 0 ? static_cast<uint16_t>(_flSpeed) : 0u;
     uint16_t frSpeed = _frSpeed >= 0 ? static_cast<uint16_t>(_frSpeed) : 0u;
 
-    // fit to range
-    auto minMax = [](uint16_t &value, uint16_t min, uint16_t max)
+   auto minMax = [](uint16_t &value, uint16_t min, uint16_t max)
     {if(value < min) value = min; if(value > max) value = max; };
 
     minMax(rlSpeed, c_minThrottleValue, maxThrottleValue);
@@ -1023,23 +1020,6 @@ void Drone::get_new_speed(Dshot::DshotMessage &msg)
     msg.speed[m_motorLaneMapping.frontRightlane] = frSpeed;
     msg.loops[m_motorLaneMapping.frontRightlane] = 0;
     m_state.motorFrSpeed = frSpeed;
-
-    if (flSpeed >= 2048)
-    {
-        printf("ERROR bad fl throttle: %u\n", flSpeed);
-    }
-    else if (frSpeed >= 2048)
-    {
-        printf("ERROR bad fr throttle: %u\n", frSpeed);
-    }
-    else if (rlSpeed >= 2048)
-    {
-        printf("ERROR bad rl throttle: %u\n", rlSpeed);
-    }
-    else if (rrSpeed >= 2048)
-    {
-        printf("ERROR bad rr throttle: %u\n", rrSpeed);
-    }
 }
 
 #include "esp_adc_cal.h"
@@ -1112,6 +1092,7 @@ esp_err_t Drone::send_telemetry()
     telemetry.radioStatistics = radio_statistics;
 
     telemetry.drone.isControllerArmed = m_state.isControllerArmed;
+    telemetry.drone.isDroneArmed = m_state.isDroneArmed;
     telemetry.drone.mode = m_state.mode;
     telemetry.drone.dmpFreq = m_state.dmpFreq;
     telemetry.drone.radioFreq = m_state.radioFreq;
@@ -1337,9 +1318,35 @@ esp_err_t Drone::get_motor_direction(enum Motor motorNum, enum MotorDirection &d
     return ESP_FAIL;
 }
 
+void Drone::clamp_pid_output_pct(Pid& pid, float baseThrottle, float maxPct)
+{
+    maxPct = std::clamp(maxPct, 0.0f, 1.0f);
+
+    // If baseThrottle is tiny, fall back to "no authority"
+    const float base = std::max(std::fabsf(baseThrottle), 1.0f);
+    const float maxDelta = base * maxPct;
+
+    pid.c = std::clamp(pid.c, -maxDelta, +maxDelta);
+}
+
+void Drone::clamp_pid_integral_pct(Pid& pid, float baseThrottle, float maxPct)
+{
+    maxPct = std::clamp(maxPct, 0.0f, 1.0f);
+    const float base = std::max(std::fabsf(baseThrottle), 1.0f);
+    const float maxDelta = base * maxPct;
+
+    const float kI = fabsf(pid.kI);
+    if (kI > 1e-9f) {
+      const float iMax = maxDelta / kI;
+      pid.integral = std::clamp(pid.integral, -iMax, +iMax);
+    } else pid.integral = 0;
+
+}
+
+
+
 void Drone::pid(float target, float current, Pid &pid)
 {
-
     float kPOut{};
     float kIOut{};
     float kDOut{};
@@ -1351,16 +1358,64 @@ void Drone::pid(float target, float current, Pid &pid)
 
     kPOut = pid.kP * err;
 
-    //integral = err * pid.dt;
-    pid.integral += err * pid.dt;
-    //kIOut = pid.kI * integral;
-    kIOut = pid.kI * pid.integral;
+    integral = err * pid.dt;
+    //const float dt = fmaxf(pid.dt, 1e-4f);
+    //pid.integral += err * dt;
+    kIOut = pid.kI * integral;
+    //kIOut = pid.kI * pid.integral;
 
     derivative = (err - pid.prevErr) / pid.dt;
     kDOut = pid.kD * derivative;
 
     pid.prevErr = err;
     pid.c = kPOut + kIOut + kDOut;
+}
+
+
+void Drone::pid_step(float target, float current, Pid &p, float baseThrottle, float maxPct)
+{
+    // Authority relative to throttle (like you intended)
+    maxPct = std::clamp(maxPct, 0.0f, 1.0f);
+    const float base = std::max(std::fabsf(baseThrottle), 1.0f);
+    const float maxDelta = base * maxPct;
+    const float err = target - current;
+
+    const float pTerm = p.kP * err;
+
+    // I (integrate, then clamp integral so I output can’t exceed maxDelta)
+    p.integral += err * p.dt;
+
+    if (std::fabsf(p.kI) > 1e-9f) {
+        const float iMax = maxDelta / std::fabsf(p.kI);
+        p.integral = std::clamp(p.integral, -iMax, +iMax);
+    } else {
+        p.integral = 0.0f;
+    }
+    const float iTerm = p.kI * p.integral;
+
+    const float derivative = (err - p.prevErr) / p.dt;
+    const float dTerm = p.kD * derivative;
+    p.prevErr = err;
+
+    float out = pTerm + iTerm + dTerm;
+    out = std::clamp(out, -maxDelta, +maxDelta);
+
+    p.c = out;
+}
+
+
+void Drone::update_pids(float maxPct)
+{
+    const float thr = (float)m_state.throttle;
+
+    pid_step(m_state.targetPitch, m_state.currPitch, m_pid[PITCH], thr, maxPct);
+    pid_step(m_state.targetRoll,  m_state.currRoll,  m_pid[ROLL],  thr, maxPct);
+    pid_step(m_state.targetYaw,   m_state.currYaw,   m_pid[YAW],   thr, maxPct);
+
+    //pid(m_state.targetPitch, m_state.currPitch, m_pid[PITCH]);
+    //pid(m_state.targetPitch, m_state.currPitch, m_pid[ROLL]);
+   //pid(m_state.targetPitch, m_state.currPitch, m_pid[YAW]);
+
 }
 
 uint8_t Drone::updateCrc8(uint8_t crc, uint8_t crc_seed)

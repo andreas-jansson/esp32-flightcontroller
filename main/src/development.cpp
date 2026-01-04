@@ -151,8 +151,9 @@ void telemetry_task(void* args){
         draw_channels("10", telemetry.channel.ch10, chPrev.ch10, counter);
         draw_channels("11", telemetry.channel.ch11, chPrev.ch11, counter);
 
-        print_debug(DEBUG_TELEMETRY, DEBUG_DATA,"[KArmed: %3s mode: %-17s (%d) dmp: %lu Hz radio: %lu Hz loop Hz: %lu\n", 
+        print_debug(DEBUG_TELEMETRY, DEBUG_DATA,"[Karmed controller: %3s armed drone: %3s  mode: %-17s (%d) dmp: %lu Hz radio: %lu Hz loop Hz: %lu\n", 
             telemetry.drone.isControllerArmed? "Yes" : "No", 
+            telemetry.drone.isDroneArmed? "Yes" : "No", 
             mode[telemetry.drone.mode].c_str(), 
             telemetry.drone.mode, 
             telemetry.drone.dmpFreq,

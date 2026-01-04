@@ -71,6 +71,9 @@ Mpu6050::Mpu6050(enum Mpu6050Addr devAddress, I2cHandler* i2c, int interruptPin)
         printf("Failed to create DMP ring buffer\n");
     }
 
+    vSemaphoreCreateBinary(calibrate_sem);
+    xSemaphoreTake(this->calibrate_sem, 0);
+
 }
 
 esp_err_t Mpu6050::mpu6050_init(){
@@ -318,10 +321,6 @@ void Mpu6050::dmp_task(void* args){
     else if(address == ADDR_69){
         vSemaphoreCreateBinary(dmp_avail_sem2);
     }
-
-    vSemaphoreCreateBinary(calibrate_sem);
-    xSemaphoreTake(this->calibrate_sem, 0);
-
     
     gpio_config_t ioConf{};
 
@@ -349,7 +348,6 @@ void Mpu6050::dmp_task(void* args){
 
         semStatus = xSemaphoreTake(this->calibrate_sem, 0);
         if(semStatus == pdTRUE){
-            
             auto start = std::chrono::steady_clock::now();
 
             status = set_dmp_enabled(false);

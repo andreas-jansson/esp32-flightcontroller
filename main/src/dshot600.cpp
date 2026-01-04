@@ -466,7 +466,6 @@ esp_err_t Dshot600::write_speed(struct Dshot::DshotMessage& msg){
         tx_config[i].loop_count = msg.loops[i] == -1? -1 : 0;
     }
 
-
     if(m_isBidi){
     for(int i=0;i<Dshot::maxChannels;i++){
         gpio_ll_od_disable(GPIO_LL_GET_HW(GPIO_PORT_0), m_gpioMotorPin[i]);

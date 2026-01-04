@@ -156,7 +156,11 @@ class Drone{
     int mapValue(int x, int in_min, int in_max, int out_min, int out_max);
     float mapValue(int x, int in_min, int in_max, float out_min, float out_max);
     float mapValue2(uint32_t x, uint32_t in_min, uint32_t in_max, float out_min, float out_max);
+    void clamp_pid_output_pct(Pid& pid, float baseThrottle, float maxPct);
+    void clamp_pid_integral_pct(Pid& pid, float baseThrottle, float maxPct);
 
+    void pid_step(float target, float current, Pid &p, float baseThrottle, float maxPct);
+    void update_pids(float maxPct);
     void pid(float target, float current, Pid& pid);
     void get_new_speed(Dshot::DshotMessage& msg);
     void write_speed(Dshot::DshotMessage &msg);

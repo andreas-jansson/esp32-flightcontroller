@@ -287,9 +287,9 @@ struct Pid{
     float kP{.5};
     float kI{0.1};
     float kD{0.1};
-	float dt{1};
+	float dt{0.1};
     float c{};
-    float prevErr{0};
+    float prevErr{};
     float integral{};
 };
 
