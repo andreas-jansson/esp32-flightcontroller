@@ -59,25 +59,37 @@ std::string format_list(std::vector<std::string>& values){
 
 
 std::string construct_json_item(std::string& key, std::vector<std::string>& values){
-
     format_quotes(key);
-    
     return key + " : " + format_list(values);
-
 }
 
 std::string construct_json_item(std::string& key, std::string& value){
-
     format_quotes(key);
     format_quotes(value);
-    
     return key + " : " + value;
+}
+
+esp_err_t construct_json_item(char* key, char* value, char* buffer, size_t bufSize){
+    int bytes = snprintf(buffer, bufSize, "\"%s\" : [\"%s\"]", key, value);
+    if(bytes==-1)
+        return ESP_FAIL;
+    else
+        return ESP_OK;
 }
 
 
 std::string create_json(std::vector<std::string>& items){
 
-    std::string list{"{"};
+
+    // Compute exact-ish size to avoid repeated reallocs
+    size_t total = 2; // '{' + '}'
+    if (!items.empty()) total += 2 * (items.size() - 1); // ", " separators
+    for (const auto& s : items) total += s.size();
+
+    std::string list;
+    
+    list.reserve(total);
+    list.append("{");
 
     for (size_t i = 0; i < items.size(); i++) {
 
@@ -94,11 +106,46 @@ std::string create_json(std::vector<std::string>& items){
 }
 
 
+esp_err_t create_json(const std::vector<char*>& items, char* buffer, size_t bufSize)
+{
+    if (!buffer || bufSize < 3) { // at least "{}\0"
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    size_t pos = 0;
+
+    buffer[pos++] = '{';
+    buffer[pos] = '\0';
+
+    for (size_t i = 0; i < items.size(); i++) {
+        const char* s = items[i] ? items[i] : "";
+
+        // Append item
+        int n = snprintf(buffer + pos, bufSize - pos, "%s", s);
+        if (n < 0 || (size_t)n >= bufSize - pos) return ESP_ERR_NO_MEM;
+        pos += (size_t)n;
+
+        // Append separator to match top: ", "
+        if (i + 1 < items.size()) {
+            n = snprintf(buffer + pos, bufSize - pos, ", ");
+            if (n < 0 || (size_t)n >= bufSize - pos) return ESP_ERR_NO_MEM;
+            pos += (size_t)n;
+        }
+    }
+
+    // Append closing brace
+    int n = snprintf(buffer + pos, bufSize - pos, "}");
+    if (n < 0 || (size_t)n >= bufSize - pos) return ESP_ERR_NO_MEM;
+
+    return ESP_OK;
+}
 
 
 
 
-esp_err_t WebClient::sendDataToServer(const std::string& server_ip, int port, const std::string& message) {
+
+
+esp_err_t WebClient::sendDataToServer(const std::string& server_ip, int port, char* message /*const std::string& message*/) {
     static struct sockaddr_in server_addr;
 
     if(this->socketFd == -1){
@@ -115,7 +162,7 @@ esp_err_t WebClient::sendDataToServer(const std::string& server_ip, int port, co
         inet_pton(AF_INET, server_ip.c_str(), &server_addr.sin_addr);
     }
 
-    int sent = sendto(this->socketFd, message.c_str(), message.length(), 0, (struct sockaddr*)&server_addr, sizeof(server_addr));
+    int sent = sendto(this->socketFd, message, strlen(message), 0, (struct sockaddr*)&server_addr, sizeof(server_addr));
 
     if (sent <= 0) {
         close(this->socketFd);
@@ -155,8 +202,8 @@ esp_err_t WebClient::init(RingbufHandle_t dmp_buf_handle, RingbufHandle_t web_bu
         },
     };
 
-    strncpy((char*)wifi_config.sta.ssid, this->wifiName.c_str(), sizeof(wifi_config.sta.ssid)+1);
-    strncpy((char*)wifi_config.sta.password, this->wifiPassword.c_str(), sizeof(wifi_config.sta.password)+1);
+    strncpy((char*)wifi_config.sta.ssid, this->wifiName.c_str(), sizeof(wifi_config.sta.ssid));
+    strncpy((char*)wifi_config.sta.password, this->wifiPassword.c_str(), sizeof(wifi_config.sta.password));
 
     printf("<<<<<< %s %s >>>>>>>>\n", wifi_config.sta.ssid, wifi_config.sta.password);
 
@@ -220,42 +267,110 @@ WebClient* WebClient::GetInstance(){
 
 void WebClient::web_task2(void* args){
 
-    size_t item_size = sizeof(TelemetryData);
+    esp_err_t status{};
+    
+    size_t item_size{sizeof(TelemetryData)};
+    constexpr size_t itemBufferSize{80};
+    constexpr size_t itemSize{90};
+    constexpr size_t finalJsonSize{itemSize * 20};
 
+    char pid_pitch_message[itemBufferSize]{};
+    char pid_roll_message[itemBufferSize]{};
+    char pid_yaw_message[itemBufferSize]{};
+    char ypr_message1[itemBufferSize]{};
+    char ypr_message2[itemBufferSize]{};
+    char fl_message[itemBufferSize]{};
+    char fr_message[itemBufferSize]{};
+    char rl_message[itemBufferSize]{};
+    char rr_message[itemBufferSize]{};
+    char ch_message[itemBufferSize]{};
+    char tel_message0[itemBufferSize]{};
+    char tel_message1[itemBufferSize]{};
+    char tel_message2[itemBufferSize]{};
+    char tel_message3[itemBufferSize]{};
+    char curr_message[itemBufferSize]{};
+
+    
+    char pid_pitch_item[itemSize]{};
+    char pid_pitch_key[] = "pidPitch";
+    char pid_roll_item[itemSize]{};
+    char pid_roll_key[] = "pidRoll";
+    char pid_yaw_item[itemSize]{};
+    char pid_yaw_key[] = "pidYaw"; 
+    char ypr_item1[itemSize]{};
+    char ypr_key1[] = "ypr1";
+    char ypr_item2[itemSize]{};
+    char ypr_key2[] = "ypr2";
+    char fl_item[itemSize]{};
+    char fl_key[] = "fl";
+    char fr_item[itemSize]{};
+    char fr_key[] = "fr";
+    char rl_item[itemSize]{};
+    char rl_key[] = "rl";
+    char rr_item[itemSize]{};
+    char rr_key[] = "rr";
+    char ch_item[itemSize]{};
+    char ch_key[] = "channel";
+    char tel0_item[itemSize]{};
+    char tel0_key[] = "telemetry0";
+    char tel1_item[itemSize]{};
+    char tel1_key[] = "telemetry1";
+    char tel2_item[itemSize]{};
+    char tel2_key[] = "telemetry2";
+    char tel3_item[itemSize]{};
+    char tel3_key[] = "telemetry3";
+    char curr_item[itemSize]{};
+    char curr_key[] = "current";
+
+    char finalJson[finalJsonSize]{};
+    
     while(true){
-
-        std::vector<std::string> ypr_messages1;
-        std::vector<std::string> ypr_messages2;
-        std::vector<std::string> fl_messages;
-        std::vector<std::string> fr_messages;
-        std::vector<std::string> rl_messages;
-        std::vector<std::string> rr_messages;
-        std::vector<std::string> ch_messages;
-        std::vector<std::string> tel_message0;
-        std::vector<std::string> tel_message1;
-        std::vector<std::string> tel_message2;
-        std::vector<std::string> tel_message3;
-        std::vector<std::string> curr_message;
 
         for (int i = 0; i < 1; i++) {
             TelemetryData* received_data = (TelemetryData*)xRingbufferReceive(this->web_buf_handle, &item_size, pdMS_TO_TICKS(2000));
             if (received_data != nullptr) {
-                ypr_messages1.insert(ypr_messages1.begin(), received_data->ypr1.to_str());
-                ypr_messages2.insert(ypr_messages2.begin(), received_data->ypr2.to_str());
 
-                fl_messages.insert(fl_messages.begin(), received_data->drone.throttle_fl_to_str());
-                fr_messages.insert(fr_messages.begin(), received_data->drone.throttle_fr_to_str());
-                rl_messages.insert(rl_messages.begin(), received_data->drone.throttle_rl_to_str());
-                rr_messages.insert(rr_messages.begin(), received_data->drone.throttle_rr_to_str());
-                ch_messages.insert(ch_messages.begin(), received_data->channel.to_str());
+                // PID (already converted)
+                status = received_data->drone.pid[PITCH].to_str(pid_pitch_message, itemBufferSize);
+                ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+                status = received_data->drone.pid[ROLL ].to_str(pid_roll_message,  itemBufferSize);
+                ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+                status = received_data->drone.pid[YAW  ].to_str(pid_yaw_message,   itemBufferSize);
+                ESP_ERROR_CHECK_WITHOUT_ABORT(status);
 
-                tel_message0.insert(tel_message0.begin(), received_data->drone.escState[0].to_str());
-                tel_message1.insert(tel_message1.begin(), received_data->drone.escState[1].to_str());
-                tel_message2.insert(tel_message2.begin(), received_data->drone.escState[2].to_str());
-                tel_message3.insert(tel_message3.begin(), received_data->drone.escState[3].to_str());
+                // YPR (convert from std::string-returning to buffer-filling)
+                status = received_data->ypr1.to_str(ypr_message1, itemBufferSize);
+                ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+                status = received_data->ypr2.to_str(ypr_message2, itemBufferSize);
+                ESP_ERROR_CHECK_WITHOUT_ABORT(status);
 
-                curr_message.insert(curr_message.begin(), received_data->drone.current_to_str());
+                // Throttles (same deal)
+                
+                status = received_data->drone.throttle_fl_to_str(fl_message, itemBufferSize);
+                ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+                status = received_data->drone.throttle_fr_to_str(fr_message, itemBufferSize);
+                ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+                status = received_data->drone.throttle_rl_to_str(rl_message, itemBufferSize);
+                ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+                status = received_data->drone.throttle_rr_to_str(rr_message, itemBufferSize);
+                ESP_ERROR_CHECK_WITHOUT_ABORT(status);
 
+                // Channel
+                status = received_data->channel.to_str(ch_message, itemBufferSize);
+
+                // ESC telemetry
+                status = received_data->drone.escState[0].to_str(tel_message0, itemBufferSize);
+                ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+                status = received_data->drone.escState[1].to_str(tel_message1, itemBufferSize);
+                ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+                status = received_data->drone.escState[2].to_str(tel_message2, itemBufferSize);
+                ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+                status = received_data->drone.escState[3].to_str(tel_message3, itemBufferSize);
+                ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+
+                // Current
+                status = received_data->drone.current_to_str(curr_message, itemBufferSize);
+                ESP_ERROR_CHECK_WITHOUT_ABORT(status);
 
                 vRingbufferReturnItem(this->web_buf_handle, (void*)received_data);
             }
@@ -264,62 +379,83 @@ void WebClient::web_task2(void* args){
             }
         }   
 
-        /* ypr json */
-        std::string ypr_key1{"ypr1"};
-        std::string ypr_item1 = construct_json_item(ypr_key1, ypr_messages1);
 
-        std::string ypr_key2{"ypr2"};
-        std::string ypr_item2 = construct_json_item(ypr_key2, ypr_messages2);
+        /* pid  pitch */
+        status = construct_json_item(pid_pitch_key, pid_pitch_message, pid_pitch_item, itemSize);
+        ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+
+        /* pid  roll */
+        status = construct_json_item(pid_roll_key, pid_roll_message, pid_roll_item, itemSize);
+        ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+
+        /* pid  yaw */
+        status = construct_json_item(pid_yaw_key, pid_yaw_message, pid_yaw_item, itemSize);
+        ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+
+        /* ypr json */
+        status = construct_json_item(ypr_key1, ypr_message1, ypr_item1, itemSize);
+        ESP_ERROR_CHECK_WITHOUT_ABORT(status);
+
+        status = construct_json_item(ypr_key2, ypr_message2, ypr_item2, itemSize);
+        ESP_ERROR_CHECK_WITHOUT_ABORT(status);
 
         /* throttle json */
-        std::string fl_key{"fl"};
-        std::string fl_item = construct_json_item(fl_key, fl_messages);
+        status = construct_json_item(fl_key, fl_message, fl_item, itemSize);
+        ESP_ERROR_CHECK_WITHOUT_ABORT(status);
 
-        std::string fr_key{"fr"};
-        std::string fr_item = construct_json_item(fr_key, fr_messages);
+        status = construct_json_item(fr_key, fr_message, fr_item, itemSize);
+        ESP_ERROR_CHECK_WITHOUT_ABORT(status);
 
-        std::string rl_key{"rl"};
-        std::string rl_item = construct_json_item(rl_key, rl_messages);
+        status = construct_json_item(rl_key, rl_message, rl_item, itemSize);
+        ESP_ERROR_CHECK_WITHOUT_ABORT(status);
 
-        std::string rr_key{"rr"};
-        std::string rr_item = construct_json_item(rr_key, rr_messages);
+        status = construct_json_item(rr_key, rr_message, rr_item, itemSize);
+        ESP_ERROR_CHECK_WITHOUT_ABORT(status);
 
-        /*  channels json */
-        std::string ch_key{"channel"};
-        std::string ch_item = construct_json_item(ch_key, ch_messages);
+        /* channels json */
+        status = construct_json_item(ch_key, ch_message, ch_item, itemSize);
+        ESP_ERROR_CHECK_WITHOUT_ABORT(status);
 
         /* telemetry json */
-        std::string tel0_key{"telemetry0"};
-        std::string tel0_item = construct_json_item(tel0_key, tel_message0);
+        status = construct_json_item(tel0_key, tel_message0, tel0_item, itemSize);
+        ESP_ERROR_CHECK_WITHOUT_ABORT(status);
 
-        std::string tel1_key{"telemetry1"};
-        std::string tel1_item = construct_json_item(tel1_key, tel_message1);
+        status = construct_json_item(tel1_key, tel_message1, tel1_item, itemSize);
+        ESP_ERROR_CHECK_WITHOUT_ABORT(status);
 
-        std::string tel2_key{"telemetry2"};
-        std::string tel2_item = construct_json_item(tel2_key, tel_message2);
+        status = construct_json_item(tel2_key, tel_message2, tel2_item, itemSize);
+        ESP_ERROR_CHECK_WITHOUT_ABORT(status);
 
-        std::string tel3_key{"telemetry3"};
-        std::string tel3_item = construct_json_item(tel3_key, tel_message3);
+        status = construct_json_item(tel3_key, tel_message3, tel3_item, itemSize);
+        ESP_ERROR_CHECK_WITHOUT_ABORT(status);
 
         /* current json */
-        std::string curr_key{"current"};
-        std::string curr_item = construct_json_item(curr_key, curr_message);
+        status = construct_json_item(curr_key, curr_message, curr_item, itemSize);
+        ESP_ERROR_CHECK_WITHOUT_ABORT(status);
 
-        std::vector<std::string> jsonItems;
+        //std::vector<std::string> jsonItems;
+        std::vector<char*> jsonItems;
+        jsonItems.emplace_back(&pid_pitch_item[0]);
+        jsonItems.emplace_back(&pid_roll_item[0]);
+        jsonItems.emplace_back(&pid_yaw_item[0]);
+        jsonItems.emplace_back(&ypr_item1[0]);
+        jsonItems.emplace_back(&ypr_item2[0]);
+        jsonItems.emplace_back(&fl_item[0]);
+        jsonItems.emplace_back(&fr_item[0]);
+        jsonItems.emplace_back(&rl_item[0]);
+        jsonItems.emplace_back(&rr_item[0]);
+        jsonItems.emplace_back(&ch_item[0]);
+        jsonItems.emplace_back(&tel0_item[0]);
+        jsonItems.emplace_back(&tel1_item[0]);
+        jsonItems.emplace_back(&tel2_item[0]);
+        jsonItems.emplace_back(&tel3_item[0]);
+        jsonItems.emplace_back(&curr_item[0]);
 
-        jsonItems.emplace_back(ypr_item1);
-        jsonItems.emplace_back(ypr_item2);
-        jsonItems.emplace_back(fl_item);
-        jsonItems.emplace_back(fr_item);
-        jsonItems.emplace_back(rl_item);
-        jsonItems.emplace_back(rr_item);
-        jsonItems.emplace_back(ch_item);
-        jsonItems.emplace_back(tel0_item);
-        jsonItems.emplace_back(tel1_item);
-        jsonItems.emplace_back(tel2_item);
-        jsonItems.emplace_back(tel3_item);
+        status = create_json(jsonItems, finalJson, finalJsonSize);
+        ESP_ERROR_CHECK_WITHOUT_ABORT(status);
 
-        this->sendDataToServer(this->serverIp, this->serverPort, create_json(jsonItems));
+        status = this->sendDataToServer(this->serverIp, this->serverPort, finalJson);
+        ESP_ERROR_CHECK_WITHOUT_ABORT(status);
 
     }
 }

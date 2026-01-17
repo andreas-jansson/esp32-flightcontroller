@@ -12,11 +12,7 @@ enum MpuRotation{
 	ROTATE_270
 };
 
-enum YawPitchRollEnum{
-	YAW,
-	PITCH,
-	ROLL,
-};
+
 
 class ImuIf{
 

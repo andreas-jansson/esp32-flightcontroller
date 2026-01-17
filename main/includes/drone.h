@@ -9,28 +9,24 @@
 #include "dshot600.h"
 #include "imuIf.h"
 
-
 typedef enum ToggleState{
     TOGGLE_LOW,
     TOGGLE_HIGH,
     TOGGLE_UNCHANGED,
-}toggleState_t;
-
+} toggleState_t;
 
 typedef enum MotorPosition{
     REAR_LEFT,
     REAR_RIGHT,
     FRONT_LEFT,
     FRONT_RIGHT,
-}motorPos_t;
+} motorPos_t;
 
 struct MotorLaneMapping{
-    
     motor_type_t rearLeftlane{MOTOR3};
     motor_type_t rearRightlane{MOTOR1};
     motor_type_t frontLeftlane{MOTOR4};
     motor_type_t frontRightlane{MOTOR2};
-
 };
 
 struct FwVersion{
@@ -45,16 +41,15 @@ struct BatteryInfo{
     // uint8_t voltage; legacy
     uint16_t mahDrawn;
     int16_t current;
-    //uint8_t alerts;
+    // uint8_t alerts;
     uint16_t voltage;
 };
 
 class Drone{
-
-    static Drone* drone;
+    static Drone *drone;
     static Channel channel;
     static Pid m_pid[3];
-    static char* s_name;
+    static char *s_name;
 
     static DroneState m_state;
     MotorLaneMapping m_motorLaneMapping{};
@@ -62,8 +57,8 @@ class Drone{
     YawPitchRoll m_ypr1{};
     static RadioStatistics radio_statistics;
 
-    Dshot600* m_dshotObj;
-    std::vector<ImuIf*> m_mpuObj1;
+    Dshot600 *m_dshotObj;
+    std::vector<ImuIf *> m_mpuObj1;
 
     Dshot::DshotMessage m_prevSpeedMsg{};
     bool m_newImuData{};
@@ -71,17 +66,22 @@ class Drone{
     static FwVersion m_fwVersion;
     static BatteryInfo m_batInfo;
 
-    const float m_maxPitch{45};
-    const float m_minPitch{-45};
-    const float m_maxYaw{45};
-    const float m_minYaw{-45};
-    const float m_maxRoll{45};
-    const float m_minRoll{-45};
+    const float m_maxPitchDeg{45};
+    const float m_minPitchDeg{-45};
+    const float m_maxPitchRate{1000};
+    const float m_minPitchRate{-1000};
+    const float m_maxYawDeg{45};
+    const float m_minYawDeg{-45};
+    const float m_maxYawRate{1000};
+    const float m_minYawRate{-1000};
+    const float m_maxRollDeg{45};
+    const float m_minRollDeg{-45};
+    const float m_maxRollRate{1000};
+    const float m_minRollRate{-1000};
     const float m_deadzone{295 * 1.05}; // min throttle raw value: 295
 
     const uint16_t c_minThrottleValue{48}; // lowest value for dshot protocol
-    const bool c_saftyParams{true}; //limits various values while testing
-
+    const bool c_saftyParams{true};        // limits various values while testing
 
     std::mutex m_escTelemetryLock;
     std::atomic<uint8_t> m_telemetryReqIdx{};
@@ -92,6 +92,7 @@ class Drone{
     CircularHandle_t m_radio_queue_handle{};
     CircularHandle_t m_radio_statistics_queue_handle{};
     CircularHandle_t m_telemetry_queue_handle{};
+    CircularHandle_t m_blackbox_telemetry_queue_handle{};
     CircularHandle_t m_dshot_queue_handle{};
 
     static QueueHandle_t m_pid_conf_sem;
@@ -111,26 +112,27 @@ class Drone{
     float m_battert_max_wh{};
 
     Drone(
-        Dshot600* dshot_obj, 
-        std::vector<ImuIf*> mpu,
+        Dshot600 *dshot_obj,
+        std::vector<ImuIf *> mpu,
         CircularHandle_t radio_queue_handle,
         CircularHandle_t radio_statistics_queue_handle);
 
-    static void pid_configure_task(void* args);
+    static void pid_configure_task(void *args);
 
-    esp_err_t parse_channel_state(const Channel& channel);
+    esp_err_t parse_channel_state(const Channel &channel);
 
     esp_err_t start_arm_process();
     esp_err_t start_dissarm_process();
 
-    esp_err_t send_dshot_message(Dshot::DshotMessage& msg);
+    esp_err_t send_dshot_message(Dshot::DshotMessage &msg);
 
     esp_err_t measure_current();
-    esp_err_t send_telemetry_message(TelemetryData& msg);
-    esp_err_t send_telemetry();
-    esp_err_t signal_telemetry_request(Dshot::DshotMessage& msg, bool& newTelemetryReq);
-    void set_esc_telemetry_data(uint8_t temperature, uint16_t voltage, uint16_t current, uint16_t consumption, uint16_t rpm, uint8_t motorPos);
+    esp_err_t send_telemetry_message(TelemetryData &msg);
+    esp_err_t send_blackbox_telemetry_message(TelemetryData &msg);
 
+    esp_err_t send_telemetry(bool isBlackbox);
+    esp_err_t signal_telemetry_request(Dshot::DshotMessage &msg, bool &newTelemetryReq);
+    void set_esc_telemetry_data(uint8_t temperature, uint16_t voltage, uint16_t current, uint16_t consumption, uint16_t rpm, uint8_t motorPos);
 
     esp_err_t set_flight_mode(int value);
     esp_err_t set_mpu_calibration_mode(int value);
@@ -143,11 +145,11 @@ class Drone{
     bool verify_imu_data(YawPitchRoll ypr);
 
     esp_err_t send_beep();
-    esp_err_t toggle_motor_direction(); //not working 
-    esp_err_t blink_led(uint16_t newChannelValue); //not working, no led?
+    esp_err_t toggle_motor_direction();            // not working
+    esp_err_t blink_led(uint16_t newChannelValue); // not working, no led?
 
-    esp_err_t get_imu_data(int imuNr, YawPitchRoll& newData, TickType_t ticks);
-    esp_err_t get_radio_data(Channel& newData, TickType_t ticks);
+    esp_err_t get_imu_data(int imuNr, YawPitchRoll &newData, TickType_t ticks);
+    esp_err_t get_radio_data(Channel &newData, TickType_t ticks);
     esp_err_t get_radio_statistics(RadioStatistics &newData, TickType_t ticks);
 
     ToggleState did_channel_state_switch(uint16_t newChannelValue, uint8_t channelNr);
@@ -155,14 +157,16 @@ class Drone{
     uint16_t mapValue(uint16_t x, uint16_t in_min, uint16_t in_max, uint16_t out_min, uint16_t out_max);
     int mapValue(int x, int in_min, int in_max, int out_min, int out_max);
     float mapValue(int x, int in_min, int in_max, float out_min, float out_max);
+    float mapValueInverted(int x, int in_min, int in_max, float out_min, float out_max);
     float mapValue2(uint32_t x, uint32_t in_min, uint32_t in_max, float out_min, float out_max);
-    void clamp_pid_output_pct(Pid& pid, float baseThrottle, float maxPct);
-    void clamp_pid_integral_pct(Pid& pid, float baseThrottle, float maxPct);
+    void clamp_pid_output_pct(Pid &pid, float baseThrottle, float maxPct);
+    void clamp_pid_integral_pct(Pid &pid, float baseThrottle, float maxPct);
 
     void pid_step(float target, float current, Pid &p, float baseThrottle, float maxPct);
     void update_pids(float maxPct);
-    void pid(float target, float current, Pid& pid);
-    void get_new_speed(Dshot::DshotMessage& msg);
+    void pid(float target, float current, Pid &pid);
+    void pidRate(float target, float current, Pid &pid);
+    void get_new_speed(Dshot::DshotMessage &msg);
     void write_speed(Dshot::DshotMessage &msg);
     void get_speed(Dshot::DshotMessage &msg);
 
@@ -171,15 +175,13 @@ class Drone{
 
     bool configure_pid();
 
-    esp_err_t arm_drone(uint32_t value);   
+    esp_err_t arm_drone(uint32_t value);
 
-
-    public:
-
+public:
     Drone(Drone &other) = delete;
     void operator=(const Drone &) = delete;
     static Drone *GetInstance(
-        Dshot600* dshot_obj, 
+        Dshot600 *dshot_obj,
         std::vector<ImuIf*> mpu,
         CircularHandle_t radio_queue_handle,
         CircularHandle_t radio_statistics_queue_handle
@@ -195,6 +197,7 @@ class Drone{
     esp_err_t init_esc_telemetry_uart(int rxPin, int txPin, int baudrate);
 
     CircularHandle_t get_telemetry_handle(){return m_telemetry_queue_handle;}
+    CircularHandle_t get_blackbox_telemetry_handle(){return m_blackbox_telemetry_queue_handle;}
 
     void set_battery_data(float max_mah, float max_voltage, float max_wh){
         m_battert_max_voltage = max_voltage;
@@ -209,7 +212,6 @@ class Drone{
     esp_err_t set_motor_direction(enum Motor motorNum, enum MotorDirection direction);  // TODO
     esp_err_t get_motor_direction(enum Motor motorNum, enum MotorDirection& direction); // TODO
 
-
     static void set_fw_version(uint8_t major, uint8_t minor, uint8_t patch);
     static void get_fw_version(uint8_t& major, uint8_t& minor, uint8_t& patch);
     static void get_osd_status();
@@ -218,5 +220,5 @@ class Drone{
     static void get_battery_status(BatteryInfo& info);
     static esp_err_t get_pid(Pid* pid, uint8_t size_t);
     static void get_radio_status(RadioStatistics& radio);
-
+    
 };

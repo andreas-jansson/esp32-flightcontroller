@@ -1,5 +1,6 @@
 #pragma once
 
+
 #include <cstdint>
 #include <vector>
 #include <map>
@@ -9,19 +10,23 @@
 #include "freertos/semphr.h"
 #include "esp_partition.h"
 
+#include "ringbuffer.h"
+
 
 typedef uint32_t TickType_t;
 
-struct Payload{
-    uint16_t id{};
-    char str[6]{};
-};
 
-class CircularBuffer{
+class CircularBufferFlash: public CircularBuffer{
 
 	SemaphoreHandle_t m_dataAvailable{};
     SemaphoreHandle_t m_bufferMutex{};
+
     std::string m_name;
+    bool m_isFlash{};
+    void* m_addr{};
+    void* m_currAddr{};
+    size_t m_maxFlashSize;
+    const esp_partition_t* m_bb{};
 
 public:
 
@@ -40,20 +45,25 @@ public:
 
     std::byte* m_data{};
 
+    bool isCurrentFlashSectorErased{};
 
     bool isSlotEmpty(uint32_t idx);
 
-    CircularBuffer() = default;
-    CircularBuffer(uint32_t nItems, uint32_t itemsSize, std::string name=""){
+
+    CircularBufferFlash(uint32_t nItems, uint32_t itemsSize, std::string name, std::string partionName){
         m_dataAvailable = xSemaphoreCreateCounting(nItems, 0);
         m_bufferMutex = xSemaphoreCreateMutex();
         m_maxSize = nItems;
         m_itemSize = itemsSize;
         m_name = name;
+        m_currAddr = m_addr;
+
+        const esp_partition_t* m_bb = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_ANY, partionName.c_str());
+        assert(m_bb);
+
     }
 
 
-    
 
     esp_err_t insert_obj(void* data);
     esp_err_t get_obj(void* data, TickType_t ticksToWait);
@@ -68,12 +78,9 @@ public:
 
 typedef CircularBuffer* CircularHandle_t;
 
-CircularHandle_t CircularBufCreate(uint32_t nItems, uint32_t itemsSize, std::string name);
-
-esp_err_t CircularBufEnqueue(CircularHandle_t bufHandle, void* data);
-
-esp_err_t CircularBufDequeue(CircularHandle_t bufHandle, void* data, TickType_t ticksToWait);
-
-void print_all(CircularHandle_t bufHandle);
+CircularHandle_t CircularBufCreateFlash(uint32_t nItems, uint32_t itemsSize, std::string name, std::string partionName);
+esp_err_t CircularBufEnqueueFlash(CircularHandle_t bufHandle, void* data);
+esp_err_t CircularBufDequeueFlash(CircularHandle_t bufHandle, void* data, TickType_t ticksToWait);
+void print_all_flash(CircularHandle_t bufHandle);
 
 

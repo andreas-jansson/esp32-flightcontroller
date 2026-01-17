@@ -380,15 +380,23 @@ void Mpu6050::dmp_task(void* args){
         if(status != ESP_OK){
             continue;
         }
-
+        
         Quaternion quaternion{};
         VectorFloat vec{};
         YawPitchRoll ypr{};
+        YawPitchRoll yprRate{};
+
+        get_6axis_motion(yprRate.x_accel, yprRate.y_accel, yprRate.z_accel, yprRate.x_gyro, yprRate.y_gyro, yprRate.z_gyro);
 
         this->get_quaternion(quaternion);
         this->get_gravity(vec, quaternion);
         this->get_yaw_pitch_roll(quaternion,vec, ypr);
 
+        ypr.pitchRateDegSec = static_cast<float>(yprRate.y_gyro) / 16.4f;
+        ypr.rollRateDegSec = static_cast<float>(yprRate.x_gyro) / 16.4f;
+        ypr.yawRateDegSec = static_cast<float>(yprRate.z_gyro) / 16.4f;
+
+        //printf("%d / 2000.0 = %f\n",ypr.z_gyro, ypr.yawRateDegSec);
         send_ypr_data(ypr);
     }
 }
@@ -912,6 +920,8 @@ esp_err_t Mpu6050::get_6axis_motion(int16_t& ax, int16_t& ay, int16_t& az, int16
     gx = (((int16_t)data[8]) << 8) | data[9];
     gy = (((int16_t)data[10]) << 8) |data[11];
     gz = (((int16_t)data[12]) << 8) |data[13];
+
+    
 
     //printf("raw: w 0x.2x x 0x.2x y 0x.2x z 0x.2x", data[0], data[1], data[2], data[3]);
 
@@ -1479,10 +1489,7 @@ esp_err_t Mpu6050::get_gravity(VectorFloat& vector, Quaternion quaternion){
     return ESP_OK;
 }
 
-esp_err_t Mpu6050::get_yaw_pitch_roll(Quaternion& q,
-    VectorFloat& gravity,
-    YawPitchRoll& r_yawPitchRoll)
-{
+esp_err_t Mpu6050::get_yaw_pitch_roll(Quaternion& q, VectorFloat& gravity, YawPitchRoll& r_yawPitchRoll){
 // 1) Compute “raw” yaw, pitch, roll from quaternion + gravity vector
 //    (These formulas assume a particular coordinate convention.)
 
@@ -1493,11 +1500,11 @@ float roll  = std::atan2(gravity.y, gravity.z);
 
 // 2) Correct the “pitch” if gravity.z < 0, to ensure it stays in [–π, +π]
 if (gravity.z < 0.0f) {
-if (pitch > 0.0f) {
-pitch = static_cast<float>(M_PI) - pitch;
-} else {
-pitch = -static_cast<float>(M_PI) - pitch;
-}
+    if (pitch > 0.0f) {
+        pitch = static_cast<float>(M_PI) - pitch;
+    } else {
+        pitch = -static_cast<float>(M_PI) - pitch;
+    }
 }
 
 // 3) Apply a board‐rotation (0°, 90°, 180°, or 270° around Z) by swapping/negating
@@ -1516,8 +1523,8 @@ case ROTATE_90:
 //   new_roll  = old_pitch
 //   new_pitch = –old_roll
 //   new_yaw   = old_yaw + π/2  (but we’ll normalize later)
-outRoll  = pitch;
-outPitch = roll;
+outRoll  = roll;
+outPitch = -pitch;
 outYaw   =  yaw; // +  static_cast<float>(M_PI) / 2.0f;
 break;
 
@@ -1526,9 +1533,9 @@ case ROTATE_180:
 //   new_roll  = –old_roll
 //   new_pitch = –old_pitch
 //   new_yaw   = old_yaw + π   (add π and normalize)
-outRoll  = roll;
-outPitch = -pitch;
-outYaw   =  yaw;// +  static_cast<float>(M_PI);
+outRoll  = -roll;
+outPitch = pitch;
+outYaw   = -yaw;// +  static_cast<float>(M_PI);
 break;
 
 case ROTATE_270:

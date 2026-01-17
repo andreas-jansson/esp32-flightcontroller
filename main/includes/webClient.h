@@ -31,6 +31,7 @@ class WebClient{
 
     esp_err_t sendDataToServer(const std::string& server_ip, int port, const std::string& message);
     esp_err_t sendDataToServer(const std::string& server_ip, int port, const std::vector<std::string> messages);
+    esp_err_t sendDataToServer(const std::string& server_ip, int port, char* message);
 
     esp_err_t init(RingbufHandle_t dmp_buf_handle, RingbufHandle_t web_buf_handle);
 

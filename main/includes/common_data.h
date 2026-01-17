@@ -31,7 +31,7 @@ typedef enum Motor{
 } motor_type_t;
 
 
-typedef enum MotorDirection{
+enum MotorDirection{
     NORMAL,
     REVERSED,
 };
@@ -124,6 +124,16 @@ typedef struct __attribute__((packed)){
 
         return str;
     }
+
+    esp_err_t to_str(char* buffer, size_t size){
+        int bytes = snprintf(buffer, size, "%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u", ch1,ch2,ch3,ch4,ch5,ch6,ch7,ch8,ch9,ch10,ch11,ch12,ch13,ch14,ch15,ch16);
+        if(bytes == -1)
+            return ESP_FAIL;
+        else
+            return ESP_OK;
+    }
+
+
     
 } Channel;
 
@@ -162,7 +172,56 @@ struct EscTelemetry{
                std::to_string(rpm);
     }
 
+    esp_err_t to_str(char* buffer, size_t size){
+        int bytes = snprintf(buffer, size, "%u,%u,%u,%u,%u", 
+            temperature, 
+            static_cast<uint16_t>(voltage * 0.1), 
+            static_cast<uint16_t>(current * 0.1), 
+            static_cast<uint16_t>(consumption * 0.1), 
+            rpm);
+
+        if(bytes == -1)
+            return ESP_FAIL;
+        else
+            return ESP_OK;
+    }
+
 };
+
+
+struct Pid{
+    float kP{1};
+    float kI{0.1};
+    float kD{0.1};
+	float dt{0.01};
+    float c{};
+    float prevErr{};
+    float integral{};
+
+    std::string to_str(){
+
+        std::string str;
+
+        str += std::to_string(kP) + ",";
+        str += std::to_string(kI) + ",";
+        str += std::to_string(kD) + ",";
+        str += std::to_string(dt) + ",";
+        str += std::to_string(c) + ",";
+        str += std::to_string(prevErr) + ",";
+        str += std::to_string(integral);
+        return str;
+    }
+
+    esp_err_t to_str(char* buffer, size_t size){
+        int bytes = snprintf(buffer, size, "%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f", kP, kI, kD, dt, c, prevErr, integral);
+        if(bytes == -1)
+            return ESP_FAIL;
+        else
+            return ESP_OK;
+    }
+
+};
+
 
 struct DroneState{
 
@@ -173,6 +232,8 @@ struct DroneState{
     bool calibrateGyro{};
 
     float currentDraw{};
+
+    Pid pid[3]{};
 
     enum FlightMode mode;
     uint32_t dmpFreq{};
@@ -195,6 +256,14 @@ struct DroneState{
     float currYaw{};
     float currRoll{};
 
+    float currPitchRateDegSec{};
+    float currRollRateDegSec{};
+    float currYawRateDegSec{};
+
+    float targetPitchRateDegSec{};
+    float targetRollRateDegSec{};
+    float targetYawRateDegSec{};
+
     EscTelemetry escState[4];
 
     std::string throttle_fl_to_str(){return std::to_string(motorFlSpeed);}
@@ -207,6 +276,47 @@ struct DroneState{
 
     std::string current_to_str(){return std::to_string(currentDraw);}
 
+    esp_err_t throttle_fl_to_str(char* buffer, size_t size){
+        int bytes = snprintf(buffer, size, "%u", motorFlSpeed);
+        if(bytes == -1)
+            return ESP_FAIL;
+        else
+            return ESP_OK;
+    }
+
+    esp_err_t throttle_fr_to_str(char* buffer, size_t size){
+        int bytes = snprintf(buffer, size, "%u", motorFrSpeed);
+        if(bytes == -1)
+            return ESP_FAIL;
+        else
+            return ESP_OK;
+    }
+
+    esp_err_t throttle_rl_to_str(char* buffer, size_t size){
+        int bytes = snprintf(buffer, size, "%u", motorRlSpeed);
+        if(bytes == -1)
+            return ESP_FAIL;
+        else
+            return ESP_OK;
+    }
+
+    esp_err_t throttle_rr_to_str(char* buffer, size_t size){
+        int bytes = snprintf(buffer, size, "%u", motorRrSpeed);
+        if(bytes == -1)
+            return ESP_FAIL;
+        else
+            return ESP_OK;
+    }
+
+
+    esp_err_t current_to_str(char* buffer, size_t size){
+        int bytes = snprintf(buffer, size, "%.5f", currentDraw);
+        if(bytes == -1)
+            return ESP_FAIL;
+        else
+            return ESP_OK;
+    }
+
 
 };
 
@@ -214,6 +324,10 @@ struct YawPitchRoll{
 	float yaw{};
 	float pitch{};
 	float roll{};
+
+    float yawRateDegSec{};
+    float pitchRateDegSec{};
+    float rollRateDegSec{};
 
     int16_t z_accel{};
     int16_t x_accel{};
@@ -230,8 +344,11 @@ struct YawPitchRoll{
         this->x_accel = ypr.x_accel;
         this->y_accel = ypr.y_accel;
         this->z_gyro = ypr.z_gyro;
-        this->y_gyro = ypr.x_gyro;
-        this->x_gyro = ypr.y_gyro;
+        this->y_gyro = ypr.y_gyro;
+        this->x_gyro = ypr.x_gyro;
+        this->pitchRateDegSec = ypr.pitchRateDegSec;
+        this->rollRateDegSec = ypr.rollRateDegSec;
+        this->yawRateDegSec = ypr.yawRateDegSec;
     }
 
 
@@ -246,7 +363,10 @@ struct YawPitchRoll{
             this->y_accel != ypr.y_accel ||
             this->z_gyro  != ypr.z_gyro ||
             this->x_gyro  != ypr.x_gyro ||
-            this->y_gyro  != ypr.y_gyro){
+            this->y_gyro  != ypr.y_gyro ||
+            this->pitchRateDegSec != ypr.pitchRateDegSec ||
+            this->rollRateDegSec != ypr.rollRateDegSec ||
+            this->yawRateDegSec != ypr.yawRateDegSec){
             return false;
         }
         return true;
@@ -264,7 +384,10 @@ struct YawPitchRoll{
             this->y_accel == ypr.y_accel &&
             this->z_gyro  == ypr.z_gyro &&
             this->x_gyro  == ypr.x_gyro &&
-            this->y_gyro  == ypr.y_gyro){
+            this->y_gyro  == ypr.y_gyro &&
+            this->pitchRateDegSec == ypr.pitchRateDegSec &&
+            this->rollRateDegSec == ypr.rollRateDegSec &&
+            this->yawRateDegSec == ypr.yawRateDegSec){
             return false;
         }
         return true;
@@ -273,6 +396,16 @@ struct YawPitchRoll{
 	std::string to_str(){
 		return (std::to_string(yaw) + "," + std::to_string(pitch) + "," + std::to_string(roll));
 	}
+
+    esp_err_t to_str(char* buffer, size_t size){
+        int bytes = snprintf(buffer, size, "%.5f,%.5f,%.5f", yaw, pitch, roll);
+        if(bytes == -1)
+            return ESP_FAIL;
+        else
+            return ESP_OK;
+    }
+
+
 };
 
 struct TelemetryData{
@@ -283,16 +416,12 @@ struct TelemetryData{
     DroneState drone{};
 };
 
-struct Pid{
-    float kP{.5};
-    float kI{0.1};
-    float kD{0.1};
-	float dt{0.1};
-    float c{};
-    float prevErr{};
-    float integral{};
-};
 
+enum YawPitchRollEnum{
+	YAW,
+	PITCH,
+	ROLL,
+};
 
 typedef enum Progress{
     NOT_STARTED,

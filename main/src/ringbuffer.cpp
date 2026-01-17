@@ -4,15 +4,12 @@
 #include <cmath>
 #include "cstring"
 
-#include "freertos/FreeRTOS.h"
-#include "freertos/semphr.h"
-#include "freertos/task.h"
 
 
 static std::map<CircularHandle_t , CircularBuffer*> s_buffer;
 
 
-CircularHandle_t CircularBufCreate(uint32_t nItems, uint32_t itemsSize, std::string name=""){
+CircularHandle_t CircularBufCreate(uint32_t nItems, uint32_t itemsSize, std::string name){
 
     auto new_buf = new CircularBuffer(nItems, itemsSize, name);
 
@@ -22,20 +19,27 @@ CircularHandle_t CircularBufCreate(uint32_t nItems, uint32_t itemsSize, std::str
          return nullptr;
     }
 
-    s_buffer.emplace(new_buf,new_buf);
+    s_buffer.emplace(new_buf, new_buf);
 
     return reinterpret_cast<CircularHandle_t>(new_buf);
 }
 
 esp_err_t CircularBufEnqueue(CircularHandle_t bufHandle, void* data){
 
+    //if(!s_buffer.count(bufHandle)) return ESP_ERR_INVALID_ARG;
+
     return s_buffer[bufHandle]->insert_obj(data);
 }
 
+
+
 esp_err_t CircularBufDequeue(CircularHandle_t bufHandle, void* data, TickType_t ticksToWait){
     
+    //if(!s_buffer.count(bufHandle)) return ESP_ERR_INVALID_ARG;
+
     return s_buffer[bufHandle]->get_obj(data, ticksToWait);
 }
+
 
 esp_err_t CircularBuffer::get_obj(void* data, TickType_t ticksToWait) {
 
@@ -51,14 +55,6 @@ esp_err_t CircularBuffer::get_obj(void* data, TickType_t ticksToWait) {
         return ESP_ERR_TIMEOUT;
     }
 
-    //if(m_name=="radio")
-    //{
-    //    printf("m_maxSize[%lu] m_itemSize[%lu] m_currItems[%lu] m_startIdx[%lu] m_endIdx[%lu] m_totalMsgCntr[%llu] m_overwrittenCntr[%llu]\n",
-    //    m_maxSize, m_itemSize, m_currItems, m_startIdx, m_endIdx, m_totalMsgCntr, m_overwrittenCntr);
-    //}
-
-    // 2) lock the buffer while we remove one element
-    //std::lock_guard<decltype(m_bufferMutex)> lock(m_bufferMutex);
     xSemaphoreTake(m_bufferMutex, portMAX_DELAY);
 
     std::memcpy(data, m_data + (m_startIdx * m_itemSize), m_itemSize);

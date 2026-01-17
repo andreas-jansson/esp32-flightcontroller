@@ -38,7 +38,7 @@ class Display{
     static YawPitchRoll m_yprMpu2;
     static bool m_isArmed;
     //static bool m_isBooting;
-    static enum DisplayState m_state;
+    volatile static enum DisplayState m_state;
 
     static progress_t m_isCalibrating;
     static bool m_isArmed_bad_state;

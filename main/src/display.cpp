@@ -17,7 +17,7 @@ progress_t Display::m_isVerifyingMPU1{NOT_STARTED};
 progress_t Display::m_isVerifyingMPU2{NOT_STARTED};
 progress_t Display::m_isVerifyingRadio{NOT_STARTED};
 enum PidConfigDisplay Display::m_pidSelected;
-enum DisplayState Display::m_state{};
+volatile enum DisplayState Display::m_state{};
 Pid Display::m_pid;
 
 
@@ -62,7 +62,7 @@ void Display::init(){
     s_backgroundSprite.createSprite(c_screenWidth, c_screenHeight);
     s_backgroundSprite.setSwapBytes(false);
     s_backgroundSprite.setRotation(0);
-    s_backgroundSprite.loadFont(fontHemi);
+    //s_backgroundSprite.loadFont(fontHemi);
 
     m_wifiIcon.createSprite(48, 48);
     m_wifiIcon.setSwapBytes(false);
@@ -82,111 +82,93 @@ void Display::boot_menu(){
     while(m_state == BOOTING){
 
             s_backgroundSprite.fillSprite(TFT_BLACK);
-            s_backgroundSprite.loadFont(fontHemi);
+            //s_backgroundSprite.loadFont(fontHemi);
             s_backgroundSprite.setTextColor(TFT_WHITE);
             s_backgroundSprite.drawString("Booting...", 10, 30);
+            //s_backgroundSprite.unloadFont();
+
 
             if(m_isCalibrating == STARTED){
-                s_backgroundSprite.unloadFont();
                 s_backgroundSprite.setTextSize(2);
                 s_backgroundSprite.drawString("Calibrating", 10, 60);
             }
             else if(m_isCalibrating == NOT_STARTED){
-                s_backgroundSprite.unloadFont();
                 s_backgroundSprite.setTextColor(TFT_DARKGREY);
                 s_backgroundSprite.setTextSize(2);
                 s_backgroundSprite.drawString("Calibrating", 10, 60);
             }
             else if(m_isCalibrating == PASS){
                 s_backgroundSprite.setTextColor(TFT_GREEN);
-                s_backgroundSprite.unloadFont();
                 s_backgroundSprite.setTextSize(2);
                 s_backgroundSprite.drawString("Calibrating", 10, 60);
             }
 
-
             if(m_isVerifyingMPU1 == NOT_STARTED){
-                s_backgroundSprite.unloadFont();
                 s_backgroundSprite.setTextColor(TFT_DARKGREY);
                 s_backgroundSprite.drawString("mpu 1", 10, 90);
             }
             else if(m_isVerifyingMPU1 == STARTED){
-                s_backgroundSprite.unloadFont();
                 s_backgroundSprite.setTextColor(TFT_WHITE);
                 s_backgroundSprite.drawString("mpu 1", 10, 90);
             }
             else if(m_isVerifyingMPU1 == PASS){
-                s_backgroundSprite.unloadFont();
                 s_backgroundSprite.setTextColor(TFT_GREEN);
                 s_backgroundSprite.drawString("mpu 1", 10, 90);
             }
              else if(m_isVerifyingMPU1 == FAILED){
-                s_backgroundSprite.unloadFont();
                 s_backgroundSprite.setTextColor(TFT_RED);
                 s_backgroundSprite.drawString("mpu 1", 10, 90);
             }
 
             if(m_isVerifyingMPU2 == NOT_STARTED){
-                s_backgroundSprite.unloadFont();
                 s_backgroundSprite.setTextColor(TFT_DARKGREY);
                 s_backgroundSprite.drawString("mpu 2", 10, 120);
             }
             else if(m_isVerifyingMPU2 == STARTED){
-                s_backgroundSprite.unloadFont();
                 s_backgroundSprite.setTextColor(TFT_WHITE);
                 s_backgroundSprite.drawString("mpu 2", 10, 120);
             }
             else if(m_isVerifyingMPU2 == PASS){
-                s_backgroundSprite.unloadFont();
                 s_backgroundSprite.setTextColor(TFT_GREEN);
                 s_backgroundSprite.drawString("mpu 2", 10, 120);
             }
              else if(m_isVerifyingMPU2 == FAILED){
-                s_backgroundSprite.unloadFont();
                 s_backgroundSprite.setTextColor(TFT_RED);
                 s_backgroundSprite.drawString("mpu 2", 10, 120);
             }
            
 
             if(m_isVerifyingMPU2 == NOT_STARTED){
-                s_backgroundSprite.unloadFont();
                 s_backgroundSprite.setTextColor(TFT_DARKGREY);
                 s_backgroundSprite.drawString("mpu 2", 10, 120);
             }
             else if(m_isVerifyingMPU2 == STARTED){
-                s_backgroundSprite.unloadFont();
                 s_backgroundSprite.setTextColor(TFT_WHITE);
                 s_backgroundSprite.drawString("mpu 2", 10, 120);
             }
             else if(m_isVerifyingMPU2 == PASS){
-                s_backgroundSprite.unloadFont();
                 s_backgroundSprite.setTextColor(TFT_GREEN);
                 s_backgroundSprite.drawString("mpu 2", 10, 120);
             }
              else if(m_isVerifyingMPU2 == FAILED){
-                s_backgroundSprite.unloadFont();
                 s_backgroundSprite.setTextColor(TFT_RED);
                 s_backgroundSprite.drawString("mpu 2", 10, 120);
             }
 
 
             if(m_isVerifyingRadio == NOT_STARTED){
-                s_backgroundSprite.unloadFont();
                 s_backgroundSprite.setTextColor(TFT_DARKGREY);
                 s_backgroundSprite.drawString("radio", 10, 150);
             }
             else if(m_isVerifyingRadio == STARTED){
-                s_backgroundSprite.unloadFont();
                 s_backgroundSprite.setTextColor(TFT_WHITE);
                 s_backgroundSprite.drawString("radio", 10, 150);
             }
             else if(m_isVerifyingRadio == PASS){
-                s_backgroundSprite.unloadFont();
                 s_backgroundSprite.setTextColor(TFT_GREEN);
                 s_backgroundSprite.drawString("radio", 10, 150);
             }
              else if(m_isVerifyingRadio == FAILED){
-                s_backgroundSprite.unloadFont();
                 s_backgroundSprite.setTextColor(TFT_RED);
                 s_backgroundSprite.drawString("radio", 10, 150);
             }
@@ -221,6 +203,7 @@ void Display::boot_menu(){
         xSemaphoreTake(s_newData, portMAX_DELAY);
     }
     cleanup();
+
 }
 
 void Display::cleanup(){ 
@@ -233,6 +216,7 @@ void Display::drone_state(){
     const uint8_t borderWidth{15};
     const uint16_t centerPos = (c_screenWidth / 2) - (48/2); 
     
+    cleanup();
     while(m_state == DRONE){
         if(m_wifiConnected){
             recolor_icon(icons::wifiIcon, TFT_BLUE);
@@ -295,12 +279,9 @@ void Display::pid_menu(){
 
     m_pidSelected = P;
 
-    s_backgroundSprite.unloadFont();
     s_backgroundSprite.setTextSize(1);
     s_backgroundSprite.drawString("PRESS L2 TO SELECT" , x - x_offset, (y_dist * 5) + 5);
-
-
-    s_backgroundSprite.loadFont(fontHemi);
+    //s_backgroundSprite.loadFont(fontHemi);
 
 
     while(m_state == PID_CONFIG){

@@ -125,7 +125,7 @@ void telemetry_task(void* args){
         }
         else{
 
-            print_debug(DEBUG_TELEMETRY, DEBUG_DATA,"[25A"); //25
+            print_debug(DEBUG_TELEMETRY, DEBUG_DATA,"[29A"); 
         }
         print_debug(DEBUG_TELEMETRY, DEBUG_DATA,"[K  Roll    Pitch     Yaw\n");
         print_debug(DEBUG_TELEMETRY, DEBUG_DATA,"[K%6.3f °C %6.3f °C %6.3f °C\n", 
@@ -161,8 +161,14 @@ void telemetry_task(void* args){
             telemetry.drone.loopFreq
         );
 
-        print_debug(DEBUG_TELEMETRY, DEBUG_DATA, "[Ktarget: %5.2f curr: %5.2f\n", telemetry.drone.targetPitch, telemetry.drone.currPitch);
-        print_debug(DEBUG_TELEMETRY, DEBUG_DATA, "[Ktarget: %5.2f curr: %5.2f\n", telemetry.drone.targetRoll, telemetry.drone.currRoll);
+        print_debug(DEBUG_TELEMETRY, DEBUG_DATA, "[Ktarget pitch: %5.2f curr: %5.2f\n", telemetry.drone.targetPitch, telemetry.drone.currPitch);
+        print_debug(DEBUG_TELEMETRY, DEBUG_DATA, "[Ktarget roll:  %5.2f curr: %5.2f\n", telemetry.drone.targetRoll, telemetry.drone.currRoll);
+        print_debug(DEBUG_TELEMETRY, DEBUG_DATA, "[Ktarget yaw:   %5.2f curr: %5.2f\n", telemetry.drone.targetYaw, telemetry.drone.currYaw);
+
+        print_debug(DEBUG_TELEMETRY, DEBUG_DATA, "[Ktarget rate pitch: %5f curr rate: %5f\n", telemetry.drone.targetPitchRateDegSec, telemetry.drone.currPitchRateDegSec);
+        print_debug(DEBUG_TELEMETRY, DEBUG_DATA, "[Ktarget rate roll:  %5f curr rate: %5f\n", telemetry.drone.targetRollRateDegSec, telemetry.drone.currRollRateDegSec);
+        print_debug(DEBUG_TELEMETRY, DEBUG_DATA, "[Ktarget rate yaw:   %5f curr rate: %5f\n", telemetry.drone.targetYawRateDegSec, telemetry.drone.currYawRateDegSec);
+
         print_debug(DEBUG_TELEMETRY, DEBUG_DATA, "[Kfl: %4u fr: %4u\n", telemetry.drone.motorFlSpeed, telemetry.drone.motorFrSpeed);
         print_debug(DEBUG_TELEMETRY, DEBUG_DATA, "[Krl: %4u rr: %4u\n", telemetry.drone.motorRlSpeed, telemetry.drone.motorRrSpeed);
         

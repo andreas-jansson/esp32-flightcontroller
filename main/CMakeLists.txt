@@ -1,4 +1,6 @@
 idf_component_register(SRCS         
+                         "src/blackbox.cpp"
+                        "src/circularBufferFlash.cpp"
                          "src/i2c.cpp" 
                          "src/main.cpp"
                          "src/radioController.cpp"

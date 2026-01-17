@@ -17,6 +17,7 @@
 #include "mpu6050_stub.h"
 #include "radiocontroller_stub.h"
 
+#include "blackbox.h"
 #include "debug.h"
 #include "bmp280.h"
 #include "mpu6050.h"
@@ -44,7 +45,6 @@
 #define BATTERY_MAX_MAH 4000
 #define BATTERY_MAX_WH  88.8
 
-
 // uncomment to add back tasks
 #define WEB_TASK
 #define TELEMETRY_TASK
@@ -58,26 +58,23 @@
 #define I2C_MASTER_FREQ_HZ 400000 // Frequency of the I2C bus
 #define I2C_DMP_DATA_PIN 27
 
-#define UART_ESC_RX_IO 37   
+#define UART_ESC_RX_IO 37
 #define UART_ESC_BAUDRATE 115200
 
-#define ESC_CURRENT_PIN 17         // FIXME current reading adc not supported! resolder tx and rx and maybe remove from uart setup
+#define ESC_CURRENT_PIN 17 // FIXME current reading adc not supported! resolder tx and rx and maybe remove from uart setup
 
 #define log_tag "main"
 
-enum {
-  PRIO_BG       = 3,   // display / web / telemetry
-  PRIO_SENSORS  = 7,   // radio + DMP readers (paced with vTaskDelayUntil)
-  PRIO_CONTROL  = 10,  // drone PID + RMT (deadline-driven)
+enum{
+    PRIO_BG       = 3,   // display / web / telemetry
+    PRIO_SENSORS  = 7,   // radio + DMP readers (paced with vTaskDelayUntil)
+    PRIO_CONTROL  = 10,  // drone PID + RMT (deadline-driven)
 };
-
 
 extern "C"
 {
     void app_main(void);
 }
-
-
 
 void web_task(void *args){
     RingbufHandle_t ringBuffer_dmp{};
@@ -175,23 +172,23 @@ void altitude_task(void *args){
 }
 
 void dispatch_radio(void *args){
-    #ifdef STUB_RADIOCONTROLLER
+#ifdef STUB_RADIOCONTROLLER
     RadioController_stub *radio = RadioController_stub::GetInstance();
-    #else
+#else
     RadioController *radio = RadioController::GetInstance();
-    #endif
+#endif
     radio->radio_task(nullptr);
 }
 
 void dispatch_dmp(void *args){
-    
-    #ifdef STUB_MPU6050
-    //Mpu6050_stub *mpu = Mpu6050_stub::GetInstance();
-    #else
+
+#ifdef STUB_MPU6050
+//Mpu6050_stub *mpu = Mpu6050_stub::GetInstance();
+#else
     //Mpu6050 *mpu = Mpu6050::GetInstance();
 
-    #endif
-    ImuIf* mpu = reinterpret_cast<ImuIf*>(args);
+#endif
+    ImuIf* mpu = reinterpret_cast<ImuIf *>(args);
     mpu->dmp_task(nullptr);
 }
 
@@ -210,40 +207,49 @@ void dispatch_dshot(void* args){
     dshot->dshot_task(nullptr);
 }
 
-void dispatch_display(void* args){
+void dispatch_display(void *args){
     Display *display = Display::GetInstance();
     display->display_task(nullptr);
 }
 
-void dispatch_esc_telemetry(void* args){
+void dispatch_esc_telemetry(void *args){
     Drone *drone = Drone::GetInstance();
     drone->esc_telemetry_task(nullptr);
 }
 
-void dispatch_vtx(void* args){
-    VtxIf* vtx = reinterpret_cast<VtxIf*>(args);
+void dispatch_vtx(void *args){
+    VtxIf *vtx = reinterpret_cast<VtxIf *>(args);
     vtx->vtx_task(nullptr);
 }
 
+void dispatch_blackbox(void *args){
+     Blackbox* bb = reinterpret_cast<Blackbox*>(args);
+     bb->log_task(nullptr);
+}
+
 void main_task(void *args){
-    TaskHandle_t altitude_handle{};
-    TaskHandle_t dshot_handle{};
-    TaskHandle_t dmp_handle1{}; 
-    TaskHandle_t dmp_handle2{}; 
-    TaskHandle_t raw_handle{}; 
-    TaskHandle_t radio_handle{}; 
-    TaskHandle_t web_handle{}; 
-    TaskHandle_t telemetry_handle{}; 
+    // TaskHandle_t altitude_handle{};
+    // TaskHandle_t dshot_handle{};
+    TaskHandle_t dmp_handle1{};
+    // TaskHandle_t dmp_handle2{};
+    // TaskHandle_t raw_handle{};
+    TaskHandle_t radio_handle{};
+    TaskHandle_t web_handle{};
+    TaskHandle_t telemetry_handle{};
     TaskHandle_t drone_handle{};
     TaskHandle_t esc_telemetry_handle{};
     TaskHandle_t display_handle{};
     TaskHandle_t vtx_handle{};
+    TaskHandle_t blackbox_handle{};
 
-    RingbufHandle_t  ringBuffer_dmp1{};
-    RingbufHandle_t  ringBuffer_dmp2{};
+    //std::map<std::string, TaskHandle_t> taskHandles{};
+
+    RingbufHandle_t ringBuffer_dmp1{};
+    RingbufHandle_t ringBuffer_dmp2{};
     CircularHandle_t ringBuffer_radio{};
     CircularHandle_t ringBuffer_radio_statistics{};
-    RingbufHandle_t  ringBuffer_web{};
+    CircularHandle_t blackbox_telemetry_handle{};
+    RingbufHandle_t ringBuffer_web{};
 
     constexpr bool isBidiDshot{true};
     std::vector<ImuIf*> mpuVector;
@@ -252,34 +258,34 @@ void main_task(void *args){
     I2cHandler *i2c = new I2cHandler(I2C_MASTER_SDA_IO, I2C_MASTER_SCL_IO, I2C_MASTER_FREQ_HZ);
     i2c->init();
 
-    /******* radio *******/
-    #ifdef STUB_RADIOCONTROLLER
+/******* radio *******/
+#ifdef STUB_RADIOCONTROLLER
     RadioController_stub* radio = RadioController_stub::GetInstance();
-    #else
+#else
     RadioController* radio = RadioController::GetInstance();
-    #endif
+#endif
     ringBuffer_radio = radio->get_queue_handle();
     ringBuffer_radio_statistics = radio->get_statistics_queue_handle();
 
-    /******* MPU 1 setup *******/
-    #ifdef STUB_MPU6050
+/******* MPU 1 setup *******/
+#ifdef STUB_MPU6050
     Mpu6050_stub *mpu = Mpu6050_stub::GetInstance(ADDR_68, i2c);
-    #else
+#else
     ImuIf *mpu1 = new Mpu6050(ADDR_68, i2c, 27);
     mpuVector.emplace_back(mpu1);
-    #endif
+#endif
 
-   /******* MPU 2 setup *******/
-   #ifdef STUB_MPU6050
-   Mpu6050_stub *mpu = Mpu6050_stub::GetInstance(ADDR_68, i2c);
-   #else
-   //Mpu6050 *mpu2 = new Mpu6050(ADDR_69, i2c, 26);
-   //mpuVector.emplace_back(mpu1);
+/******* MPU 2 setup *******/
+#ifdef STUB_MPU6050
+    Mpu6050_stub *mpu = Mpu6050_stub::GetInstance(ADDR_68, i2c);
+#else
+    //Mpu6050 *mpu2 = new Mpu6050(ADDR_69, i2c, 26);
+    //mpuVector.emplace_back(mpu1);
 
-   #endif
+#endif
 
-    /******* wifi *******/
-    #ifdef WEB_TASK
+/******* wifi *******/
+#ifdef WEB_TASK
     std::string ssid{"wajfaj 2"};
     std::string wpa{"##FortSomFan666!!"};
     std::string ip{"192.168.1.130"};
@@ -288,7 +294,7 @@ void main_task(void *args){
     ringBuffer_web = get_telemetry_handle();
     WebClient *client = WebClient::GetInstance(ssid, wpa, ip, 6669);
     client->init(ringBuffer_dmp1, ringBuffer_web);
-    #endif
+#endif
 
     /******* Dshot600 *******/
     gpio_num_t motorPin[Radio::maxChannels]{};
@@ -303,9 +309,8 @@ void main_task(void *args){
     MotorLaneMapping motorLanes{
         .rearLeftlane   = MOTOR3,
         .rearRightlane  = MOTOR1,
-        .frontLeftlane  = MOTOR4,    
-        .frontRightlane = MOTOR2
-    };
+        .frontLeftlane  = MOTOR4,
+        .frontRightlane = MOTOR2};
 
     Drone* drone = Drone::GetInstance(dshot, mpuVector, ringBuffer_radio, ringBuffer_radio_statistics);
     drone->init_esc_telemetry_uart(UART_ESC_RX_IO, 25, UART_ESC_BAUDRATE);
@@ -318,49 +323,75 @@ void main_task(void *args){
     Drone::set_fw_version(1, 1, 0);
     Drone::set_battery_status(6u, 3500u);
 
+    blackbox_telemetry_handle = drone->get_blackbox_telemetry_handle();
+
+    /* Display */
+    Display::GetInstance();  //allow constructor to run
+
     /* Dji o4 Pro */
     VtxIf* vtx = new DjiO4Pro();
+
+    /* Blackbox */
+    Blackbox* bb = new Blackbox(blackbox_telemetry_handle);
 
 
     /* start tasks */
     print_debug(DEBUG_MAIN, DEBUG_LOGIC, "starting tasks\n");
-    xTaskCreatePinnedToCore(dispatch_display, "display_task", 8096, nullptr,  PRIO_BG, &display_handle, 0);
+    // xTaskCreatePinnedToCore(dispatch_blackbox, "blackbox_task", 8096, bb,  PRIO_BG, &blackbox_handle, 0);
+    xTaskCreatePinnedToCore(dispatch_display, "display_task", 8096, nullptr, PRIO_BG, &display_handle, 0);
     vTaskDelay(pdMS_TO_TICKS(100));
     Display::set_display_state(BOOTING);
 
-    xTaskCreatePinnedToCore(dispatch_drone, "drone_task", 4048, nullptr,  PRIO_CONTROL, &drone_handle, 1);
+    xTaskCreatePinnedToCore(dispatch_drone, "drone_task", 4048, nullptr, PRIO_CONTROL, &drone_handle, 1);
 
-    #ifdef WEB_TASK
-    xTaskCreatePinnedToCore(dispatch_webClient, "web_task", 4048, nullptr, PRIO_BG, &web_handle, 0);
-    #endif
-    #ifdef TELEMETRY_TASK
+#ifdef WEB_TASK
+    xTaskCreatePinnedToCore(dispatch_webClient, "web_task", 8096, nullptr, PRIO_BG, &web_handle, 0);
+#endif
+#ifdef TELEMETRY_TASK
     xTaskCreatePinnedToCore(telemetry_task, "telemetry_task", 4048, nullptr, PRIO_BG, &telemetry_handle, 0);
-    #endif
+#endif
 
     vTaskDelay(pdMS_TO_TICKS(200));
-    xTaskCreatePinnedToCore(dispatch_radio, "radio_task", 4048, nullptr,  PRIO_SENSORS, &radio_handle, 0);
-    xTaskCreatePinnedToCore(dispatch_dmp, "dmp_task1", 4048, mpu1,  PRIO_SENSORS, &dmp_handle1, 0);
-    //xTaskCreatePinnedToCore(dispatch_dmp, "dmp_task2", 4048, mpu2,  PRIO_SENSORS, &dmp_handle2, 0);
-    xTaskCreatePinnedToCore(dispatch_esc_telemetry, "esc_telemetry_task", 4048, nullptr,  PRIO_BG, &esc_telemetry_handle, 0);
-    xTaskCreatePinnedToCore(dispatch_vtx, "vtx_task", 4048, vtx,  PRIO_BG, &vtx_handle, 0);
+    xTaskCreatePinnedToCore(dispatch_radio, "radio_task", 4048, nullptr, PRIO_SENSORS, &radio_handle, 0);
+    xTaskCreatePinnedToCore(dispatch_dmp, "dmp_task1", 4048, mpu1, PRIO_SENSORS, &dmp_handle1, 0);
+    // xTaskCreatePinnedToCore(dispatch_dmp, "dmp_task2", 4048, mpu2,  PRIO_SENSORS, &dmp_handle2, 0);
+    xTaskCreatePinnedToCore(dispatch_esc_telemetry, "esc_telemetry_task", 4048, nullptr, PRIO_BG, &esc_telemetry_handle, 0);
+    xTaskCreatePinnedToCore(dispatch_vtx, "vtx_task", 4048, vtx, PRIO_BG, &vtx_handle, 0);
 
-    char buffer[500]{};
+    /*
+    taskHandles["dmp1"] = dmp_handle1;
+    taskHandles["radio_handle"] = radio_handle;
+    taskHandles["web_handle"] = web_handle;
+    taskHandles["telemetry_handle"] = telemetry_handle;
+    taskHandles["drone_handle"] = drone_handle;
+    taskHandles["esc_telemetry_handle"] = esc_telemetry_handle;
+    taskHandles["display_handle"] = display_handle;
+    taskHandles["vtx_handle"] = vtx_handle;
+    taskHandles["blackbox_handle"] = blackbox_handle;
+    */
+
+    //char buffer[500]{};
     while (true)
     {
         // enable CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=y
-        vTaskDelay(pdMS_TO_TICKS(50000));
         //vTaskGetRunTimeStats(buffer);
         //printf("%s", buffer);
+
+        //for(const auto& i : taskHandles){
+        //    //printf("%s stack hwmark=%u\n", i.first.c_str() ,uxTaskGetStackHighWaterMark(i.second));
+        //}
+        vTaskDelay(pdMS_TO_TICKS(1000));
+
     }
 }
 
-void app_main(void){
+void app_main(void)
+{
     TaskHandle_t main_handle{};
-    uint32_t files = DEBUG_MAIN | DEBUG_TELEMETRY; //  | DEBUG_RADIO | DEBUG_DRONE | DEBUG_MPU6050 | DEBUG_I2C; | DEBUG_BMP ;
-    uint32_t prio = DEBUG_DATA; // | DEBUG_ARGS; // DEBUG_LOGIC | DEBUG_LOWLEVEL |
+    uint32_t files = DEBUG_MAIN; // | DEBUG_TELEMETRY; //  | DEBUG_RADIO | DEBUG_DRONE | DEBUG_MPU6050 | DEBUG_I2C; | DEBUG_BMP ;
+    uint32_t prio = DEBUG_DATA;  // | DEBUG_ARGS; // DEBUG_LOGIC | DEBUG_LOWLEVEL |
 
     set_loglevel(files, prio);
-
 
     printf("*****************************************************************\n");
     printf("*****************************************************************\n");
@@ -370,7 +401,5 @@ void app_main(void){
     printf("*****************************************************************\n");
     printf("*****************************************************************\n\n\n");
 
-
     xTaskCreatePinnedToCore(main_task, "main_task", 4048, nullptr, configMAX_PRIORITIES - 3, &main_handle, 0);
 }
- 
