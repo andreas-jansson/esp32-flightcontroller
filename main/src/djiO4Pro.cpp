@@ -7,6 +7,7 @@
 
 using namespace Msp;
 
+
 DjiO4Pro::DjiO4Pro(){
     printf("dji o4 pro started\n");
     constexpr int txPin = 25;
@@ -415,7 +416,7 @@ esp_err_t DjiO4Pro::msp_write(cmd_e cmd, uint8_t* payload, uint8_t payloadLen){
 
     uint8_t msg[maxMspPayload] = { start_sym, version_1, dir_fc_to_vtx, payloadLen, cmd};
 
-    if(cmds.at(cmd).name == "MSP_DISPLAYPORT")
+    if(strcmp(cmds[cmd].name, "MSP_DISPLAYPORT") == 0)
     {
         msg[2] = dir_vtx_to_fc;
     }

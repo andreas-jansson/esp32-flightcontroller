@@ -34,6 +34,7 @@
 #include "radioController.h"
 #include "djiO4Pro.h"
 #include "vtxIf.h"
+#include "mspData.h"
 
 // battery info
 // battery 4000 mah
@@ -385,8 +386,39 @@ void main_task(void *args){
     }
 }
 
+
+#include "esp_cpu.h"
+#include "esp_debug_helpers.h"
+
+#define log_tag "main"
+
+
+#define CTOR_PROBE(tag) do { \
+  void* ra = __builtin_return_address(0); \
+  void* sp = (void*)esp_cpu_get_sp(); \
+  printf("CTOR_PROBE: %s ra=%p sp=%p\n", tag, ra, sp); \
+} while(0)
+
+
+__attribute__((constructor))
+static void ctor_probe(void) {
+    esp_rom_printf("CTOR_PROBE: entered\n");
+    CTOR_PROBE(log_tag);
+}
+
 void app_main(void)
 {
+
+    
+    TaskHandle_t h = xTaskGetCurrentTaskHandle();  
+
+    printf("main task configured stack: %u bytes\n", (unsigned)CONFIG_ESP_MAIN_TASK_STACK_SIZE);
+
+    UBaseType_t hwm_words = uxTaskGetStackHighWaterMark(h);
+    printf("main task min-free stack (high water mark): %u words = %u bytes\n",
+           (unsigned)hwm_words, (unsigned)(hwm_words * sizeof(StackType_t)));
+    
+
     TaskHandle_t main_handle{};
     uint32_t files = DEBUG_MAIN; // | DEBUG_TELEMETRY; //  | DEBUG_RADIO | DEBUG_DRONE | DEBUG_MPU6050 | DEBUG_I2C; | DEBUG_BMP ;
     uint32_t prio = DEBUG_DATA;  // | DEBUG_ARGS; // DEBUG_LOGIC | DEBUG_LOWLEVEL |

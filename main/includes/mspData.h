@@ -217,12 +217,18 @@ namespace Msp{
         RESPONSE,
     } msp_type_e;
 
-    struct cmd_item{
-        cmd_e id{};
-        std::string name;
-        std::string desc;  
-        msp_type_e type{};
-    };
+
+     struct MspCmd{
+        //cmd_e id{};
+        const char name[50]{};
+        const char desc[200]{};
+     };
+
+    //struct cmd_item{
+    //    cmd_e id{};
+    //    MspText* info{}; 
+    //    msp_type_e type{};
+    //};
 
         
     typedef enum DpCmd{
@@ -237,195 +243,454 @@ namespace Msp{
      }dp_cmd_e;
 
 
-    inline std::map<cmd_e, cmd_item> cmds{
-
-    { MSP_API_VERSION,                 { MSP_API_VERSION,                 "MSP_API_VERSION",                 "out message" } }, // 1
-    { MSP_FC_VARIANT,                  { MSP_FC_VARIANT,                  "MSP_FC_VARIANT",                  "out message" } }, // 2
-    { MSP_FC_VERSION,                  { MSP_FC_VERSION,                  "MSP_FC_VERSION",                  "out message" } }, // 3
-    { MSP_BOARD_INFO,                  { MSP_BOARD_INFO,                  "MSP_BOARD_INFO",                  "out message" } }, // 4
-    { MSP_BUILD_INFO,                  { MSP_BUILD_INFO,                  "MSP_BUILD_INFO",                  "out message" } }, // 5
-
-    { MSP_NAME,                        { MSP_NAME,                        "MSP_NAME",                        "out message: Returns user set board name - betaflight" } }, // 10
-    { MSP_SET_NAME,                    { MSP_SET_NAME,                    "MSP_SET_NAME",                    "in message: Sets board name - betaflight" } }, // 11
-
-    { MSP_BATTERY_CONFIG,              { MSP_BATTERY_CONFIG,              "MSP_BATTERY_CONFIG",              "out message: Get battery configuration" } }, // 32
-    { MSP_SET_BATTERY_CONFIG,          { MSP_SET_BATTERY_CONFIG,          "MSP_SET_BATTERY_CONFIG",          "in message: Set battery configuration" } }, // 33
-    { MSP_MODE_RANGES,                 { MSP_MODE_RANGES,                 "MSP_MODE_RANGES",                 "out message: Returns all mode ranges" } }, // 34
-    { MSP_SET_MODE_RANGE,              { MSP_SET_MODE_RANGE,              "MSP_SET_MODE_RANGE",              "in message: Sets a single mode range" } }, // 35
-    { MSP_FEATURE_CONFIG,              { MSP_FEATURE_CONFIG,              "MSP_FEATURE_CONFIG",              "out message: Get feature configuration" } }, // 36
-    { MSP_SET_FEATURE_CONFIG,          { MSP_SET_FEATURE_CONFIG,          "MSP_SET_FEATURE_CONFIG",          "in message: Set feature configuration" } }, // 37
-    { MSP_BOARD_ALIGNMENT_CONFIG,      { MSP_BOARD_ALIGNMENT_CONFIG,      "MSP_BOARD_ALIGNMENT_CONFIG",      "out message: Get board alignment configuration" } }, // 38
-    { MSP_SET_BOARD_ALIGNMENT_CONFIG,  { MSP_SET_BOARD_ALIGNMENT_CONFIG,  "MSP_SET_BOARD_ALIGNMENT_CONFIG",  "in message: Set board alignment configuration" } }, // 39
-    { MSP_CURRENT_METER_CONFIG,        { MSP_CURRENT_METER_CONFIG,        "MSP_CURRENT_METER_CONFIG",        "out message: Get current meter configuration" } }, // 40
-    { MSP_SET_CURRENT_METER_CONFIG,    { MSP_SET_CURRENT_METER_CONFIG,    "MSP_SET_CURRENT_METER_CONFIG",    "in message: Set current meter configuration" } }, // 41
-    { MSP_MIXER_CONFIG,                { MSP_MIXER_CONFIG,                "MSP_MIXER_CONFIG",                "out message: Get mixer configuration" } }, // 42
-    { MSP_SET_MIXER_CONFIG,            { MSP_SET_MIXER_CONFIG,            "MSP_SET_MIXER_CONFIG",            "in message: Set mixer configuration" } }, // 43
-    { MSP_RX_CONFIG,                   { MSP_RX_CONFIG,                   "MSP_RX_CONFIG",                   "out message: Get RX configuration" } }, // 44
-    { MSP_SET_RX_CONFIG,               { MSP_SET_RX_CONFIG,               "MSP_SET_RX_CONFIG",               "in message: Set RX configuration" } }, // 45
-    { MSP_LED_COLORS,                  { MSP_LED_COLORS,                  "MSP_LED_COLORS",                  "out message: Get LED colors" } }, // 46
-    { MSP_SET_LED_COLORS,              { MSP_SET_LED_COLORS,              "MSP_SET_LED_COLORS",              "in message: Set LED colors" } }, // 47
-    { MSP_LED_STRIP_CONFIG,            { MSP_LED_STRIP_CONFIG,            "MSP_LED_STRIP_CONFIG",            "out message: Get LED strip configuration" } }, // 48
-    { MSP_SET_LED_STRIP_CONFIG,        { MSP_SET_LED_STRIP_CONFIG,        "MSP_SET_LED_STRIP_CONFIG",        "in message: Set LED strip configuration" } }, // 49
-    { MSP_RSSI_CONFIG,                 { MSP_RSSI_CONFIG,                 "MSP_RSSI_CONFIG",                 "out message: Get RSSI configuration" } }, // 50
-    { MSP_SET_RSSI_CONFIG,             { MSP_SET_RSSI_CONFIG,             "MSP_SET_RSSI_CONFIG",             "in message: Set RSSI configuration" } }, // 51
-    { MSP_ADJUSTMENT_RANGES,           { MSP_ADJUSTMENT_RANGES,           "MSP_ADJUSTMENT_RANGES",           "out message: Get adjustment ranges" } }, // 52
-    { MSP_SET_ADJUSTMENT_RANGE,        { MSP_SET_ADJUSTMENT_RANGE,        "MSP_SET_ADJUSTMENT_RANGE",        "in message: Set adjustment range" } }, // 53
-    { MSP_CF_SERIAL_CONFIG,            { MSP_CF_SERIAL_CONFIG,            "MSP_CF_SERIAL_CONFIG",            "out message: Get Cleanflight serial configuration" } }, // 54
-    { MSP_SET_CF_SERIAL_CONFIG,        { MSP_SET_CF_SERIAL_CONFIG,        "MSP_SET_CF_SERIAL_CONFIG",        "in message: Set Cleanflight serial configuration" } }, // 55
-    { MSP_VOLTAGE_METER_CONFIG,        { MSP_VOLTAGE_METER_CONFIG,        "MSP_VOLTAGE_METER_CONFIG",        "out message: Get voltage meter configuration" } }, // 56
-    { MSP_SET_VOLTAGE_METER_CONFIG,    { MSP_SET_VOLTAGE_METER_CONFIG,    "MSP_SET_VOLTAGE_METER_CONFIG",    "in message: Set voltage meter configuration" } }, // 57
-    { MSP_SONAR_ALTITUDE,              { MSP_SONAR_ALTITUDE,              "MSP_SONAR_ALTITUDE",              "out message: Get sonar altitude [cm]" } }, // 58
-    { MSP_PID_CONTROLLER,              { MSP_PID_CONTROLLER,              "MSP_PID_CONTROLLER",              "out message: Get PID controller" } }, // 59
-    { MSP_SET_PID_CONTROLLER,          { MSP_SET_PID_CONTROLLER,          "MSP_SET_PID_CONTROLLER",          "in message: Set PID controller" } }, // 60
-    { MSP_ARMING_CONFIG,               { MSP_ARMING_CONFIG,               "MSP_ARMING_CONFIG",               "out message: Get arming configuration" } }, // 61
-    { MSP_SET_ARMING_CONFIG,           { MSP_SET_ARMING_CONFIG,           "MSP_SET_ARMING_CONFIG",           "in message: Set arming configuration" } }, // 62
-
-    // Baseflight MSP commands (64-89)
-    { MSP_RX_MAP,                      { MSP_RX_MAP,                      "MSP_RX_MAP",                      "out message: Get RX map (also returns number of channels total)" } }, // 64
-    { MSP_SET_RX_MAP,                  { MSP_SET_RX_MAP,                  "MSP_SET_RX_MAP",                  "in message: Set RX map, numchannels to set comes from MSP_RX_MAP" } }, // 65
-    { MSP_REBOOT,                      { MSP_REBOOT,                      "MSP_REBOOT",                      "in message: Reboot settings" } }, // 68
-    { MSP_DATAFLASH_SUMMARY,           { MSP_DATAFLASH_SUMMARY,           "MSP_DATAFLASH_SUMMARY",           "out message: Get description of dataflash chip" } }, // 70
-    { MSP_DATAFLASH_READ,              { MSP_DATAFLASH_READ,              "MSP_DATAFLASH_READ",              "out message: Get content of dataflash chip" } }, // 71
-    { MSP_DATAFLASH_ERASE,             { MSP_DATAFLASH_ERASE,             "MSP_DATAFLASH_ERASE",             "in message: Erase dataflash chip" } }, // 72
-    { MSP_FAILSAFE_CONFIG,             { MSP_FAILSAFE_CONFIG,             "MSP_FAILSAFE_CONFIG",             "out message: Get failsafe settings" } }, // 75
-    { MSP_SET_FAILSAFE_CONFIG,         { MSP_SET_FAILSAFE_CONFIG,         "MSP_SET_FAILSAFE_CONFIG",         "in message: Set failsafe settings" } }, // 76
-    { MSP_RXFAIL_CONFIG,               { MSP_RXFAIL_CONFIG,               "MSP_RXFAIL_CONFIG",               "out message: Get RX failsafe settings" } }, // 77
-    { MSP_SET_RXFAIL_CONFIG,           { MSP_SET_RXFAIL_CONFIG,           "MSP_SET_RXFAIL_CONFIG",           "in message: Set RX failsafe settings" } }, // 78
-    { MSP_SDCARD_SUMMARY,              { MSP_SDCARD_SUMMARY,              "MSP_SDCARD_SUMMARY",              "out message: Get SD card state" } }, // 79
-    { MSP_BLACKBOX_CONFIG,             { MSP_BLACKBOX_CONFIG,             "MSP_BLACKBOX_CONFIG",             "out message: Get blackbox settings" } }, // 80
-    { MSP_SET_BLACKBOX_CONFIG,         { MSP_SET_BLACKBOX_CONFIG,         "MSP_SET_BLACKBOX_CONFIG",         "in message: Set blackbox settings" } }, // 81
-    { MSP_TRANSPONDER_CONFIG,          { MSP_TRANSPONDER_CONFIG,          "MSP_TRANSPONDER_CONFIG",          "out message: Get transponder settings" } }, // 82
-    { MSP_SET_TRANSPONDER_CONFIG,      { MSP_SET_TRANSPONDER_CONFIG,      "MSP_SET_TRANSPONDER_CONFIG",      "in message: Set transponder settings" } }, // 83
-    { MSP_OSD_CONFIG,                  { MSP_OSD_CONFIG,                  "MSP_OSD_CONFIG",                  "out message: Get OSD settings" } }, // 84
-    { MSP_SET_OSD_CONFIG,              { MSP_SET_OSD_CONFIG,              "MSP_SET_OSD_CONFIG",              "in message: Set OSD settings" } }, // 85
-    { MSP_OSD_CHAR_READ,               { MSP_OSD_CHAR_READ,               "MSP_OSD_CHAR_READ",               "out message: Get OSD characters" } }, // 86
-    { MSP_OSD_CHAR_WRITE,              { MSP_OSD_CHAR_WRITE,              "MSP_OSD_CHAR_WRITE",              "in message: Set OSD characters" } }, // 87
-    { MSP_VTX_CONFIG,                  { MSP_VTX_CONFIG,                  "MSP_VTX_CONFIG",                  "out message: Get VTX settings" } }, // 88
-    { MSP_SET_VTX_CONFIG,              { MSP_SET_VTX_CONFIG,              "MSP_SET_VTX_CONFIG",              "in message: Set VTX settings" } }, // 89
-
-    // Betaflight Additional Commands (90-99)
-    { MSP_ADVANCED_CONFIG,             { MSP_ADVANCED_CONFIG,             "MSP_ADVANCED_CONFIG",             "out message: Get advanced configuration" } }, // 90
-    { MSP_SET_ADVANCED_CONFIG,         { MSP_SET_ADVANCED_CONFIG,         "MSP_SET_ADVANCED_CONFIG",         "in message: Set advanced configuration" } }, // 91
-    { MSP_FILTER_CONFIG,               { MSP_FILTER_CONFIG,               "MSP_FILTER_CONFIG",               "out message: Get filter configuration" } }, // 92
-    { MSP_SET_FILTER_CONFIG,           { MSP_SET_FILTER_CONFIG,           "MSP_SET_FILTER_CONFIG",           "in message: Set filter configuration" } }, // 93
-    { MSP_PID_ADVANCED,                { MSP_PID_ADVANCED,                "MSP_PID_ADVANCED",                "out message: Get advanced PID settings" } }, // 94
-    { MSP_SET_PID_ADVANCED,            { MSP_SET_PID_ADVANCED,            "MSP_SET_PID_ADVANCED",            "in message: Set advanced PID settings" } }, // 95
-    { MSP_SENSOR_CONFIG,               { MSP_SENSOR_CONFIG,               "MSP_SENSOR_CONFIG",               "out message: Get sensor configuration" } }, // 96
-    { MSP_SET_SENSOR_CONFIG,           { MSP_SET_SENSOR_CONFIG,           "MSP_SET_SENSOR_CONFIG",           "in message: Set sensor configuration" } }, // 97
-    { MSP_CAMERA_CONTROL,              { MSP_CAMERA_CONTROL,              "MSP_CAMERA_CONTROL",              "in/out message: Camera control" } }, // 98
-    { MSP_SET_ARMING_DISABLED,         { MSP_SET_ARMING_DISABLED,         "MSP_SET_ARMING_DISABLED",         "in message: Enable/disable arming" } }, // 99
-
-    // Multiwii original MSP commands (101-139)
-    { MSP_STATUS,                      { MSP_STATUS,                      "MSP_STATUS",                      "out message: Cycletime & errors_count & sensor present & box activation & current setting number" } }, // 101
-    { MSP_RAW_IMU,                     { MSP_RAW_IMU,                     "MSP_RAW_IMU",                     "out message: 9 DOF" } }, // 102
-    { MSP_SERVO,                       { MSP_SERVO,                       "MSP_SERVO",                       "out message: Servos" } }, // 103
-    { MSP_MOTOR,                       { MSP_MOTOR,                       "MSP_MOTOR",                       "out message: Motors" } }, // 104
-    { MSP_RC,                          { MSP_RC,                          "MSP_RC",                          "out message: RC channels and more" } }, // 105
-    { MSP_RAW_GPS,                     { MSP_RAW_GPS,                     "MSP_RAW_GPS",                     "out message: Fix, numsat, lat, lon, alt, speed, ground course" } }, // 106
-    { MSP_COMP_GPS,                    { MSP_COMP_GPS,                    "MSP_COMP_GPS",                    "out message: Distance home, direction home" } }, // 107
-    { MSP_ATTITUDE,                    { MSP_ATTITUDE,                    "MSP_ATTITUDE",                    "out message: 2 angles 1 heading" } }, // 108
-    { MSP_ALTITUDE,                    { MSP_ALTITUDE,                    "MSP_ALTITUDE",                    "out message: Altitude, variometer" } }, // 109
-    { MSP_ANALOG,                      { MSP_ANALOG,                      "MSP_ANALOG",                      "out message: Vbat, powermetersum, rssi if available on RX" } }, // 110
-    { MSP_RC_TUNING,                   { MSP_RC_TUNING,                   "MSP_RC_TUNING",                   "out message: RC rate, rc expo, rollpitch rate, yaw rate, dyn throttle PID" } }, // 111
-    { MSP_PID,                         { MSP_PID,                         "MSP_PID",                         "out message: P I D coeff (9 are used currently)" } }, // 112
-    { MSP_BOXNAMES,                    { MSP_BOXNAMES,                    "MSP_BOXNAMES",                    "out message: The aux switch names" } }, // 116
-    { MSP_PIDNAMES,                    { MSP_PIDNAMES,                    "MSP_PIDNAMES",                    "out message: The PID names" } }, // 117
-    { MSP_WP,                          { MSP_WP,                          "MSP_WP",                          "out message: Get a WP; WP# in payload; returns (WP#, lat, lon, alt, flags) WP#0-home, WP#16-poshold" } }, // 118
-    { MSP_BOXIDS,                      { MSP_BOXIDS,                      "MSP_BOXIDS",                      "out message: Get the permanent IDs associated to BOXes" } }, // 119
-    { MSP_SERVO_CONFIGURATIONS,        { MSP_SERVO_CONFIGURATIONS,        "MSP_SERVO_CONFIGURATIONS",        "out message: All servo configurations" } }, // 120
-    { MSP_NAV_STATUS,                  { MSP_NAV_STATUS,                  "MSP_NAV_STATUS",                  "out message: Returns navigation status" } }, // 121
-    { MSP_NAV_CONFIG,                  { MSP_NAV_CONFIG,                  "MSP_NAV_CONFIG",                  "out message: Returns navigation parameters" } }, // 122
-    { MSP_MOTOR_3D_CONFIG,             { MSP_MOTOR_3D_CONFIG,             "MSP_MOTOR_3D_CONFIG",             "out message: Settings needed for reversible ESCs" } }, // 124
-    { MSP_RC_DEADBAND,                 { MSP_RC_DEADBAND,                 "MSP_RC_DEADBAND",                 "out message: Deadbands for yaw alt pitch roll" } }, // 125
-    { MSP_SENSOR_ALIGNMENT,            { MSP_SENSOR_ALIGNMENT,            "MSP_SENSOR_ALIGNMENT",            "out message: Orientation of acc,gyro,mag" } }, // 126
-    { MSP_LED_STRIP_MODECOLOR,         { MSP_LED_STRIP_MODECOLOR,         "MSP_LED_STRIP_MODECOLOR",         "out message: Get LED strip mode_color settings" } }, // 127
-    { MSP_VOLTAGE_METERS,              { MSP_VOLTAGE_METERS,              "MSP_VOLTAGE_METERS",              "out message: Voltage (per meter)" } }, // 128
-    { MSP_CURRENT_METERS,              { MSP_CURRENT_METERS,              "MSP_CURRENT_METERS",              "out message: Amperage (per meter)" } }, // 129
-    { MSP_BATTERY_STATE,               { MSP_BATTERY_STATE,               "MSP_BATTERY_STATE",               "out message: Connected/Disconnected, Voltage, Current Used" } }, // 130
-    { MSP_MOTOR_CONFIG,                { MSP_MOTOR_CONFIG,                "MSP_MOTOR_CONFIG",                "out message: Motor configuration (min/max throttle, etc)" } }, // 131
-    { MSP_GPS_CONFIG,                  { MSP_GPS_CONFIG,                  "MSP_GPS_CONFIG",                  "out message: GPS configuration" } }, // 132
-    { MSP_COMPASS_CONFIG,              { MSP_COMPASS_CONFIG,              "MSP_COMPASS_CONFIG",              "out message: Compass configuration" } }, // 133
-    { MSP_ESC_SENSOR_DATA,             { MSP_ESC_SENSOR_DATA,             "MSP_ESC_SENSOR_DATA",             "out message: Extra ESC data (Temp, RPM)" } }, // 134
-    { MSP_GPS_RESCUE,                  { MSP_GPS_RESCUE,                  "MSP_GPS_RESCUE",                  "out message: GPS Rescue params (angle/alt/descent/speed/checks/minSats)" } }, // 135
-    { MSP_GPS_RESCUE_PIDS,             { MSP_GPS_RESCUE_PIDS,             "MSP_GPS_RESCUE_PIDS",             "out message: GPS Rescue throttle/velocity PIDs + yaw P" } }, // 136
-    { MSP_VTXTABLE_BAND,               { MSP_VTXTABLE_BAND,               "MSP_VTXTABLE_BAND",               "out message: VTX table band/channel data" } }, // 137
-    { MSP_VTXTABLE_POWERLEVEL,         { MSP_VTXTABLE_POWERLEVEL,         "MSP_VTXTABLE_POWERLEVEL",         "out message: VTX table powerLevel data" } }, // 138
-    { MSP_MOTOR_TELEMETRY,             { MSP_MOTOR_TELEMETRY,             "MSP_MOTOR_TELEMETRY",             "out message: Per-motor telemetry (RPM, packet stats, temp, etc.)" } }, // 139
-
-    // Simplified tuning commands (140-145)
-    { MSP_SIMPLIFIED_TUNING,           { MSP_SIMPLIFIED_TUNING,           "MSP_SIMPLIFIED_TUNING",           "out message: Get simplified tuning values and enabled state" } }, // 140
-    { MSP_SET_SIMPLIFIED_TUNING,       { MSP_SET_SIMPLIFIED_TUNING,       "MSP_SET_SIMPLIFIED_TUNING",       "in message: Set simplified tuning positions and apply calculated tuning" } }, // 141
-    { MSP_CALCULATE_SIMPLIFIED_PID,    { MSP_CALCULATE_SIMPLIFIED_PID,    "MSP_CALCULATE_SIMPLIFIED_PID",    "out message: Calculate PID values based on sliders without saving" } }, // 142
-    { MSP_CALCULATE_SIMPLIFIED_GYRO,   { MSP_CALCULATE_SIMPLIFIED_GYRO,   "MSP_CALCULATE_SIMPLIFIED_GYRO",   "out message: Calculate gyro filter values based on sliders without saving" } }, // 143
-    { MSP_CALCULATE_SIMPLIFIED_DTERM,  { MSP_CALCULATE_SIMPLIFIED_DTERM,  "MSP_CALCULATE_SIMPLIFIED_DTERM",  "out message: Calculate D term filter values based on sliders without saving" } }, // 144
-    { MSP_VALIDATE_SIMPLIFIED_TUNING,  { MSP_VALIDATE_SIMPLIFIED_TUNING,  "MSP_VALIDATE_SIMPLIFIED_TUNING",  "out message: Returns array of true/false for simplified tuning group matches" } }, // 145
-
-    // Additional non-MultiWii commands (150-166)
-    { MSP_STATUS_EX,                   { MSP_STATUS_EX,                   "MSP_STATUS_EX",                   "out message: Cycletime, errors_count, CPU load, sensor present etc" } }, // 150
-    { MSP_UID,                         { MSP_UID,                         "MSP_UID",                         "out message: Unique device ID" } }, // 160
-    { MSP_GPSSVINFO,                   { MSP_GPSSVINFO,                   "MSP_GPSSVINFO",                   "out message: Get Signal Strength (only U-Blox)" } }, // 164
-    { MSP_GPSSTATISTICS,               { MSP_GPSSTATISTICS,               "MSP_GPSSTATISTICS",               "out message: Get GPS debugging data" } }, // 166
-
-    // OSD specific commands (180-189)
-    { MSP_OSD_VIDEO_CONFIG,            { MSP_OSD_VIDEO_CONFIG,            "MSP_OSD_VIDEO_CONFIG",            "out message: Get OSD video settings" } }, // 180
-    { MSP_SET_OSD_VIDEO_CONFIG,        { MSP_SET_OSD_VIDEO_CONFIG,        "MSP_SET_OSD_VIDEO_CONFIG",        "in message: Set OSD video settings" } }, // 181
-    { MSP_DISPLAYPORT,                 { MSP_DISPLAYPORT,                 "MSP_DISPLAYPORT",                 "out message: External OSD displayport mode" } }, // 182
-    { MSP_COPY_PROFILE,                { MSP_COPY_PROFILE,                "MSP_COPY_PROFILE",                "in message: Copy settings between profiles" } }, // 183
-    { MSP_BEEPER_CONFIG,               { MSP_BEEPER_CONFIG,               "MSP_BEEPER_CONFIG",               "out message: Get beeper configuration" } }, // 184
-    { MSP_SET_BEEPER_CONFIG,           { MSP_SET_BEEPER_CONFIG,           "MSP_SET_BEEPER_CONFIG",           "in message: Set beeper configuration" } }, // 185
-    { MSP_SET_TX_INFO,                 { MSP_SET_TX_INFO,                 "MSP_SET_TX_INFO",                 "in message: Set runtime information from TX lua scripts" } }, // 186
-    { MSP_TX_INFO,                     { MSP_TX_INFO,                     "MSP_TX_INFO",                     "out message: Get runtime information for TX lua scripts" } }, // 187
-    { MSP_SET_OSD_CANVAS,              { MSP_SET_OSD_CANVAS,              "MSP_SET_OSD_CANVAS",              "in message: Set OSD canvas size COLSxROWS" } }, // 188
-    { MSP_OSD_CANVAS,                  { MSP_OSD_CANVAS,                  "MSP_OSD_CANVAS",                  "out message: Get OSD canvas size COLSxROWS" } }, // 189
-
-    // Set commands (200-229)
-    { MSP_SET_RAW_RC,                  { MSP_SET_RAW_RC,                  "MSP_SET_RAW_RC",                  "in message: 8 rc chan" } }, // 200
-    { MSP_SET_RAW_GPS,                 { MSP_SET_RAW_GPS,                 "MSP_SET_RAW_GPS",                 "in message: Fix, numsat, lat, lon, alt, speed" } }, // 201
-    { MSP_SET_PID,                     { MSP_SET_PID,                     "MSP_SET_PID",                     "in message: P I D coeff (9 are used currently)" } }, // 202
-    { MSP_SET_RC_TUNING,               { MSP_SET_RC_TUNING,               "MSP_SET_RC_TUNING",               "in message: RC rate/expo/rates/dyn throttle PID/yaw expo" } }, // 204
-    { MSP_ACC_CALIBRATION,             { MSP_ACC_CALIBRATION,             "MSP_ACC_CALIBRATION",             "in message: No param - calibrate accelerometer" } }, // 205
-    { MSP_MAG_CALIBRATION,             { MSP_MAG_CALIBRATION,             "MSP_MAG_CALIBRATION",             "in message: No param - calibrate magnetometer" } }, // 206
-    { MSP_RESET_CONF,                  { MSP_RESET_CONF,                  "MSP_RESET_CONF",                  "in message: No param - reset settings" } }, // 208
-    { MSP_SET_WP,                      { MSP_SET_WP,                      "MSP_SET_WP",                      "in message: Sets a given WP (WP#, lat, lon, alt, flags)" } }, // 209
-    { MSP_SELECT_SETTING,              { MSP_SELECT_SETTING,              "MSP_SELECT_SETTING",              "in message: Select setting number (0-2)" } }, // 210
-    { MSP_SET_HEADING,                 { MSP_SET_HEADING,                 "MSP_SET_HEADING",                 "in message: Define a new heading hold direction" } }, // 211
-    { MSP_SET_SERVO_CONFIGURATION,     { MSP_SET_SERVO_CONFIGURATION,     "MSP_SET_SERVO_CONFIGURATION",     "in message: Servo settings" } }, // 212
-    { MSP_SET_MOTOR,                   { MSP_SET_MOTOR,                   "MSP_SET_MOTOR",                   "in message: PropBalance function" } }, // 214
-    { MSP_SET_NAV_CONFIG,              { MSP_SET_NAV_CONFIG,              "MSP_SET_NAV_CONFIG",              "in message: Sets nav config parameters" } }, // 215
-    { MSP_SET_MOTOR_3D_CONFIG,         { MSP_SET_MOTOR_3D_CONFIG,         "MSP_SET_MOTOR_3D_CONFIG",         "in message: Settings needed for reversible ESCs" } }, // 217
-    { MSP_SET_RC_DEADBAND,             { MSP_SET_RC_DEADBAND,             "MSP_SET_RC_DEADBAND",             "in message: Deadbands for yaw alt pitch roll" } }, // 218
-    { MSP_SET_RESET_CURR_PID,          { MSP_SET_RESET_CURR_PID,          "MSP_SET_RESET_CURR_PID",          "in message: Reset current PID profile to defaults" } }, // 219
-    { MSP_SET_SENSOR_ALIGNMENT,        { MSP_SET_SENSOR_ALIGNMENT,        "MSP_SET_SENSOR_ALIGNMENT",        "in message: Set the orientation of acc,gyro,mag" } }, // 220
-    { MSP_SET_LED_STRIP_MODECOLOR,     { MSP_SET_LED_STRIP_MODECOLOR,     "MSP_SET_LED_STRIP_MODECOLOR",     "in message: Set LED strip mode_color settings" } }, // 221
-    { MSP_SET_MOTOR_CONFIG,            { MSP_SET_MOTOR_CONFIG,            "MSP_SET_MOTOR_CONFIG",            "in message: Motor configuration (min/max throttle, etc)" } }, // 222
-    { MSP_SET_GPS_CONFIG,              { MSP_SET_GPS_CONFIG,              "MSP_SET_GPS_CONFIG",              "in message: Set GPS configuration" } }, // 223
-    { MSP_SET_COMPASS_CONFIG,          { MSP_SET_COMPASS_CONFIG,          "MSP_SET_COMPASS_CONFIG",          "in message: Set compass configuration" } }, // 224
-    { MSP_SET_GPS_RESCUE,              { MSP_SET_GPS_RESCUE,              "MSP_SET_GPS_RESCUE",              "in message: Set GPS Rescue parameters" } }, // 225
-    { MSP_SET_GPS_RESCUE_PIDS,         { MSP_SET_GPS_RESCUE_PIDS,         "MSP_SET_GPS_RESCUE_PIDS",         "in message: Set GPS Rescue PID values" } }, // 226
-    { MSP_SET_VTXTABLE_BAND,           { MSP_SET_VTXTABLE_BAND,           "MSP_SET_VTXTABLE_BAND",           "in message: Set vtxTable band/channel data" } }, // 227
-    { MSP_SET_VTXTABLE_POWERLEVEL,     { MSP_SET_VTXTABLE_POWERLEVEL,     "MSP_SET_VTXTABLE_POWERLEVEL",     "in message: Set vtxTable powerLevel data" } }, // 228
-
-    // Multiple MSP and special commands (230-255)
-    { MSP_MULTIPLE_MSP,                { MSP_MULTIPLE_MSP,                "MSP_MULTIPLE_MSP",                "out message: Request multiple MSPs in one request" } }, // 230
-    { MSP_MODE_RANGES_EXTRA,           { MSP_MODE_RANGES_EXTRA,           "MSP_MODE_RANGES_EXTRA",           "out message: Extra mode range data" } }, // 238
-    { MSP_SET_ACC_TRIM,                { MSP_SET_ACC_TRIM,                "MSP_SET_ACC_TRIM",                "in message: Set acc angle trim values" } }, // 239
-    { MSP_ACC_TRIM,                    { MSP_ACC_TRIM,                    "MSP_ACC_TRIM",                    "out message: Get acc angle trim values" } }, // 240
-    { MSP_SERVO_MIX_RULES,             { MSP_SERVO_MIX_RULES,             "MSP_SERVO_MIX_RULES",             "out message: Get servo mixer configuration" } }, // 241
-    { MSP_SET_SERVO_MIX_RULE,          { MSP_SET_SERVO_MIX_RULE,          "MSP_SET_SERVO_MIX_RULE",          "in message: Set servo mixer configuration" } }, // 242
-    { MSP_SET_PASSTHROUGH,             { MSP_SET_PASSTHROUGH,             "MSP_SET_PASSTHROUGH",             "in message: Set passthrough to peripherals" } }, // 245
-    { MSP_SET_RTC,                     { MSP_SET_RTC,                     "MSP_SET_RTC",                     "in message: Set the RTC clock" } }, // 246
-    { MSP_RTC,                         { MSP_RTC,                         "MSP_RTC",                         "out message: Get the RTC clock" } }, // 247
-    { MSP_SET_BOARD_INFO,              { MSP_SET_BOARD_INFO,              "MSP_SET_BOARD_INFO",              "in message: Set the board information" } }, // 248
-    { MSP_SET_SIGNATURE,               { MSP_SET_SIGNATURE,               "MSP_SET_SIGNATURE",               "in message: Set the signature of the board and serial number" } }, // 249
-    { MSP_EEPROM_WRITE,                { MSP_EEPROM_WRITE,                "MSP_EEPROM_WRITE",                "in message: Write settings to EEPROM" } }, // 250
-    { MSP_RESERVE_1,                   { MSP_RESERVE_1,                   "MSP_RESERVE_1",                   "reserved for system usage" } }, // 251
-    { MSP_RESERVE_2,                   { MSP_RESERVE_2,                   "MSP_RESERVE_2",                   "reserved for system usage" } }, // 252
-    { MSP_DEBUGMSG,                    { MSP_DEBUGMSG,                    "MSP_DEBUGMSG",                    "out message: debug string buffer" } }, // 253
-    { MSP_DEBUG,                       { MSP_DEBUG,                       "MSP_DEBUG",                       "out message: debug1,debug2,debug3,debug4" } }, // 254
-    { MSP_V2_FRAME,                    { MSP_V2_FRAME,                    "MSP_V2_FRAME",                    "MSPv2 payload indicator" } }, // 255
+    constexpr inline MspCmd cmds[] {
+    {"", ""},   // 0
+    {"MSP_API_VERSION",                  "out message" }, //1
+    {"MSP_FC_VARIANT",                   "out message" }, 
+    {"MSP_FC_VERSION",                   "out message" }, 
+    {"MSP_BOARD_INFO",                   "out message" }, 
+    {"MSP_BUILD_INFO",                   "out message" }, 
+    {"", ""}, // 5
+    {"", ""}, // 6
+    {"", ""}, // 7
+    {"", ""}, // 8
+    {"", ""}, // 9
+    {"MSP_NAME",                         "out message: Returns user set board name - betaflight" }, // 10
+    {"MSP_SET_NAME",                     "in message: Sets board name - betaflight" }, // 11
+    {"", ""}, // 12
+    {"", ""}, // 13
+    {"", ""}, // 14
+    {"", ""}, // 15
+    {"", ""}, // 16
+    {"", ""}, // 17
+    {"", ""}, // 18
+    {"", ""}, // 19
+    {"", ""}, // 20
+    {"", ""}, // 21
+    {"", ""}, // 22
+    {"", ""}, // 23
+    {"", ""}, // 24
+    {"", ""}, // 25 
+    {"", ""}, // 26 
+    {"", ""}, // 27
+    {"", ""}, // 28  
+    {"", ""}, // 29
+    {"", ""}, // 30
+    {"", ""}, // 31
+    {"MSP_BATTERY_CONFIG",              "out message: Get battery configuration" }, // 32
+    {"MSP_SET_BATTERY_CONFIG",          "in message: Set battery configuration"  }, // 33
+    {"MSP_MODE_RANGES",                 "out message: Returns all mode ranges"  }, // 34
+    {"MSP_SET_MODE_RANGE",              "in message: Sets a single mode range"  }, // 35
+    {"MSP_FEATURE_CONFIG",              "out message: Get feature configuration"  }, // 36
+    {"MSP_SET_FEATURE_CONFIG",          "in message: Set feature configuration"  }, // 37
+    {"MSP_BOARD_ALIGNMENT_CONFIG",      "out message: Get board alignment configuration"  }, // 38
+    {"MSP_SET_BOARD_ALIGNMENT_CONFIG",  "in message: Set board alignment configuration"  }, // 39
+    {"MSP_CURRENT_METER_CONFIG",        "out message: Get current meter configuration" }, // 40
+    {"MSP_SET_CURRENT_METER_CONFIG",    "in message: Set current meter configuration" }, // 41
+    {"MSP_MIXER_CONFIG",                "out message: Get mixer configuration" }, // 42
+    {"MSP_SET_MIXER_CONFIG",            "in message: Set mixer configuration"  }, // 43
+    {"MSP_RX_CONFIG",                   "out message: Get RX configuration" }, // 44
+    {"MSP_SET_RX_CONFIG",               "in message: Set RX configuration"  }, // 45
+    {"MSP_LED_COLORS",                  "out message: Get LED colors" }, // 46
+    {"MSP_SET_LED_COLORS",              "in message: Set LED colors" }, // 47
+    {"MSP_LED_STRIP_CONFIG",            "out message: Get LED strip configuration"  }, // 48
+    {"MSP_SET_LED_STRIP_CONFIG",        "in message: Set LED strip configuration"  }, // 49
+    {"MSP_RSSI_CONFIG",                 "out message: Get RSSI configuration" }, // 50
+    {"MSP_SET_RSSI_CONFIG",             "in message: Set RSSI configuration"  }, // 51
+    {"MSP_ADJUSTMENT_RANGES",           "out message: Get adjustment ranges"  }, // 52
+    {"MSP_SET_ADJUSTMENT_RANGE",        "in message: Set adjustment range" }, // 53
+    {"MSP_CF_SERIAL_CONFIG",            "out message: Get Cleanflight serial configuration"  }, // 54
+    {"MSP_SET_CF_SERIAL_CONFIG",        "in message: Set Cleanflight serial configuration"  }, // 55
+    {"MSP_VOLTAGE_METER_CONFIG",        "out message: Get voltage meter configuration" }, // 56
+    {"MSP_SET_VOLTAGE_METER_CONFIG",    "in message: Set voltage meter configuration" }, // 57
+    {"MSP_SONAR_ALTITUDE",              "out message: Get sonar altitude [cm]" }, // 58
+    {"MSP_PID_CONTROLLER",              "out message: Get PID controller" }, // 59
+    {"MSP_SET_PID_CONTROLLER",          "in message: Set PID controller" }, // 60
+    {"MSP_ARMING_CONFIG",               "out message: Get arming configuration" }, // 61
+    {"MSP_SET_ARMING_CONFIG",           "in message: Set arming configuration" }, // 62
+    {"", ""}, // 63
+    {"MSP_RX_MAP",                      "out message: Get RX map (also returns number of channels total)" }, // 64
+    {"MSP_SET_RX_MAP",                  "in message: Set RX map, numchannels to set comes from MSP_RX_MAP" }, // 65
+    {"", ""}, // 66
+    {"", ""}, // 67
+    {"MSP_REBOOT",                      "in message: Reboot settings" }, // 68
+    {"", ""}, // 69
+    {"MSP_DATAFLASH_SUMMARY",           "out message: Get description of dataflash chip" }, // 70
+    {"MSP_DATAFLASH_READ",              "out message: Get content of dataflash chip" }, // 71
+    {"MSP_DATAFLASH_ERASE",             "in message: Erase dataflash chip" }, // 72
+    {"", ""}, // 73
+    {"", ""}, // 74
+    {"MSP_FAILSAFE_CONFIG",             "out message: Get failsafe settings" }, // 75
+    {"MSP_SET_FAILSAFE_CONFIG",         "in message: Set failsafe settings" }, // 76
+    {"MSP_RXFAIL_CONFIG",               "out message: Get RX failsafe settings" }, // 77
+    {"MSP_SET_RXFAIL_CONFIG",           "in message: Set RX failsafe settings" }, // 78
+    {"MSP_SDCARD_SUMMARY",              "out message: Get SD card state" }, // 79
+    {"MSP_BLACKBOX_CONFIG",             "out message: Get blackbox settings" }, // 80
+    {"MSP_SET_BLACKBOX_CONFIG",         "in message: Set blackbox settings" }, // 81
+    {"MSP_TRANSPONDER_CONFIG",          "out message: Get transponder settings" }, // 82
+    {"MSP_SET_TRANSPONDER_CONFIG",      "in message: Set transponder settings" }, // 83
+    {"MSP_OSD_CONFIG",                  "out message: Get OSD settings" }, // 84
+    {"MSP_SET_OSD_CONFIG",              "in message: Set OSD settings" }, // 85
+    {"MSP_OSD_CHAR_READ",               "out message: Get OSD characters" }, // 86
+    {"MSP_OSD_CHAR_WRITE",              "in message: Set OSD characters" }, // 87
+    {"MSP_VTX_CONFIG",                  "out message: Get VTX settings" }, // 88
+    {"MSP_SET_VTX_CONFIG",              "in message: Set VTX settings" }, // 89
+    {"MSP_ADVANCED_CONFIG",             "out message: Get advanced configuration"  }, // 90
+    {"MSP_SET_ADVANCED_CONFIG",         "in message: Set advanced configuration"  }, // 91
+    {"MSP_FILTER_CONFIG",               "out message: Get filter configuration" }, // 92
+    {"MSP_SET_FILTER_CONFIG",           "in message: Set filter configuration" }, // 93
+    {"MSP_PID_ADVANCED",                "out message: Get advanced PID settings"  }, // 94
+    {"MSP_SET_PID_ADVANCED",            "in message: Set advanced PID settings" }, // 95
+    {"MSP_SENSOR_CONFIG",               "out message: Get sensor configuration" }, // 96
+    {"MSP_SET_SENSOR_CONFIG",           "in message: Set sensor configuration" }, // 97
+    {"MSP_CAMERA_CONTROL",              "in/out message: Camera control" }, // 98
+    {"MSP_SET_ARMING_DISABLED",         "in message: Enable/disable arming" }, // 99
+    {"", ""}, // 100
+    {"MSP_STATUS",                      "out message: Cycletime & errors_count & sensor present & box activation & current setting number" }, // 101
+    {"MSP_RAW_IMU",                     "out message: 9 DOF" }, // 102
+    {"MSP_SERVO",                       "out message: Servos"  }, // 103
+    {"MSP_MOTOR",                       "out message: Motors" }, // 104
+    {"MSP_RC",                          "out message: RC channels and more" }, // 105
+    {"MSP_RAW_GPS",                     "out message: Fix, numsat, lat, lon, alt, speed, ground course" }, // 106
+    {"MSP_COMP_GPS",                    "out message: Distance home, direction home" }, // 107
+    {"MSP_ATTITUDE",                    "out message: 2 angles 1 heading" }, // 108
+    {"MSP_ALTITUDE",                    "out message: Altitude, variometer"  }, // 109
+    {"MSP_ANALOG",                      "out message: Vbat, powermetersum, rssi if available on RX" }, // 110
+    {"MSP_RC_TUNING",                   "out message: RC rate, rc expo, rollpitch rate, yaw rate, dyn throttle PID"  }, // 111
+    {"MSP_PID",                         "out message: P I D coeff (9 are used currently)" }, // 112
+    {"", ""}, // 113
+    {"", ""}, // 114
+    {"", ""}, // 115
+    {"MSP_BOXNAMES",                    "out message: The aux switch names" }, // 116
+    {"MSP_PIDNAMES",                    "out message: The PID names" }, // 117
+    {"MSP_WP",                          "out message: Get a WP; WP# in payload; returns (WP#, lat, lon, alt, flags) WP#0-home, WP#16-poshold" }, // 118
+    {"MSP_BOXIDS",                      "out message: Get the permanent IDs associated to BOXes" }, // 119
+    {"MSP_SERVO_CONFIGURATIONS",        "out message: All servo configurations" }, // 120
+    {"MSP_NAV_STATUS",                  "out message: Returns navigation status" }, // 121
+    {"MSP_NAV_CONFIG",                  "out message: Returns navigation parameters" }, // 122
+    {"MSP_MOTOR_3D_CONFIG",             "out message: Settings needed for reversible ESCs" }, // 124
+    {"MSP_RC_DEADBAND",                 "out message: Deadbands for yaw alt pitch roll" }, // 125
+    {"MSP_SENSOR_ALIGNMENT",            "out message: Orientation of acc,gyro,mag" }, // 126
+    {"MSP_LED_STRIP_MODECOLOR",         "out message: Get LED strip mode_color settings" }, // 127
+    {"MSP_VOLTAGE_METERS",              "out message: Voltage (per meter)" }, // 128
+    {"MSP_CURRENT_METERS",              "out message: Amperage (per meter)" }, // 129
+    {"MSP_BATTERY_STATE",               "out message: Connected/Disconnected, Voltage, Current Used" }, // 130
+    {"MSP_MOTOR_CONFIG",                "out message: Motor configuration (min/max throttle, etc)" }, // 131
+    {"MSP_GPS_CONFIG",                  "out message: GPS configuration" }, // 132
+    {"MSP_COMPASS_CONFIG",              "out message: Compass configuration" }, // 133
+    {"MSP_ESC_SENSOR_DATA",             "out message: Extra ESC data (Temp, RPM)" }, // 134
+    {"MSP_GPS_RESCUE",                  "out message: GPS Rescue params (angle/alt/descent/speed/checks/minSats)" }, // 135
+    {"MSP_GPS_RESCUE_PIDS",             "out message: GPS Rescue throttle/velocity PIDs + yaw P" }, // 136
+    {"MSP_VTXTABLE_BAND",               "out message: VTX table band/channel data" }, // 137
+    {"MSP_VTXTABLE_POWERLEVEL",         "out message: VTX table powerLevel data" }, // 138
+    {"MSP_MOTOR_TELEMETRY",             "out message: Per-motor telemetry (RPM, packet stats, temp, etc.)" }, // 139
+    {"MSP_SIMPLIFIED_TUNING",           "out message: Get simplified tuning values and enabled state" }, // 140
+    {"MSP_SET_SIMPLIFIED_TUNING",       "in message: Set simplified tuning positions and apply calculated tuning" }, // 141
+    {"MSP_CALCULATE_SIMPLIFIED_PID",    "out message: Calculate PID values based on sliders without saving" }, // 142
+    {"MSP_CALCULATE_SIMPLIFIED_GYRO",   "out message: Calculate gyro filter values based on sliders without saving"  }, // 143
+    {"MSP_CALCULATE_SIMPLIFIED_DTERM",  "out message: Calculate D term filter values based on sliders without saving" }, // 144
+    {"MSP_VALIDATE_SIMPLIFIED_TUNING",  "out message: Returns array of true/false for simplified tuning group matches" }, // 145
+    {"", ""}, // 146
+    {"", ""}, // 147
+    {"", ""}, // 148
+    {"", ""}, // 149
+    {"MSP_STATUS_EX",                   "out message: Cycletime, errors_count, CPU load, sensor present etc" }, // 150
+    {"", ""}, // 151
+    {"", ""}, // 152
+    {"", ""}, // 153
+    {"", ""}, // 154
+    {"", ""}, // 155
+    {"", ""}, // 156
+    {"", ""}, // 157
+    {"", ""}, // 158
+    {"", ""}, // 159
+    {"MSP_UID",                         "out message: Unique device ID" }, // 160
+    {"", ""}, // 161
+    {"", ""}, // 162
+    {"", ""}, // 163
+    {"MSP_GPSSVINFO",                   "out message: Get Signal Strength (only U-Blox)" }, // 164
+    {"", ""}, // 165
+    {"MSP_GPSSTATISTICS",               "out message: Get GPS debugging data" }, // 166
+    {"", ""}, // 167
+    {"", ""}, // 168
+    {"", ""}, // 169
+    {"", ""}, // 170
+    {"", ""}, // 171
+    {"", ""}, // 172
+    {"", ""}, // 173
+    {"", ""}, // 174
+    {"", ""}, // 175
+    {"", ""}, // 176
+    {"", ""}, // 177
+    {"", ""}, // 178
+    {"", ""}, // 179
+    {"MSP_OSD_VIDEO_CONFIG",            "out message: Get OSD video settings" }, // 180
+    {"MSP_SET_OSD_VIDEO_CONFIG",        "in message: Set OSD video settings" }, // 181
+    {"MSP_DISPLAYPORT",                 "out message: External OSD displayport mode" }, // 182
+    {"MSP_COPY_PROFILE",                "in message: Copy settings between profiles" }, // 183
+    {"MSP_BEEPER_CONFIG",               "out message: Get beeper configuration" }, // 184
+    {"MSP_SET_BEEPER_CONFIG",           "in message: Set beeper configuration" }, // 185
+    {"MSP_SET_TX_INFO",                 "in message: Set runtime information from TX lua scripts" }, // 186
+    {"MSP_TX_INFO",                     "out message: Get runtime information for TX lua scripts" }, // 187
+    {"MSP_SET_OSD_CANVAS",              "in message: Set OSD canvas size COLSxROWS" }, // 188
+    {"MSP_OSD_CANVAS",                  "out message: Get OSD canvas size COLSxROWS" }, // 189
+    {"", ""}, // 190
+    {"", ""}, // 191
+    {"", ""}, // 192
+    {"", ""}, // 193
+    {"", ""}, // 194
+    {"", ""}, // 195
+    {"", ""}, // 196
+    {"", ""}, // 197
+    {"", ""}, // 198
+    {"", ""}, // 199
+    {"MSP_SET_RAW_RC",                  "in message: 8 rc chan" }, // 200
+    {"MSP_SET_RAW_GPS",                 "in message: Fix, numsat, lat, lon, alt, speed" }, // 201
+    {"MSP_SET_PID",                     "in message: P I D coeff (9 are used currently)" }, // 202
+    {"", ""}, // 203
+    {"MSP_SET_RC_TUNING",               "in message: RC rate/expo/rates/dyn throttle PID/yaw expo" }, // 204
+    {"MSP_ACC_CALIBRATION",             "in message: No param - calibrate accelerometer" }, // 205
+    {"MSP_MAG_CALIBRATION",             "in message: No param - calibrate magnetometer" }, // 206
+    {"", ""}, // 207
+    {"MSP_RESET_CONF",                  "in message: No param - reset settings" }, // 208
+    {"MSP_SET_WP",                      "in message: Sets a given WP (WP#, lat, lon, alt, flags)" }, // 209
+    {"MSP_SELECT_SETTING",              "in message: Select setting number (0-2)" }, // 210
+    {"MSP_SET_HEADING",                 "in message: Define a new heading hold direction" }, // 211
+    {"MSP_SET_SERVO_CONFIGURATION",     "in message: Servo settings" }, // 212
+    {"", ""}, // 213
+    {"MSP_SET_MOTOR",                   "in message: PropBalance function" }, // 214
+    {"MSP_SET_NAV_CONFIG",              "in message: Sets nav config parameters" }, // 215
+    {"", ""}, // 216
+    {"MSP_SET_MOTOR_3D_CONFIG",         "in message: Settings needed for reversible ESCs" }, // 217
+    {"MSP_SET_RC_DEADBAND",             "in message: Deadbands for yaw alt pitch roll" }, // 218
+    {"MSP_SET_RESET_CURR_PID",          "in message: Reset current PID profile to defaults" }, // 219
+    {"MSP_SET_SENSOR_ALIGNMENT",        "in message: Set the orientation of acc,gyro,mag" }, // 220
+    {"MSP_SET_LED_STRIP_MODECOLOR",     "in message: Set LED strip mode_color settings" }, // 221
+    {"MSP_SET_MOTOR_CONFIG",            "in message: Motor configuration (min/max throttle, etc)" }, // 222
+    {"MSP_SET_GPS_CONFIG",              "in message: Set GPS configuration" }, // 223
+    {"MSP_SET_COMPASS_CONFIG",          "in message: Set compass configuration"  }, // 224
+    {"MSP_SET_GPS_RESCUE",              "in message: Set GPS Rescue parameters"  }, // 225
+    {"MSP_SET_GPS_RESCUE_PIDS",         "in message: Set GPS Rescue PID values" }, // 226
+    {"MSP_SET_VTXTABLE_BAND",           "in message: Set vtxTable band/channel data"  }, // 227
+    {"MSP_SET_VTXTABLE_POWERLEVEL",     "in message: Set vtxTable powerLevel data" }, // 228
+    {"", ""}, // 229
+    {"MSP_MULTIPLE_MSP",                "out message: Request multiple MSPs in one request"  }, // 230
+    {"", ""}, // 231 
+    {"", ""}, // 232 
+    {"", ""}, // 233
+    {"", ""}, // 234
+    {"", ""}, // 235
+    {"", ""}, // 236
+    {"", ""}, // 237
+    {"MSP_MODE_RANGES_EXTRA",           "out message: Extra mode range data" }, // 238
+    {"MSP_SET_ACC_TRIM",                "in message: Set acc angle trim values" }, // 239
+    {"MSP_ACC_TRIM",                    "out message: Get acc angle trim values" }, // 240
+    {"MSP_SERVO_MIX_RULES",             "out message: Get servo mixer configuration"  }, // 241
+    {"MSP_SET_SERVO_MIX_RULE",          "in message: Set servo mixer configuration"  }, // 242
+    {"", ""}, // 243
+    {"", ""}, // 244
+    {"MSP_SET_PASSTHROUGH",             "in message: Set passthrough to peripherals" }, // 245
+    {"MSP_SET_RTC",                     "in message: Set the RTC clock" }, // 246
+    {"MSP_RTC",                         "out message: Get the RTC clock" }, // 247
+    {"MSP_SET_BOARD_INFO",              "in message: Set the board information" }, // 248
+    {"MSP_SET_SIGNATURE",               "in message: Set the signature of the board and serial number" }, // 249
+    {"MSP_EEPROM_WRITE",                "in message: Write settings to EEPROM" }, // 250
+    {"MSP_RESERVE_1",                   "reserved for system usage" }, // 251
+    {"MSP_RESERVE_2",                   "reserved for system usage" }, // 252
+    {"MSP_DEBUGMSG",                    "out message: debug string buffer" }, // 253
+    {"MSP_DEBUG",                       "out message: debug1,debug2,debug3,debug4" }, // 254
+    {"MSP_V2_FRAME",                    "MSPv2 payload indicator" }, // 255
     };
 
 
+/*
+inline std::map<cmd_e, cmd_item> cmds  {
+        { MSP_API_VERSION,                 { MSP_API_VERSION,                 &helperText[MSP_API_VERSION]}},
+        { MSP_FC_VARIANT,                  { MSP_FC_VARIANT,                  &helperText[MSP_FC_VARIANT]}},
+        { MSP_FC_VERSION,                  { MSP_FC_VERSION,                  &helperText[MSP_FC_VERSION]}},
+        { MSP_BOARD_INFO,                  { MSP_BOARD_INFO,                  &helperText[MSP_BOARD_INFO]}},
+        { MSP_BUILD_INFO,                  { MSP_BUILD_INFO,                  &helperText[MSP_BUILD_INFO]}},
+        { MSP_NAME,                        { MSP_NAME,                        &helperText[MSP_NAME]}},
+        { MSP_SET_NAME,                    { MSP_SET_NAME,                    &helperText[MSP_SET_NAME]}},
+
+        { MSP_BATTERY_CONFIG,              { MSP_BATTERY_CONFIG,              &helperText[MSP_BATTERY_CONFIG]}},
+        { MSP_SET_BATTERY_CONFIG,          { MSP_SET_BATTERY_CONFIG,          &helperText[MSP_SET_BATTERY_CONFIG]}},
+        { MSP_MODE_RANGES,                 { MSP_MODE_RANGES,                 &helperText[MSP_MODE_RANGES]}},
+        { MSP_SET_MODE_RANGE,              { MSP_SET_MODE_RANGE,              &helperText[MSP_SET_MODE_RANGE]}},
+        { MSP_FEATURE_CONFIG,              { MSP_FEATURE_CONFIG,              &helperText[MSP_FEATURE_CONFIG]}},
+        { MSP_SET_FEATURE_CONFIG,          { MSP_SET_FEATURE_CONFIG,          &helperText[MSP_SET_FEATURE_CONFIG]}},
+        { MSP_BOARD_ALIGNMENT_CONFIG,      { MSP_BOARD_ALIGNMENT_CONFIG,      &helperText[MSP_BOARD_ALIGNMENT_CONFIG]}},
+        { MSP_SET_BOARD_ALIGNMENT_CONFIG,  { MSP_SET_BOARD_ALIGNMENT_CONFIG,  &helperText[MSP_SET_BOARD_ALIGNMENT_CONFIG]}},
+        { MSP_CURRENT_METER_CONFIG,        { MSP_CURRENT_METER_CONFIG,        &helperText[MSP_CURRENT_METER_CONFIG]}},
+        { MSP_SET_CURRENT_METER_CONFIG,    { MSP_SET_CURRENT_METER_CONFIG,    &helperText[MSP_SET_CURRENT_METER_CONFIG]}},
+        { MSP_MIXER_CONFIG,                { MSP_MIXER_CONFIG,                &helperText[MSP_MIXER_CONFIG]}},
+        { MSP_SET_MIXER_CONFIG,            { MSP_SET_MIXER_CONFIG,            &helperText[MSP_SET_MIXER_CONFIG]}},
+        { MSP_RX_CONFIG,                   { MSP_RX_CONFIG,                   &helperText[MSP_RX_CONFIG]}},
+        { MSP_SET_RX_CONFIG,               { MSP_SET_RX_CONFIG,               &helperText[MSP_SET_RX_CONFIG]}},
+        { MSP_LED_COLORS,                  { MSP_LED_COLORS,                  &helperText[MSP_LED_COLORS]}},
+        { MSP_SET_LED_COLORS,              { MSP_SET_LED_COLORS,              &helperText[MSP_SET_LED_COLORS]}},
+        { MSP_LED_STRIP_CONFIG,            { MSP_LED_STRIP_CONFIG,            &helperText[MSP_LED_STRIP_CONFIG]}},
+        { MSP_SET_LED_STRIP_CONFIG,        { MSP_SET_LED_STRIP_CONFIG,        &helperText[MSP_SET_LED_STRIP_CONFIG]}},
+        { MSP_RSSI_CONFIG,                 { MSP_RSSI_CONFIG,                 &helperText[MSP_RSSI_CONFIG]}},
+        { MSP_SET_RSSI_CONFIG,             { MSP_SET_RSSI_CONFIG,             &helperText[MSP_SET_RSSI_CONFIG]}},
+        { MSP_ADJUSTMENT_RANGES,           { MSP_ADJUSTMENT_RANGES,           &helperText[MSP_ADJUSTMENT_RANGES]}},
+        { MSP_SET_ADJUSTMENT_RANGE,        { MSP_SET_ADJUSTMENT_RANGE,        &helperText[MSP_SET_ADJUSTMENT_RANGE]}},
+        { MSP_CF_SERIAL_CONFIG,            { MSP_CF_SERIAL_CONFIG,            &helperText[MSP_CF_SERIAL_CONFIG]}},
+        { MSP_SET_CF_SERIAL_CONFIG,        { MSP_SET_CF_SERIAL_CONFIG,        &helperText[MSP_SET_CF_SERIAL_CONFIG]}},
+        { MSP_VOLTAGE_METER_CONFIG,        { MSP_VOLTAGE_METER_CONFIG,        &helperText[MSP_VOLTAGE_METER_CONFIG]}},
+        { MSP_SET_VOLTAGE_METER_CONFIG,    { MSP_SET_VOLTAGE_METER_CONFIG,    &helperText[MSP_SET_VOLTAGE_METER_CONFIG]}},
+        { MSP_SONAR_ALTITUDE,              { MSP_SONAR_ALTITUDE,              &helperText[MSP_SONAR_ALTITUDE]}},
+        { MSP_PID_CONTROLLER,              { MSP_PID_CONTROLLER,              &helperText[MSP_PID_CONTROLLER]}},
+        { MSP_SET_PID_CONTROLLER,          { MSP_SET_PID_CONTROLLER,          &helperText[MSP_SET_PID_CONTROLLER]}},
+        { MSP_ARMING_CONFIG,               { MSP_ARMING_CONFIG,               &helperText[MSP_ARMING_CONFIG]}},
+        { MSP_SET_ARMING_CONFIG,           { MSP_SET_ARMING_CONFIG,           &helperText[MSP_SET_ARMING_CONFIG]}},
+
+        // Baseflight MSP commands (64-89)
+        { MSP_RX_MAP,                      { MSP_RX_MAP,                      &helperText[MSP_RX_MAP]}},
+        { MSP_SET_RX_MAP,                  { MSP_SET_RX_MAP,                  &helperText[MSP_SET_RX_MAP]}},
+        { MSP_REBOOT,                      { MSP_REBOOT,                      &helperText[MSP_REBOOT]}},
+        { MSP_DATAFLASH_SUMMARY,           { MSP_DATAFLASH_SUMMARY,           &helperText[MSP_DATAFLASH_SUMMARY]}},
+        { MSP_DATAFLASH_READ,              { MSP_DATAFLASH_READ,              &helperText[MSP_DATAFLASH_READ]}},
+        { MSP_DATAFLASH_ERASE,             { MSP_DATAFLASH_ERASE,             &helperText[MSP_DATAFLASH_ERASE]}},
+        { MSP_FAILSAFE_CONFIG,             { MSP_FAILSAFE_CONFIG,             &helperText[MSP_FAILSAFE_CONFIG]}},
+        { MSP_SET_FAILSAFE_CONFIG,         { MSP_SET_FAILSAFE_CONFIG,         &helperText[MSP_SET_FAILSAFE_CONFIG]}},
+        { MSP_RXFAIL_CONFIG,               { MSP_RXFAIL_CONFIG,               &helperText[MSP_RXFAIL_CONFIG]}},
+        { MSP_SET_RXFAIL_CONFIG,           { MSP_SET_RXFAIL_CONFIG,           &helperText[MSP_SET_RXFAIL_CONFIG]}},
+        { MSP_SDCARD_SUMMARY,              { MSP_SDCARD_SUMMARY,              &helperText[MSP_SDCARD_SUMMARY]}},
+        { MSP_BLACKBOX_CONFIG,             { MSP_BLACKBOX_CONFIG,             &helperText[MSP_BLACKBOX_CONFIG]}},
+        { MSP_SET_BLACKBOX_CONFIG,         { MSP_SET_BLACKBOX_CONFIG,         &helperText[MSP_SET_BLACKBOX_CONFIG]}},
+        { MSP_TRANSPONDER_CONFIG,          { MSP_TRANSPONDER_CONFIG,          &helperText[MSP_TRANSPONDER_CONFIG]}},
+        { MSP_SET_TRANSPONDER_CONFIG,      { MSP_SET_TRANSPONDER_CONFIG,      &helperText[MSP_SET_TRANSPONDER_CONFIG]}},
+        { MSP_OSD_CONFIG,                  { MSP_OSD_CONFIG,                  &helperText[MSP_OSD_CONFIG]}},
+        { MSP_SET_OSD_CONFIG,              { MSP_SET_OSD_CONFIG,              &helperText[MSP_SET_OSD_CONFIG]}},
+        { MSP_OSD_CHAR_READ,               { MSP_OSD_CHAR_READ,               &helperText[MSP_OSD_CHAR_READ]}},
+        { MSP_OSD_CHAR_WRITE,              { MSP_OSD_CHAR_WRITE,              &helperText[MSP_OSD_CHAR_WRITE]}},
+        { MSP_VTX_CONFIG,                  { MSP_VTX_CONFIG,                  &helperText[MSP_VTX_CONFIG]}},
+        { MSP_SET_VTX_CONFIG,              { MSP_SET_VTX_CONFIG,              &helperText[MSP_SET_VTX_CONFIG]}},
+
+        // Betaflight Additiona}l Commands (90-99)
+        { MSP_ADVANCED_CONFIG,             { MSP_ADVANCED_CONFIG,             &helperText[MSP_ADVANCED_CONFIG]}},
+        { MSP_SET_ADVANCED_CONFIG,         { MSP_SET_ADVANCED_CONFIG,         &helperText[MSP_SET_ADVANCED_CONFIG]}},
+        { MSP_FILTER_CONFIG,               { MSP_FILTER_CONFIG,               &helperText[MSP_FILTER_CONFIG]}},
+        { MSP_SET_FILTER_CONFIG,           { MSP_SET_FILTER_CONFIG,           &helperText[MSP_SET_FILTER_CONFIG]}},
+        { MSP_PID_ADVANCED,                { MSP_PID_ADVANCED,                &helperText[MSP_PID_ADVANCED]}},
+        { MSP_SET_PID_ADVANCED,            { MSP_SET_PID_ADVANCED,            &helperText[MSP_SET_PID_ADVANCED]}},
+        { MSP_SENSOR_CONFIG,               { MSP_SENSOR_CONFIG,               &helperText[MSP_SENSOR_CONFIG]}},
+        { MSP_SET_SENSOR_CONFIG,           { MSP_SET_SENSOR_CONFIG,           &helperText[MSP_SET_SENSOR_CONFIG]}},
+        { MSP_CAMERA_CONTROL,              { MSP_CAMERA_CONTROL,              &helperText[MSP_CAMERA_CONTROL]}},
+        { MSP_SET_ARMING_DISABLED,         { MSP_SET_ARMING_DISABLED,         &helperText[MSP_SET_ARMING_DISABLED]}},
+
+        // Multiwii original MSP commands (101-139)
+        { MSP_STATUS,                      { MSP_STATUS,                      &helperText[MSP_STATUS]}},
+        { MSP_RAW_IMU,                     { MSP_RAW_IMU,                     &helperText[MSP_RAW_IMU]}},
+        { MSP_SERVO,                       { MSP_SERVO,                       &helperText[MSP_SERVO]}},
+        { MSP_MOTOR,                       { MSP_MOTOR,                       &helperText[MSP_MOTOR]}},
+        { MSP_RC,                          { MSP_RC,                          &helperText[MSP_RC]}},
+        { MSP_RAW_GPS,                     { MSP_RAW_GPS,                     &helperText[MSP_RAW_GPS]}},
+        { MSP_COMP_GPS,                    { MSP_COMP_GPS,                    &helperText[MSP_COMP_GPS]}},
+        { MSP_ATTITUDE,                    { MSP_ATTITUDE,                    &helperText[MSP_ATTITUDE]}},
+        { MSP_ALTITUDE,                    { MSP_ALTITUDE,                    &helperText[MSP_ALTITUDE]}},
+        { MSP_ANALOG,                      { MSP_ANALOG,                      &helperText[MSP_ANALOG]}},
+        { MSP_RC_TUNING,                   { MSP_RC_TUNING,                   &helperText[MSP_RC_TUNING]}},
+        { MSP_PID,                         { MSP_PID,                         &helperText[MSP_PID]}},
+        { MSP_BOXNAMES,                    { MSP_BOXNAMES,                    &helperText[MSP_BOXNAMES]}},
+        { MSP_PIDNAMES,                    { MSP_PIDNAMES,                    &helperText[MSP_PIDNAMES]}},
+        { MSP_WP,                          { MSP_WP,                          &helperText[MSP_WP]}},
+        { MSP_BOXIDS,                      { MSP_BOXIDS,                      &helperText[MSP_BOXIDS]}},
+        { MSP_SERVO_CONFIGURATIONS,        { MSP_SERVO_CONFIGURATIONS,        &helperText[MSP_SERVO_CONFIGURATIONS]}},
+        { MSP_NAV_STATUS,                  { MSP_NAV_STATUS,                  &helperText[MSP_NAV_STATUS]}},
+        { MSP_NAV_CONFIG,                  { MSP_NAV_CONFIG,                  &helperText[MSP_NAV_CONFIG]}},
+        { MSP_MOTOR_3D_CONFIG,             { MSP_MOTOR_3D_CONFIG,             &helperText[MSP_MOTOR_3D_CONFIG]}},
+        { MSP_RC_DEADBAND,                 { MSP_RC_DEADBAND,                 &helperText[MSP_RC_DEADBAND]}},
+        { MSP_SENSOR_ALIGNMENT,            { MSP_SENSOR_ALIGNMENT,            &helperText[MSP_SENSOR_ALIGNMENT]}},
+        { MSP_LED_STRIP_MODECOLOR,         { MSP_LED_STRIP_MODECOLOR,         &helperText[MSP_LED_STRIP_MODECOLOR]}},
+        { MSP_VOLTAGE_METERS,              { MSP_VOLTAGE_METERS,              &helperText[MSP_VOLTAGE_METERS]}},
+        { MSP_CURRENT_METERS,              { MSP_CURRENT_METERS,              &helperText[MSP_CURRENT_METERS]}},
+        { MSP_BATTERY_STATE,               { MSP_BATTERY_STATE,               &helperText[MSP_BATTERY_STATE]}},
+        { MSP_MOTOR_CONFIG,                { MSP_MOTOR_CONFIG,                &helperText[MSP_MOTOR_CONFIG]}},
+        { MSP_GPS_CONFIG,                  { MSP_GPS_CONFIG,                  &helperText[MSP_GPS_CONFIG]}},
+        { MSP_COMPASS_CONFIG,              { MSP_COMPASS_CONFIG,              &helperText[MSP_COMPASS_CONFIG]}},
+        { MSP_ESC_SENSOR_DATA,             { MSP_ESC_SENSOR_DATA,             &helperText[MSP_ESC_SENSOR_DATA]}},
+        { MSP_GPS_RESCUE,                  { MSP_GPS_RESCUE,                  &helperText[MSP_GPS_RESCUE]}},
+        { MSP_GPS_RESCUE_PIDS,             { MSP_GPS_RESCUE_PIDS,             &helperText[MSP_GPS_RESCUE_PIDS]}},
+        { MSP_VTXTABLE_BAND,               { MSP_VTXTABLE_BAND,               &helperText[MSP_VTXTABLE_BAND]}},
+        { MSP_VTXTABLE_POWERLEVEL,         { MSP_VTXTABLE_POWERLEVEL,         &helperText[MSP_VTXTABLE_POWERLEVEL]}},
+        { MSP_MOTOR_TELEMETRY,             { MSP_MOTOR_TELEMETRY,             &helperText[MSP_MOTOR_TELEMETRY]}},
+
+        // Simplified tuning commands (140-145)
+        { MSP_SIMPLIFIED_TUNING,           { MSP_SIMPLIFIED_TUNING,           &helperText[MSP_SIMPLIFIED_TUNING]}},
+        { MSP_SET_SIMPLIFIED_TUNING,       { MSP_SET_SIMPLIFIED_TUNING,       &helperText[MSP_SET_SIMPLIFIED_TUNING]}},
+        { MSP_CALCULATE_SIMPLIFIED_PID,    { MSP_CALCULATE_SIMPLIFIED_PID,    &helperText[MSP_CALCULATE_SIMPLIFIED_PID]}},
+        { MSP_CALCULATE_SIMPLIFIED_GYRO,   { MSP_CALCULATE_SIMPLIFIED_GYRO,   &helperText[MSP_CALCULATE_SIMPLIFIED_GYRO]}},
+        { MSP_CALCULATE_SIMPLIFIED_DTERM,  { MSP_CALCULATE_SIMPLIFIED_DTERM,  &helperText[MSP_CALCULATE_SIMPLIFIED_DTERM]}},
+        { MSP_VALIDATE_SIMPLIFIED_TUNING,  { MSP_VALIDATE_SIMPLIFIED_TUNING,  &helperText[MSP_VALIDATE_SIMPLIFIED_TUNING]}},
+
+        // Additional non-MultiWii commands (150-166)
+        { MSP_STATUS_EX,                   { MSP_STATUS_EX,                   &helperText[MSP_STATUS_EX]}},
+        { MSP_UID,                         { MSP_UID,                         &helperText[MSP_UID]}},
+        { MSP_GPSSVINFO,                   { MSP_GPSSVINFO,                   &helperText[MSP_GPSSVINFO]}},
+        { MSP_GPSSTATISTICS,               { MSP_GPSSTATISTICS,               &helperText[MSP_GPSSTATISTICS]}},
+
+        // OSD specific commands (180-189)
+        { MSP_OSD_VIDEO_CONFIG,            { MSP_OSD_VIDEO_CONFIG,            &helperText[MSP_OSD_VIDEO_CONFIG]}},
+        { MSP_SET_OSD_VIDEO_CONFIG,        { MSP_SET_OSD_VIDEO_CONFIG,        &helperText[MSP_SET_OSD_VIDEO_CONFIG]}},
+        { MSP_DISPLAYPORT,                 { MSP_DISPLAYPORT,                 &helperText[MSP_DISPLAYPORT]}},
+        { MSP_COPY_PROFILE,                { MSP_COPY_PROFILE,                &helperText[MSP_COPY_PROFILE]}},
+        { MSP_BEEPER_CONFIG,               { MSP_BEEPER_CONFIG,               &helperText[MSP_BEEPER_CONFIG]}},
+        { MSP_SET_BEEPER_CONFIG,           { MSP_SET_BEEPER_CONFIG,           &helperText[MSP_SET_BEEPER_CONFIG]}},
+        { MSP_SET_TX_INFO,                 { MSP_SET_TX_INFO,                 &helperText[MSP_SET_TX_INFO]}},
+        { MSP_TX_INFO,                     { MSP_TX_INFO,                     &helperText[MSP_TX_INFO]}},
+        { MSP_SET_OSD_CANVAS,              { MSP_SET_OSD_CANVAS,              &helperText[MSP_SET_OSD_CANVAS]}},
+        { MSP_OSD_CANVAS,                  { MSP_OSD_CANVAS,                  &helperText[MSP_OSD_CANVAS]}},
+
+        // Set commands (200-229)
+        { MSP_SET_RAW_RC,                  { MSP_SET_RAW_RC,                  &helperText[MSP_SET_RAW_RC]}},
+        { MSP_SET_RAW_GPS,                 { MSP_SET_RAW_GPS,                 &helperText[MSP_SET_RAW_GPS]}},
+        { MSP_SET_PID,                     { MSP_SET_PID,                     &helperText[MSP_SET_PID]}},
+        { MSP_SET_RC_TUNING,               { MSP_SET_RC_TUNING,               &helperText[MSP_SET_RC_TUNING]}},
+        { MSP_ACC_CALIBRATION,             { MSP_ACC_CALIBRATION,             &helperText[MSP_ACC_CALIBRATION]}},
+        { MSP_MAG_CALIBRATION,             { MSP_MAG_CALIBRATION,             &helperText[MSP_MAG_CALIBRATION]}},
+        { MSP_RESET_CONF,                  { MSP_RESET_CONF,                  &helperText[MSP_RESET_CONF]}},
+        { MSP_SET_WP,                      { MSP_SET_WP,                      &helperText[MSP_SET_WP]}},
+        { MSP_SELECT_SETTING,              { MSP_SELECT_SETTING,              &helperText[MSP_SELECT_SETTING]}},
+        { MSP_SET_HEADING,                 { MSP_SET_HEADING,                 &helperText[MSP_SET_HEADING]}},
+        { MSP_SET_SERVO_CONFIGURATION,     { MSP_SET_SERVO_CONFIGURATION,     &helperText[MSP_SET_SERVO_CONFIGURATION]}},
+        { MSP_SET_MOTOR,                   { MSP_SET_MOTOR,                   &helperText[MSP_SET_MOTOR]}},
+        { MSP_SET_NAV_CONFIG,              { MSP_SET_NAV_CONFIG,              &helperText[MSP_SET_NAV_CONFIG]}},
+        { MSP_SET_MOTOR_3D_CONFIG,         { MSP_SET_MOTOR_3D_CONFIG,         &helperText[MSP_SET_MOTOR_3D_CONFIG]}},
+        { MSP_SET_RC_DEADBAND,             { MSP_SET_RC_DEADBAND,             &helperText[MSP_SET_RC_DEADBAND]}},
+        { MSP_SET_RESET_CURR_PID,          { MSP_SET_RESET_CURR_PID,          &helperText[MSP_SET_RESET_CURR_PID]}},
+        { MSP_SET_SENSOR_ALIGNMENT,        { MSP_SET_SENSOR_ALIGNMENT,        &helperText[MSP_SET_SENSOR_ALIGNMENT]}},
+        { MSP_SET_LED_STRIP_MODECOLOR,     { MSP_SET_LED_STRIP_MODECOLOR,     &helperText[MSP_SET_LED_STRIP_MODECOLOR]}},
+        { MSP_SET_MOTOR_CONFIG,            { MSP_SET_MOTOR_CONFIG,            &helperText[MSP_SET_MOTOR_CONFIG]}},
+        { MSP_SET_GPS_CONFIG,              { MSP_SET_GPS_CONFIG,              &helperText[MSP_SET_GPS_CONFIG]}},
+        { MSP_SET_COMPASS_CONFIG,          { MSP_SET_COMPASS_CONFIG,          &helperText[MSP_SET_COMPASS_CONFIG]}},
+        { MSP_SET_GPS_RESCUE,              { MSP_SET_GPS_RESCUE,              &helperText[MSP_SET_GPS_RESCUE]}},
+        { MSP_SET_GPS_RESCUE_PIDS,         { MSP_SET_GPS_RESCUE_PIDS,         &helperText[MSP_SET_GPS_RESCUE_PIDS]}},
+        { MSP_SET_VTXTABLE_BAND,           { MSP_SET_VTXTABLE_BAND,           &helperText[MSP_SET_VTXTABLE_BAND]}},
+        { MSP_SET_VTXTABLE_POWERLEVEL,     { MSP_SET_VTXTABLE_POWERLEVEL,     &helperText[MSP_SET_VTXTABLE_POWERLEVEL]}},
+
+        // Multiple MSP and special commands (230-255)
+        { MSP_MULTIPLE_MSP,                { MSP_MULTIPLE_MSP,                &helperText[MSP_MULTIPLE_MSP]}},
+        { MSP_MODE_RANGES_EXTRA,           { MSP_MODE_RANGES_EXTRA,           &helperText[MSP_MODE_RANGES_EXTRA]}},
+        { MSP_SET_ACC_TRIM,                { MSP_SET_ACC_TRIM,                &helperText[MSP_SET_ACC_TRIM]}},
+        { MSP_ACC_TRIM,                    { MSP_ACC_TRIM,                    &helperText[MSP_ACC_TRIM]}},
+        { MSP_SERVO_MIX_RULES,             { MSP_SERVO_MIX_RULES,             &helperText[MSP_SERVO_MIX_RULES]}},
+        { MSP_SET_SERVO_MIX_RULE,          { MSP_SET_SERVO_MIX_RULE,          &helperText[MSP_SET_SERVO_MIX_RULE]}},
+        { MSP_SET_PASSTHROUGH,             { MSP_SET_PASSTHROUGH,             &helperText[MSP_SET_PASSTHROUGH]}},
+        { MSP_SET_RTC,                     { MSP_SET_RTC,                     &helperText[MSP_SET_RTC]}},
+        { MSP_RTC,                         { MSP_RTC,                         &helperText[MSP_RTC]}},
+        { MSP_SET_BOARD_INFO,              { MSP_SET_BOARD_INFO,              &helperText[MSP_SET_BOARD_INFO]}},
+        { MSP_SET_SIGNATURE,               { MSP_SET_SIGNATURE,               &helperText[MSP_SET_SIGNATURE]}},
+        { MSP_EEPROM_WRITE,                { MSP_EEPROM_WRITE,                &helperText[MSP_EEPROM_WRITE]}},
+        { MSP_RESERVE_1,                   { MSP_RESERVE_1,                   &helperText[MSP_RESERVE_1]}},
+        { MSP_RESERVE_2,                   { MSP_RESERVE_2,                   &helperText[MSP_RESERVE_2]}},
+        { MSP_DEBUGMSG,                    { MSP_DEBUGMSG,                    &helperText[MSP_DEBUGMSG]}},
+        { MSP_DEBUG,                       { MSP_DEBUG,                       &helperText[MSP_DEBUG]}},
+        { MSP_V2_FRAME,                    { MSP_V2_FRAME,                    &helperText[MSP_V2_FRAME]}}
+    };
+
+*/
 
 
     struct msp_status_t {
