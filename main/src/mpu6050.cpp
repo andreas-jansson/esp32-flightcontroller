@@ -386,7 +386,7 @@ void Mpu6050::dmp_task(void* args){
         YawPitchRoll ypr{};
         YawPitchRoll yprRate{};
 
-        get_6axis_motion(yprRate.x_accel, yprRate.y_accel, yprRate.z_accel, yprRate.x_gyro, yprRate.y_gyro, yprRate.z_gyro);
+        //get_6axis_motion(yprRate.x_accel, yprRate.y_accel, yprRate.z_accel, yprRate.x_gyro, yprRate.y_gyro, yprRate.z_gyro);
 
         this->get_quaternion(quaternion);
         this->get_gravity(vec, quaternion);

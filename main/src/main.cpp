@@ -338,7 +338,7 @@ void main_task(void *args){
 
     /* start tasks */
     print_debug(DEBUG_MAIN, DEBUG_LOGIC, "starting tasks\n");
-    // xTaskCreatePinnedToCore(dispatch_blackbox, "blackbox_task", 8096, bb,  PRIO_BG, &blackbox_handle, 0);
+    xTaskCreatePinnedToCore(dispatch_blackbox, "blackbox_task", 8096, bb,  PRIO_BG, &blackbox_handle, 0);
     xTaskCreatePinnedToCore(dispatch_display, "display_task", 8096, nullptr, PRIO_BG, &display_handle, 0);
     vTaskDelay(pdMS_TO_TICKS(100));
     Display::set_display_state(BOOTING);
@@ -387,24 +387,6 @@ void main_task(void *args){
 }
 
 
-#include "esp_cpu.h"
-#include "esp_debug_helpers.h"
-
-#define log_tag "main"
-
-
-#define CTOR_PROBE(tag) do { \
-  void* ra = __builtin_return_address(0); \
-  void* sp = (void*)esp_cpu_get_sp(); \
-  printf("CTOR_PROBE: %s ra=%p sp=%p\n", tag, ra, sp); \
-} while(0)
-
-
-__attribute__((constructor))
-static void ctor_probe(void) {
-    esp_rom_printf("CTOR_PROBE: entered\n");
-    CTOR_PROBE(log_tag);
-}
 
 void app_main(void)
 {

@@ -166,26 +166,29 @@ Drone *Drone::GetInstance()
 bool Drone::verify_imu_data(YawPitchRoll ypr)
 {
 
-    float yawHigh = 10.0;
-    float yawLow = -10.0;
-    float pitchHigh = 10.0;
-    float pitchLow = -10.0;
-    float rollHigh = 10.0;
-    float rollLow = -10.0;
+    float high = 0.10;
+    float low = -0.10;
 
-    if (ypr.yaw < yawLow || ypr.yaw > yawHigh)
+
+    printf("ypr.yaw[%f] ypr.pitch[%f] ypr.roll[%f]\n", ypr.yaw * RAD_TO_DEGREE, ypr.pitch * RAD_TO_DEGREE, ypr.roll * RAD_TO_DEGREE);
+
+    float yaw = ypr.yaw * RAD_TO_DEGREE;
+    float pitch = ypr.pitch * RAD_TO_DEGREE;
+    float roll = ypr.roll * RAD_TO_DEGREE;
+
+    if (yaw < low || yaw > high)
     {
-        printf("bad yaw: %.2f\n", ypr.yaw);
+        printf("bad yaw: %.2f\n", yaw);
         return false;
     }
-    else if (ypr.pitch < pitchLow || ypr.pitch > pitchHigh)
+    else if (pitch < low || pitch > high)
     {
-        printf("bad pitch: %.2f\n", ypr.pitch);
+        printf("bad pitch: %.2f\n", pitch);
         return false;
     }
-    else if (ypr.roll < rollLow || ypr.roll > rollHigh)
+    else if (roll < low || roll > high)
     {
-        printf("bad roll: %.2f\n", ypr.roll);
+        printf("bad roll: %.2f\n", roll);
         return false;
     }
     return true;
@@ -360,15 +363,7 @@ esp_err_t Drone::verify_components_process()
 {
 
     esp_err_t status = 0;
-
-    Channel channelPrev{};
-    //YawPitchRoll yprPrev{};
-
-    //uint64_t yprCounter1 = 0;
-    //uint64_t yprCounter2 = 0;
     uint64_t radioCounter = 0;
-    //uint64_t yprValidCounter1 = 0;
-    //uint64_t yprValidCounter2 = 0;
     uint64_t radioValidCounter = 0;
 
     ESP_LOGI(log_tag, "Verifying IMU and Radio");
@@ -401,14 +396,10 @@ esp_err_t Drone::verify_components_process()
 
     while (true)
     {
-
-        // bool yprIsValid1{};
-        // bool yprIsValid2{};
         bool radioIsValid{};
-
         Channel channel{};
-
         uint8_t imuIdx{1};
+
         for(auto& ctx : yprCtx){
 
             status = get_imu_data(imuIdx, ctx.ypr, 0);
@@ -448,6 +439,9 @@ esp_err_t Drone::verify_components_process()
         for(auto& ctx : yprCtx){
             if (verify_imu_data(ctx.ypr) && ctx.isValidSample)
                 ctx.validCounter++;
+            else
+                ctx.validCounter = 0;
+
         }
 
         if (verify_controller_data(channel) && radioIsValid)
@@ -459,7 +453,7 @@ esp_err_t Drone::verify_components_process()
         for(auto& ctx : yprCtx){
             if (ctx.counter > 100)
             {
-                if ((ctx.validCounter / ctx.counter) >= 0.9)
+                if ((static_cast<float>(ctx.validCounter) / ctx.counter) >= 0.9)
                 {
                     if(mpuIdx == 1)
                         Display::set_verify_mpu1_status(PASS);
@@ -473,7 +467,7 @@ esp_err_t Drone::verify_components_process()
                         Display::set_verify_mpu1_status(FAILED);
                     else if(mpuIdx == 2)
                         Display::set_verify_mpu2_status(FAILED);
-                    ctx.complete = true;
+                    ctx.complete = false;
                 }
             }
             mpuIdx++;
@@ -1395,8 +1389,6 @@ void Drone::pid(float target, float current, Pid &pid)
     kPOut = pid.kP * err;
     pid.integral += err * pid.dt;
     kIOut = pid.kI * pid.integral;
-
-    pid.integral = 0; // FIXME remove this, only for debugging
 
     derivative = (err - pid.prevErr) / pid.dt;
     kDOut = pid.kD * derivative;
